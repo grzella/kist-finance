@@ -87,6 +87,7 @@ Your data is one local SQLite file, so a backup is just a copy — but a copy yo
 ## Data & privacy
 
 - **Everything is local out of the box.** No account, no server, no cloud dependency — the whole app runs against a single local SQLite file. Live market data and alerts are the only cloud touchpoints, and they're opt-in (see above).
+- **Your data lives outside the repo by default.** A fresh clone stores its database in a per-user app-data dir (`~/Library/Application Support/financeapp` on macOS, `~/.local/share/financeapp` on Linux) — so a stray `git add` can't stage your finances. An existing `./.finance/` keeps working in place, and `FINANCE_PROJECT_DIR=/path ./run.sh` overrides the location.
 - `.finance/`, `.env`, and `backups/` are git-ignored — **never commit them**.
 - `seed.py` refuses to overwrite existing data (use `--force` only on a throwaway DB).
 - **Demo mode** (Control Center or `?demo`) masks all figures with a `0-1` pattern and hides chart axis values — safe screenshots.

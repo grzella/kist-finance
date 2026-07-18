@@ -1,8 +1,9 @@
 #!/bin/bash
-# Home Budget — local app. Personal data stays in ./.finance (gitignored). See README.
+# Local app. By default your data lives OUTSIDE the repo (see README > Data &
+# privacy); set FINANCE_PROJECT_DIR to override. An existing ./.finance keeps
+# working in place. See README.
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
-export FINANCE_PROJECT_DIR="$APP_DIR"
 PORT="${PORT:-8321}"
 
 python3 -c "import flask" 2>/dev/null || pip3 install --user -q -r "$APP_DIR/requirements.txt"
