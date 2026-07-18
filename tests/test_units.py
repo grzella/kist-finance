@@ -48,6 +48,19 @@ def test_forecast_goal_eta_band():
     assert band is not None  # ~24 months at 5k/mo, returned as a range
 
 
+def test_forecast_model_primitives():
+    import forecast_models as fm
+    closes = [100, 101, 100.5, 102, 101.5, 103, 102.5, 104]
+    lr = fm.log_returns(closes)
+    assert len(lr) == len(closes) - 1
+    vol = fm.ewma_vol_daily(lr)
+    assert vol is not None and vol >= 0
+    assert fm.ewma_vol_daily([]) is None
+    qs = fm.empirical_nday_quantiles(closes, n=2)
+    assert qs is None or (qs[0.10] <= qs[0.50] <= qs[0.90])
+    assert fm.conformal_quantiles([0.1, -0.2, 0.3], min_n=40) is None  # too few obs
+
+
 def test_backup_snapshot_is_consistent(client, tmp_path):
     import data_backup as backup
     backup.set_destination(str(tmp_path))

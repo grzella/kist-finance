@@ -71,6 +71,32 @@ def test_rag_reindex_and_status(client):
     assert client.get("/api/rag/status").get_json()["chunks"] == n
 
 
+def test_all_get_endpoints_no_server_error(client):
+    # exercise every parameter-free GET route; none may 500 (offline is fine)
+    import app as flask_app
+    rules = [r for r in flask_app.app.url_map.iter_rules()
+             if "GET" in r.methods and "<" not in r.rule and not r.rule.startswith("/static")]
+    assert len(rules) > 10
+    for r in rules:
+        assert client.get(r.rule).status_code != 500, r.rule
+
+
+def test_mortgage_overpayment_endpoint(client):
+    r = client.post("/api/forecast/mortgage", json={
+        "balance": 300000, "monthly_payment": 3500, "months_left": 240, "overpayment": 50000})
+    assert r.status_code == 200
+    assert isinstance(r.get_json(), dict)
+
+
+def test_wealth_item_crud(client):
+    iid = client.post("/api/wealth/items",
+                      json={"name": "Test asset", "kind": "investment", "value": 1000}).get_json()["id"]
+    client.post(f"/api/wealth/items/{iid}/values", json={"date": "2026-01-01", "value": 1100})
+    hist = client.get(f"/api/wealth/items/{iid}/history").get_json()
+    assert isinstance(hist, (list, dict))
+    assert client.delete(f"/api/wealth/items/{iid}").status_code == 200
+
+
 def test_backup_roundtrip(client, tmp_path):
     st = client.get("/api/backup/status").get_json()
     assert "destinations" in st

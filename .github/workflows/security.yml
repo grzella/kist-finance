@@ -49,5 +49,7 @@ jobs:
           python-version: "3.12"
       - name: Install deps
         run: pip install -r requirements.txt -r requirements-dev.txt
-      - name: Run pytest
-        run: python -m pytest -q
+      - name: Run pytest with coverage (fails under the floor)
+        run: python -m pytest -q --cov=server --cov-report=term-missing --cov-fail-under=55
+      - name: Security lint (bandit — fails on high severity + high confidence)
+        run: python -m bandit -r server -q --severity-level high --confidence-level high
