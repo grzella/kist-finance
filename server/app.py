@@ -422,9 +422,10 @@ def llm_config_save():
 def llm_ask():
     """Ask a question per the AI mode: 'local' = local model only;
     'both' = local AND Claude (for comparison — best result from the pair)."""
-    import llm_local, llm_cloud
+    import llm_local, llm_cloud, finance_prompt
     b = request.get_json(force=True)
-    prompt, system = b.get("prompt", ""), b.get("system")
+    prompt = b.get("prompt", "")
+    system = b.get("system") or finance_prompt.SYSTEM
     mode = planner.get_setting("ai_mode") or "local"
     out = {"mode": mode}
     lt = llm_local.chat(prompt, system=system)
