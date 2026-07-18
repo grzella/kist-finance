@@ -1,4 +1,4 @@
-"""Home Budget — local Flask app. Personal data never leaves this machine."""
+"""Kist — local Flask app. Personal data never leaves this machine."""
 import sys
 from pathlib import Path
 

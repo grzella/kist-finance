@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "server"))
 
 @pytest.fixture(scope="session")
 def data_dir():
-    tmp = tempfile.mkdtemp(prefix="financeapp-test-")
+    tmp = tempfile.mkdtemp(prefix="kist-test-")
     env = dict(os.environ, FINANCE_PROJECT_DIR=tmp)
     subprocess.run([sys.executable, str(ROOT / "seed.py")],
                    check=True, env=env, capture_output=True)
