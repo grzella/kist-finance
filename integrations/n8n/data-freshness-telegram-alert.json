@@ -1,5 +1,5 @@
 {
-  "name": "Finance app — alert świeżości danych (Telegram)",
+  "name": "Kist — data-freshness alert (Telegram)",
   "nodes": [
     {
       "parameters": {
@@ -29,7 +29,7 @@
         "options": {}
       },
       "id": "node-http",
-      "name": "Supabase: ostatnia data kursów",
+      "name": "Supabase: latest quote date",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -45,10 +45,10 @@
     },
     {
       "parameters": {
-        "jsCode": "// Ocena świeżości danych rynkowych z Supabase (tabela market_prices).\n// Wejście: odpowiedź HTTP z Supabase (najnowsza data notowania).\nlet data = $input.all().map((i) => i.json);\n// HTTP Request może zwrócić tablicę jako jeden item — spłaszcz na wszelki wypadek.\nif (data.length === 1 && Array.isArray(data[0])) data = data[0];\n\nconst latest = data.length && data[0] ? data[0].date : null;\n\nconst MAX_AGE_DAYS = 2; // > tyle dni bez świeżych kursów = alert. Ustaw -1, by wymusić test.\nconst ageDays = (d) => {\n  if (!d) return null;\n  const t = new Date(d + 'T00:00:00Z').getTime();\n  return Math.floor((Date.now() - t) / 86400000);\n};\nconst age = ageDays(latest);\n\nconst problems = [];\nif (latest === null) {\n  problems.push('Brak danych w tabeli market_prices — pipeline syncu nic nie wgrał.');\n} else if (age > MAX_AGE_DAYS) {\n  problems.push('Kursy/FX nieświeże: ostatnie notowanie ' + latest + ' (' + age + ' dni temu).');\n}\n\nconst alert = problems.length > 0;\nconst message = alert\n  ? '🔴 *Finance app — alert danych*\\n' + problems.map((p) => '• ' + p).join('\\n')\n    + '\\n\\nSprawdź workflow syncu (n8n) i Supabase.'\n  : '🟢 Finance app — dane świeże (ostatnie kursy: ' + latest + ').';\n\nreturn [{ json: { alert: alert, message: message, latest: latest, age: age } }];\n"
+        "jsCode": "// Assess market-data freshness from Supabase (market_prices table).\n// Input: the HTTP response from Supabase (latest quote date).\nlet data = $input.all().map((i) => i.json);\n// HTTP Request may return an array as a single item — flatten just in case.\nif (data.length === 1 && Array.isArray(data[0])) data = data[0];\n\nconst latest = data.length && data[0] ? data[0].date : null;\n\nconst MAX_AGE_DAYS = 2; // > this many days without fresh quotes = alert. Set -1 to force a test.\nconst ageDays = (d) => {\n  if (!d) return null;\n  const t = new Date(d + 'T00:00:00Z').getTime();\n  return Math.floor((Date.now() - t) / 86400000);\n};\nconst age = ageDays(latest);\n\nconst problems = [];\nif (latest === null) {\n  problems.push('No data in market_prices — the sync pipeline loaded nothing.');\n} else if (age > MAX_AGE_DAYS) {\n  problems.push('Quotes/FX stale: latest quote ' + latest + ' (' + age + ' days ago).');\n}\n\nconst alert = problems.length > 0;\nconst message = alert\n  ? '🔴 *Kist — data alert*\\n' + problems.map((p) => '• ' + p).join('\\n')\n    + '\\n\\nCheck the sync workflow (n8n) and Supabase.'\n  : '🟢 Kist — data fresh (latest quotes: ' + latest + ').';\n\nreturn [{ json: { alert: alert, message: message, latest: latest, age: age } }];\n"
       },
       "id": "node-code",
-      "name": "Oceń świeżość + zbuduj alert",
+      "name": "Assess freshness + build alert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -98,7 +98,7 @@
         }
       },
       "id": "node-telegram",
-      "name": "Telegram: wyślij alert",
+      "name": "Telegram: send alert",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
@@ -118,25 +118,25 @@
       "main": [
         [
           {
-            "node": "Supabase: ostatnia data kursów",
+            "node": "Supabase: latest quote date",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Supabase: ostatnia data kursów": {
+    "Supabase: latest quote date": {
       "main": [
         [
           {
-            "node": "Oceń świeżość + zbuduj alert",
+            "node": "Assess freshness + build alert",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Oceń świeżość + zbuduj alert": {
+    "Assess freshness + build alert": {
       "main": [
         [
           {
@@ -151,7 +151,7 @@
       "main": [
         [
           {
-            "node": "Telegram: wyślij alert",
+            "node": "Telegram: send alert",
             "type": "main",
             "index": 0
           }

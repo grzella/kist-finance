@@ -1,86 +1,86 @@
-# n8n → Telegram: alert świeżości danych
+# n8n → Telegram: data-freshness alert
 
-Gotowy workflow n8n, który **codziennie sprawdza, czy pipeline danych żyje**, i
-wysyła powiadomienie na Telegram, gdy coś się zepsuje — bez zaglądania do
-aplikacji. Monitoruje warstwę chmurową (Supabase), więc działa **niezależnie od
-tego, czy lokalna apka jest włączona**.
+A ready-made n8n workflow that **checks daily whether the data pipeline is alive**
+and sends a Telegram notification when something breaks — without opening the app.
+It watches the cloud layer (Supabase), so it works **whether or not the local app
+is running**.
 
-Plik: [`data-freshness-telegram-alert.json`](./data-freshness-telegram-alert.json)
+File: [`data-freshness-telegram-alert.json`](./data-freshness-telegram-alert.json)
 
-## Co sprawdza (i czego nie)
+## What it checks (and what it doesn't)
 
-- ✅ **Świeżość kursów/FX** — czy tabela `market_prices` w Supabase dostała
-  świeże notowania (domyślnie alert, gdy ostatni wpis > 2 dni temu albo tabela
-  pusta). To łapie zerwany dzienny sync (n8n → Supabase).
-- ➕ Łatwo dołożyć kolejne źródła (np. raporty ads `analysis_reports`) — patrz
-  „Rozszerzanie” niżej.
-- ❌ **Nie** monitoruje rzeczy lokalnych (backup, security scan) — te pilnują
-  launchd/CI, bo nie są widoczne z chmury.
+- ✅ **Quote/FX freshness** — whether the `market_prices` table in Supabase got
+  fresh quotes (by default it alerts when the latest entry is > 2 days old, or the
+  table is empty). This catches a broken daily sync (n8n → Supabase).
+- ➕ Easy to add more sources (e.g. ads reports in `analysis_reports`) — see
+  "Extending" below.
+- ❌ It does **not** watch local things (backups, security scan) — those are
+  guarded by launchd/CI, since they aren't visible from the cloud.
 
-Przepływ: `Schedule (codziennie 23:15)` → `HTTP: Supabase (ostatnia data)` →
-`Code: ocena świeżości` → `IF: jest problem?` → `Telegram: wyślij alert`.
-Domyślnie powiadomienie idzie **tylko przy problemie** (cisza = wszystko OK).
+Flow: `Schedule (daily 23:15)` → `HTTP: Supabase (latest date)` →
+`Code: freshness check` → `IF: any problem?` → `Telegram: send alert`.
+By default a notification is sent **only on a problem** (silence = all good).
 
-## Wymagania
+## Requirements
 
-- Działający **n8n** (self-hosted lub Cloud).
-- **Supabase** — ten sam projekt, z którego korzysta aplikacja (tabela
-  `market_prices`). Do odczytu wystarczy **anon key**.
-- **Bot Telegram** (token) i Twoje **chat id**.
+- A running **n8n** (self-hosted or Cloud).
+- **Supabase** — the same project the app uses (the `market_prices` table). An
+  **anon key** is enough for reads.
+- A **Telegram bot** (token) and your **chat id**.
 
-## Konfiguracja krok po kroku
+## Step-by-step setup
 
-### 1. Załóż bota Telegram
-1. Napisz do [@BotFather](https://t.me/BotFather) → `/newbot` → nazwij bota.
-2. Zapisz **token** (postać `123456789:ABC-...`).
-3. Napisz cokolwiek do swojego nowego bota (żeby mógł Ci odpisywać).
-4. Pobierz swoje **chat id**: najprościej przez [@userinfobot](https://t.me/userinfobot),
-   albo otwórz `https://api.telegram.org/bot<TOKEN>/getUpdates` i odczytaj `chat.id`.
+### 1. Create a Telegram bot
+1. Message [@BotFather](https://t.me/BotFather) → `/newbot` → name the bot.
+2. Save the **token** (looks like `123456789:ABC-...`).
+3. Send any message to your new bot (so it can reply to you).
+4. Get your **chat id**: easiest via [@userinfobot](https://t.me/userinfobot), or
+   open `https://api.telegram.org/bot<TOKEN>/getUpdates` and read `chat.id`.
 
-### 2. Dodaj credentiale w n8n
-- **Telegram API** → wklej token bota. Nazwij np. `Telegram bot`.
-- **Header Auth** (dla Supabase) → *Name:* `apikey`, *Value:* Twój Supabase
-  **anon key**. Nazwij np. `Supabase anon key (apikey)`.
+### 2. Add credentials in n8n
+- **Telegram API** → paste the bot token. Name it e.g. `Telegram bot`.
+- **Header Auth** (for Supabase) → *Name:* `apikey`, *Value:* your Supabase
+  **anon key**. Name it e.g. `Supabase anon key (apikey)`.
 
-### 3. Zaimportuj workflow
-n8n → *Workflows* → *Import from File* → wskaż `data-freshness-telegram-alert.json`.
+### 3. Import the workflow
+n8n → *Workflows* → *Import from File* → pick `data-freshness-telegram-alert.json`.
 
-### 4. Uzupełnij placeholdery
-- Węzeł **„Supabase: ostatnia data kursów”** → w URL zamień
-  `https://YOUR-PROJECT.supabase.co` na host swojego projektu; wybierz credential
-  Header Auth z kroku 2.
-- Węzeł **„Telegram: wyślij alert”** → *Chat ID* = Twoje chat id; wybierz
-  credential Telegram.
+### 4. Fill in the placeholders
+- The **"Supabase: latest quote date"** node → in the URL replace
+  `https://YOUR-PROJECT.supabase.co` with your project host; select the Header
+  Auth credential from step 2.
+- The **"Telegram: send alert"** node → *Chat ID* = your chat id; select the
+  Telegram credential.
 
-### 5. Przetestuj
-- W węźle **„Oceń świeżość + zbuduj alert”** zmień `MAX_AGE_DAYS` na `-1`
-  (wymusi alert), kliknij **Execute Workflow** → powinieneś dostać wiadomość na
-  Telegram. Przywróć `MAX_AGE_DAYS = 2`.
+### 5. Test
+- In the **"Assess freshness + build alert"** node, set `MAX_AGE_DAYS` to `-1`
+  (forces an alert), click **Execute Workflow** → you should get a Telegram
+  message. Restore `MAX_AGE_DAYS = 2`.
 
-### 6. Włącz
-Przełącz workflow na **Active**. Odpala się codziennie o 23:15 (po dziennym
-syncu ~22:35). Godzinę zmienisz w węźle Schedule (`15 23 * * *`).
+### 6. Enable
+Toggle the workflow to **Active**. It runs daily at 23:15 (after the ~22:35 daily
+sync). Change the time in the Schedule node (`15 23 * * *`).
 
-## Rozszerzanie o kolejne źródła
+## Extending with more sources
 
-Dołóż drugi węzeł **HTTP Request** (np.
+Add a second **HTTP Request** node (e.g.
 `.../rest/v1/analysis_reports?select=week_end&order=week_end.desc&limit=1`),
-podłącz go do węzła Code i dopisz w nim regułę:
+wire it into the Code node, and add a rule there:
 
 ```js
-// przykład: raporty ads starsze niż 9 dni
-const ads = $('Supabase: raporty ads').all().map((i) => i.json);
+// example: ads reports older than 9 days
+const ads = $('Supabase: ads reports').all().map((i) => i.json);
 const adLatest = ads.length ? ads[0].week_end : null;
 if (!adLatest || ageDays(adLatest) > 9) {
-  problems.push('Raporty ads nieświeże (ostatni: ' + adLatest + ').');
+  problems.push('Ads reports are stale (latest: ' + adLatest + ').');
 }
 ```
 
-Ten sam wzorzec działa dla dowolnej tabeli Supabase z kolumną daty.
+The same pattern works for any Supabase table with a date column.
 
-## Bezpieczeństwo
+## Security
 
-- Token bota i Supabase key żyją **wyłącznie w credentialach n8n** — w tym pliku
-  workflow są tylko placeholdery. Nigdy nie commituj realnych kluczy.
-- To repo ma skan bezpieczeństwa (`server/security_review.py`), który wyłapałby
-  sekret wklejony do plików — trzymaj klucze w n8n, nie w JSON-ie.
+- The bot token and Supabase key live **only in n8n credentials** — this workflow
+  file contains only placeholders. Never commit real keys.
+- This repo has a security scan (`server/security_review.py`) that would catch a
+  secret pasted into files — keep keys in n8n, not in the JSON.
