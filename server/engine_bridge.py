@@ -4,6 +4,7 @@ All heavy lifting stays in the skill's scripts; this module only shapes
 payloads for the API. Import AFTER config.setup() so FINANCE_PROJECT_DIR
 is resolved before finance_storage computes the data dir.
 """
+import re
 import uuid
 from datetime import date, datetime, timedelta
 
@@ -24,6 +25,27 @@ def _exec(query, params=()):
         cur = conn.execute(query, params)
         conn.commit()
         return cur.lastrowid
+
+
+# ---------- safe SQL building with column names ----------
+# Values always go through parameters (?, tuple). Table/column names cannot be
+# parametrised, so we validate them to a bare identifier — this blocks injection
+# even if a column name ever comes from untrusted input in the future.
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _ident(name):
+    if not _IDENT_RE.match(name or ""):
+        raise ValueError("unsafe SQL identifier: %r" % (name,))
+    return name
+
+
+def update_sql(table, columns, where="id"):
+    """Build a parametrised UPDATE for the given columns (identifiers validated).
+    Returns the SQL string; bind values yourself in column order + the where value.
+    The string is built OUTSIDE the execute() call on purpose."""
+    sets = ", ".join(_ident(c) + " = ?" for c in columns)
+    return "update " + _ident(table) + " set " + sets + " where " + _ident(where) + " = ?"
 
 
 # ---------- dashboard ----------
@@ -138,15 +160,15 @@ def add_transaction(data):
 
 
 def update_transaction(tx_id, data):
-    fields, params = [], []
+    cols, params = [], []
     for k in ("date", "amount", "type", "currency", "category", "description", "payee"):
         if k in data:
-            fields.append(f"{k} = ?")
+            cols.append(k)
             params.append(data[k])
-    if not fields:
+    if not cols:
         return
     params.append(tx_id)
-    _exec(f"update transactions set {', '.join(fields)} where id = ?", tuple(params))
+    _exec(update_sql("transactions", cols), tuple(params))
 
 
 def delete_transaction(tx_id):
