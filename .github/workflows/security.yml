@@ -1,0 +1,41 @@
+name: security-review
+
+# Pentest-grade secret/leak scan + personal-data audit + static code analysis
+# + functional smoke tests. Runs on every push and PR (guards contributors)
+# and once a week on a schedule.
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # FULL history — the leak scan inspects EVERY commit, not just HEAD.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Seed a throwaway DB (for functional smoke tests)
+        env:
+          FINANCE_PROJECT_DIR: ${{ github.workspace }}
+        run: python seed.py --force
+
+      - name: Run security + functional suite (fails the build on any blocker)
+        env:
+          FINANCE_PROJECT_DIR: ${{ github.workspace }}
+        working-directory: server
+        run: python -m security_review --ci
