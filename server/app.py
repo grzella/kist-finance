@@ -436,6 +436,19 @@ def llm_ask():
     if mode == "both":
         ct = llm_cloud.chat(ask, system=system)
         out["cloud"] = {"ok": ct is not None, "text": ct, "label": llm_cloud.status().get("model", "Claude")}
+        # Synthesis: reconcile the two answers into ONE verdict (best of both).
+        if lt and ct:
+            synth = ("Two analysts answered the same personal-finance question. "
+                     "Reconcile them into ONE recommendation: where they agree, where "
+                     "they differ, then a single bottom-line sentence.\n\n"
+                     f"QUESTION:\n{prompt}\n\n[LOCAL]:\n{lt}\n\n[CLAUDE]:\n{ct}")
+            sy = llm_cloud.chat(synth, system=system)
+            by = "cloud"
+            if not sy:
+                sy = llm_local.chat(synth, system=system)
+                by = "local"
+            if sy:
+                out["synthesis"] = {"ok": True, "text": sy, "by": by}
     return jsonify(out)
 
 

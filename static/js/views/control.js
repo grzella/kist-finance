@@ -177,7 +177,10 @@ async function renderControl(el) {
         const card = (label, res, col) => res ? `<div class="card" style="border-left:3px solid ${col};margin:0">
           <div style="font-weight:600;font-size:.85em">${label}</div>
           <div style="white-space:pre-wrap;font-size:.9em">${res.ok ? res.text : '<span class="neg">offline / no answer</span>'}</div></div>` : "";
-        out.innerHTML = `<div class="grid ${r.cloud ? "cols-2" : ""}">
+        const syn = r.synthesis && r.synthesis.ok ? `<div class="card" style="border-left:4px solid #ffd166;margin:0 0 10px">
+          <div style="font-weight:600;font-size:.85em">🧭 Verdict — synthesis of both models <span class="muted">(${r.synthesis.by === "cloud" ? "Claude" : "local"})</span></div>
+          <div style="white-space:pre-wrap;font-size:.9em">${r.synthesis.text}</div></div>` : "";
+        out.innerHTML = syn + `<div class="grid ${r.cloud ? "cols-2" : ""}">
           ${card("🔒 " + (r.local.label || "local"), r.local, "#3ecf8e")}
           ${r.cloud ? card("☁️ " + (r.cloud.label || "Claude"), r.cloud, "#b78cff") : ""}</div>`;
       } catch (e) { out.innerHTML = `<div class="neg">Error: ${e.message}</div>`; }
