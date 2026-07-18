@@ -1,6 +1,6 @@
 async function renderDashboard(el) {
   const cfg = await appCfg();
-  const bizOn = !cfg.enabled_views || cfg.enabled_views.includes("firma");
+  const bizOn = !cfg.enabled_views || cfg.enabled_views.includes("business");
   const [sum, w, nw, rec, xtb, gs, biz, bizMkt] = await Promise.all([
     api.get("/api/dashboard/summary"),
     api.get("/api/wealth/summary"),
@@ -8,8 +8,8 @@ async function renderDashboard(el) {
     api.get("/api/recommendation"),
     api.get("/api/recommendation/xtb"),
     api.get("/api/goal-scenarios"),
-    api.get("/api/biz").catch(() => null),
-    api.get("/api/biz/marketing").catch(() => ({ error: 1 })),
+    api.get("/api/business").catch(() => null),
+    api.get("/api/business/marketing").catch(() => ({ error: 1 })),
   ]);
 
   el.innerHTML = `

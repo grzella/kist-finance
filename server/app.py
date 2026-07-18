@@ -532,24 +532,24 @@ def actions_delete(action_id):
     return jsonify({"ok": True})
 
 
-# ---------- firma ----------
+# ---------- side business ----------
 
-@app.get("/api/biz")
+@app.get("/api/business")
 def biz_summary():
     return jsonify(planner.biz_summary())
 
 
-@app.get("/api/biz/marketing")
+@app.get("/api/business/marketing")
 def biz_marketing():
-    return jsonify(planner.firma_marketing())
+    return jsonify(planner.business_marketing())
 
 
-@app.post("/api/biz")
+@app.post("/api/business")
 def biz_add():
     return jsonify({"id": planner.add_biz_entry(request.get_json(force=True))}), 201
 
 
-@app.delete("/api/biz/<entry_id>")
+@app.delete("/api/business/<entry_id>")
 def biz_delete(entry_id):
     planner.delete_biz_entry(entry_id)
     return jsonify({"ok": True})

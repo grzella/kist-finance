@@ -14,12 +14,12 @@ async function renderRsu(el) {
     if (nextVestPln) {
       parts.push(`In the ${r.next_vest_month} window ${fmt.num(r.shares_next_vest, 0)} shares vest ≈ ${fmt.pln(nextVestPln)} at the current price.`);
     }
-    const lodz = debtsData.debts.find((d) => d.name.toLowerCase().includes("lodz") && d.balance > 0);
-    if (lodz && nextVestPln) {
+    const loan = debtsData.debts.find((d) => ["mortgage","loan","home","house"].some((k) => d.name.toLowerCase().includes(k)) && d.balance > 0);
+    if (loan && nextVestPln) {
       parts.push(
-        `sell the vest right away and pay down the loan — balance ${fmt.pln(lodz.balance)}, ` +
-        `i.e. ~${Math.ceil(lodz.balance / nextVestPln)} vests to close the loan. Every vest into the loan is a guaranteed ` +
-        `${fmt.pct(lodz.effective_rate, 2)} + frees up ${fmt.pln(lodz.monthly_cost_total)}/mo and boosts borrowing ` +
+        `sell the vest right away and pay down the loan — balance ${fmt.pln(loan.balance)}, ` +
+        `i.e. ~${Math.ceil(loan.balance / nextVestPln)} vests to close the loan. Every vest into the loan is a guaranteed ` +
+        `${fmt.pct(loan.effective_rate, 2)} + frees up ${fmt.pln(loan.monthly_cost_total)}/mo and boosts borrowing ` +
         `capacity for the goal. After the loan is paid off, vests go toward the down payment (the mortgage rate you fix via an annex, not capital).`);
     } else if (topDebt && topDebt.effective_rate > 6.5 && nextVestPln) {
       parts.push(

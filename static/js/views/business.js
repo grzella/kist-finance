@@ -1,7 +1,7 @@
-async function renderFirma(el) {
+async function renderBusiness(el) {
   const [b, mkt] = await Promise.all([
-    api.get("/api/biz"),
-    api.get("/api/biz/marketing").catch(() => ({ error: "no data" }))]);
+    api.get("/api/business"),
+    api.get("/api/business/marketing").catch(() => ({ error: "no data" }))]);
   const cur = b.current;
   const KIND_LABELS = { koszt: "cost", "przychód": "revenue" };
   el.innerHTML = `
@@ -16,7 +16,7 @@ async function renderFirma(el) {
         <div class="value">${fmt.pln(b.total_revenue)}</div></div>
       <div class="card kpi"><div class="label">Cumulative result</div>
         <div class="value ${b.total_result >= 0 ? "pos" : "neg"}">${fmt.pln(b.total_result)}</div>
-        <div class="sub">base ~1,100 PLN/mo (accounting+social security+Adobe) · goal: 1 job/mo covers the base · launch+ads: August</div></div>
+        <div class="sub">tracks fixed monthly base (accounting, social security, tools) vs revenue</div></div>
     </div>
     <div class="card mt">
       <h3>Add an entry</h3>
@@ -25,7 +25,7 @@ async function renderFirma(el) {
         <select id="bKind"><option value="koszt">cost</option><option value="przychód">revenue</option></select>
         <select id="bCat">${b.categories.map((c) => `<option>${c}</option>`).join("")}</select>
         <input data-num id="bAmount" placeholder="net amount PLN">
-        <input id="bDesc" placeholder="description (e.g. Meta Ads July, 6S battery…)" style="flex:1">
+        <input id="bDesc" placeholder="description (e.g. Ad spend July, materials…)" style="flex:1">
         <button class="primary" id="bAdd">Add</button>
       </div>
       <div class="muted mt">Net amounts (sole proprietorship with VAT — VAT is deducted separately in accounting).
@@ -100,14 +100,14 @@ async function renderFirma(el) {
   tbl.querySelectorAll("[data-bdel]").forEach((btn) =>
     btn.addEventListener("click", async () => {
       if (!confirm("Delete this entry?")) return;
-      await api.del("/api/biz/" + btn.dataset.bdel);
+      await api.del("/api/business/" + btn.dataset.bdel);
       route();
     }));
 
   document.getElementById("bAdd").addEventListener("click", async () => {
     const amount = parseNum(document.getElementById("bAmount"));
     if (!amount || isNaN(amount)) { alert("Enter an amount"); return; }
-    await api.post("/api/biz", {
+    await api.post("/api/business", {
       date: document.getElementById("bDate").value,
       kind: document.getElementById("bKind").value,
       category: document.getElementById("bCat").value,

@@ -5,7 +5,7 @@ async function renderForecasts(el) {
     api.get("/api/settings"), api.get("/api/dashboard/summary"),
     api.get("/api/fire-projection").catch(() => null)]);
 
-  const lodz = debtsData.debts.find((d) => d.balance > 0);
+  const loan = debtsData.debts.find((d) => d.balance > 0);
   const tarch = debtsData.debts.filter((d) => d.balance > 0)[1];
   const vestPln = rsu.next_vest_value_pln || 0;
 
@@ -20,10 +20,10 @@ async function renderForecasts(el) {
   }
 
   const [bonusLodz, vestLodz, bothLodz] = await Promise.all([
-    overpay(lodz, 80000), overpay(lodz, vestPln), overpay(lodz, 80000 + vestPln)]);
+    overpay(loan, 80000), overpay(loan, vestPln), overpay(loan, 80000 + vestPln)]);
 
   const aneksSavYr = tarch ? tarch.balance * (tarch.effective_rate - 5.9) / 100 : 0;
-  const lodzFreed = lodz ? lodz.monthly_cost_total : 0;
+  const loanFreed = loan ? loan.monthly_cost_total : 0;
 
   const scenarioCard = (title, rows, note) => `
     <div class="card">
@@ -49,7 +49,7 @@ async function renderForecasts(el) {
       the RSU stock price, savings pace. Aligned with the strategy: loan payoff + refinancing in parallel.</div>
     <div class="grid cols-2">
       ${scenarioCard("September: ~80,000 PLN bonus → loan overpayment", op(bonusLodz),
-        lodz ? `Loan balance: ${fmt.pln(lodz.balance)} · installment ${fmt.pln(lodz.minimum_payment)}` : "")}
+        loan ? `Loan balance: ${fmt.pln(loan.balance)} · installment ${fmt.pln(loan.minimum_payment)}` : "")}
       ${scenarioCard(`August: vest of ${rsu.shares_next_vest} shares (≈${fmt.pln(vestPln)}) → loan overpayment`, op(vestLodz),
         "Sell at vest — capital gains tax only on the gain after vest (≈0 when selling right away)")}
       ${scenarioCard("Vest + bonus combined (≈" + fmt.pln(80000 + vestPln) + ") → loan", op(bothLodz),
@@ -60,9 +60,9 @@ async function renderForecasts(el) {
         ["Capital involved", "0 PLN"],
       ], "ING playbook: real competing offers → certificate → customer retention department")}
       ${scenarioCard("After the loan is paid off — what gets freed", [
-        ["Installment + insurance", fmt.pln(lodzFreed) + "/mo", "pos"],
+        ["Installment + insurance", fmt.pln(loanFreed) + "/mo", "pos"],
         ["Rent (stays as pure income)", fmt.pln(3450) + "/mo", "pos"],
-        ["Property unencumbered", "yes — profile ready for the Italian mortgage"],
+        ["Property unencumbered", "yes — profile ready for a property mortgage"],
       ], "From this moment all surpluses build the goal contribution")}
     </div>
 
@@ -88,15 +88,15 @@ async function renderForecasts(el) {
     </div>
 
     <div class="grid cols-2 mt">
-      ${fire.italy ? `<div class="card" style="border-left:4px solid #e0a458">
+      ${fire.property ? `<div class="card" style="border-left:4px solid #e0a458">
         <h3 style="margin-top:0">Goal contribution (house)</h3>
         <table>
-          <tr><td>Down-payment target (50%)</td><td><b>${fmt.pln(fire.italy.target)}</b></td></tr>
-          <tr><td>Saved so far</td><td>${fmt.pln(fire.italy.start)}</td></tr>
-          <tr><td>Down payment ready (starts after loan payoff)</td><td class="pos"><b>${fire.italy.crossover || "—"}</b></td></tr>
+          <tr><td>Down-payment target (50%)</td><td><b>${fmt.pln(fire.property.target)}</b></td></tr>
+          <tr><td>Saved so far</td><td>${fmt.pln(fire.property.start)}</td></tr>
+          <tr><td>Down payment ready (starts after loan payoff)</td><td class="pos"><b>${fire.property.crossover || "—"}</b></td></tr>
         </table>
-        <canvas id="italyChart" height="70" class="mt"></canvas>
-        <div class="muted mt" style="font-size:.82em">${fire.italy.note}</div>
+        <canvas id="propertyChart" height="70" class="mt"></canvas>
+        <div class="muted mt" style="font-size:.82em">${fire.property.note}</div>
       </div>` : ""}
 
       ${fire.tracking ? `<div class="card" style="border-left:4px solid #4c8dff">
@@ -161,16 +161,16 @@ async function renderForecasts(el) {
       },
     }));
   }
-  if (fire && fire.italy && document.getElementById("italyChart")) {
-    const yrs = fire.italy.series.map((_, i) => `${new Date().getFullYear() + i}`);
-    trackChart(new Chart(document.getElementById("italyChart"), {
+  if (fire && fire.property && document.getElementById("propertyChart")) {
+    const yrs = fire.property.series.map((_, i) => `${new Date().getFullYear() + i}`);
+    trackChart(new Chart(document.getElementById("propertyChart"), {
       type: "line",
       data: {
         labels: yrs,
         datasets: [
-          { label: "Saved so far", data: fire.italy.series, borderColor: CHART_COLORS[4],
+          { label: "Saved so far", data: fire.property.series, borderColor: CHART_COLORS[4],
             backgroundColor: "transparent", borderWidth: 3, pointRadius: 2, tension: 0.2 },
-          { label: "down-payment target", data: yrs.map(() => fire.italy.target),
+          { label: "down-payment target", data: yrs.map(() => fire.property.target),
             borderColor: "#888", borderDash: [6, 4], pointRadius: 0, borderWidth: 1 },
         ],
       },

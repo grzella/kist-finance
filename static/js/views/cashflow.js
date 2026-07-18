@@ -14,8 +14,8 @@ async function renderCashflow(el) {
 
     <div class="grid cols-4">
       <div class="card kpi"><div class="label">Loan paid off</div>
-        <div class="value pos">${d.lodz_paid_month || "—"}</div>
-        <div class="sub">start ${fmt.pln(d.lodz_start)} · after payoff surplus +${fmt.pln(d.lodz_freed_monthly)}/mo</div></div>
+        <div class="value pos">${d.loan_paid_month || "—"}</div>
+        <div class="sub">start ${fmt.pln(d.loan_start)} · after payoff surplus +${fmt.pln(d.loan_freed_monthly)}/mo</div></div>
       <div class="card kpi"><div class="label">Liquid balance in 12 mo</div>
         <div class="value">${fmt.pln(at12.liquid)}</div>
         <div class="sub">${at12.month}</div></div>
@@ -53,9 +53,9 @@ async function renderCashflow(el) {
         <tbody>${rows.map((r) => `<tr class="${r.below_buffer ? "cf-warn" : ""}">
           <td>${r.month} ${r.is_vest ? '<span class="badge">vest</span>' : ""}${r.is_bonus ? '<span class="badge">bonus</span>' : ""}</td>
           <td style="text-align:right" title="${r.inflow_parts}">${fmt.pln(r.inflow)}</td>
-          <td style="text-align:right" class="${r.overpay_lodz > 0 ? "pos" : "muted"}">${r.overpay_lodz > 0 ? fmt.pln(r.overpay_lodz) : "—"}</td>
+          <td style="text-align:right" class="${r.overpay_loan > 0 ? "pos" : "muted"}">${r.overpay_loan > 0 ? fmt.pln(r.overpay_loan) : "—"}</td>
           <td style="text-align:right" class="${r.below_buffer ? "neg" : ""}"><b>${fmt.pln(r.liquid)}</b></td>
-          <td style="text-align:right" class="${r.lodz_balance === 0 ? "pos" : "muted"}">${r.lodz_balance === 0 ? "paid off 🎉" : fmt.pln(r.lodz_balance)}</td>
+          <td style="text-align:right" class="${r.loan_balance === 0 ? "pos" : "muted"}">${r.loan_balance === 0 ? "paid off 🎉" : fmt.pln(r.loan_balance)}</td>
         </tr>`).join("")}</tbody>
       </table></div>
     </div>`;
@@ -67,7 +67,7 @@ async function renderCashflow(el) {
       datasets: [
         { label: "Liquid balance", data: rows.map((r) => r.liquid),
           borderColor: CHART_COLORS[0], backgroundColor: "transparent", borderWidth: 3, tension: 0.2, pointRadius: 2 },
-        { label: "Loan balance", data: rows.map((r) => r.lodz_balance),
+        { label: "Loan balance", data: rows.map((r) => r.loan_balance),
           borderColor: CHART_COLORS[3], backgroundColor: "transparent", tension: 0.2, pointRadius: 0 },
         { label: "Buffer", data: rows.map(() => d.buffer),
           borderColor: "#888", borderDash: [4, 4], backgroundColor: "transparent", pointRadius: 0, borderWidth: 1 },

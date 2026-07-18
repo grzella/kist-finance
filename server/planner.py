@@ -149,13 +149,13 @@ MODULES = [
      "views": ["rsu"], "default": False},
     {"id": "business", "label": "Side business",     "icon": "🚁",
      "desc": "Revenue/costs of a side business or self-employment.",
-     "views": ["firma"], "default": False},
+     "views": ["business"], "default": False},
     {"id": "career",   "label": "Career tracker",    "icon": "💼",
      "desc": "Inbound job offers, market barometer, commit-activity tracker.",
      "views": ["offers", "career", "commits"], "default": False},
     {"id": "property", "label": "Property analysis", "icon": "🏡",
      "desc": "Deep-dive analysis for a property-purchase goal (location, financing, rental math).",
-     "views": ["italy"], "default": False},
+     "views": ["property"], "default": False},
 ]
 
 CORE_VIEWS = ["dashboard", "cashflow", "recs", "wealth", "allocation", "goals",
@@ -844,8 +844,8 @@ def recommendation():
     if not goals:
         recs.append({
             "area": "goals", "priority": 5,
-            "text": "You have no active goal — add one in the Goals tab (e.g. an apartment "
-                    "in Italy), and job offers and the savings pace will start counting toward it."})
+            "text": "You have no active goal — add one in the Goals tab (e.g. a home "
+                    "down payment), and job offers and the savings pace will start counting toward it."})
     if cfg.get("monthly_savings") in (None, 0):
         recs.append({
             "area": "goals", "priority": 5,
@@ -1073,7 +1073,7 @@ def ensure_monthly_snapshot():
     _audit("snapshot", None, "add", {"net_worth": net})
 
 
-# ---------- firma (działalności business ledger) ----------
+# ---------- side business (revenue/cost ledger) ----------
 
 BIZ_KINDS = ("koszt", "przychód")
 BIZ_CATEGORIES = ("sprzęt", "marketing", "software", "ubezpieczenie",
@@ -1202,7 +1202,7 @@ def delete_action(action_id):
     eb._exec("delete from actions where id = ?", (action_id,))
 
 
-# ---------- firma: performance marketing (Supabase — marketing agents) ----------
+# ---------- business: performance marketing (Supabase — marketing agents) ----------
 
 def _parse_pyjson(raw):
     """analysis_reports store python-dict strings; try json then literal_eval."""
@@ -1220,7 +1220,7 @@ def _parse_pyjson(raw):
         return None
 
 
-def firma_marketing():
+def business_marketing():
     """Weekly ads intelligence from the marketing agents (ads-collector/-analyst)."""
     import market
     try:
@@ -1269,7 +1269,7 @@ CF_DEFAULTS = {  # generyczne wartości startowe — realne trzymane w bazie (gi
     "cf_safety_buffer": 30000,     # bufor bezpieczeństwa (dół salda płynnego)
     "cf_liquid_start": 0,          # startowe środki płynne
     "cf_bonus_month": 9,           # miesiąc bonusu
-    "cf_sweep_target": "lodz",     # dokąd trafia nadwyżka: lodz | italy | none
+    "cf_sweep_target": "loan",     # where surplus goes: loan | property | none
 }
 
 
@@ -1290,11 +1290,11 @@ def cashflow(months=15):
     bonus = _num(get_setting("annual_bonus_net")) or 80000
 
     debts = list_debts()["debts"]
-    lodz = next((d for d in debts if "lodz" in d["name"].lower()
-                 ), None)
-    lodz_bal = lodz["balance"] if lodz else 0
-    lodz_principal = (lodz.get("principal_month") if lodz else 0) or 0
-    lodz_freed = lodz.get("monthly_cost_total", 0) if lodz else 0
+    loan = next((d for d in debts if any(k in d["name"].lower()
+                 for k in ("mortgage", "loan", "home", "house"))), None)
+    loan_bal = loan["balance"] if loan else 0
+    loan_principal = (loan.get("principal_month") if loan else 0) or 0
+    loan_freed = loan.get("monthly_cost_total", 0) if loan else 0
 
     rsu = {}
     try:
@@ -1308,7 +1308,7 @@ def cashflow(months=15):
     today = date.today()
     y, m = today.year, today.month
     rows = []
-    lodz_paid_month = None
+    loan_paid_month = None
     base_surplus = surplus
     for i in range(months):
         mm = ((m - 1 + i) % 12) + 1
@@ -1325,20 +1325,20 @@ def cashflow(months=15):
         liquid += inflow
         # sweep excess above buffer into the debt until paid
         overpay = 0
-        if lodz_bal > 0:
-            overpay = max(0, min(liquid - buffer, lodz_bal))
+        if loan_bal > 0:
+            overpay = max(0, min(liquid - buffer, loan_bal))
             liquid -= overpay
-            lodz_bal = max(0, lodz_bal - lodz_principal - overpay)
-            if lodz_bal <= 0 and lodz_paid_month is None:
-                lodz_paid_month = label
-                base_surplus = surplus + lodz_freed  # freed rata boosts surplus
+            loan_bal = max(0, loan_bal - loan_principal - overpay)
+            if loan_bal <= 0 and loan_paid_month is None:
+                loan_paid_month = label
+                base_surplus = surplus + loan_freed  # freed rata boosts surplus
         rows.append({
             "month": label,
             "inflow": round(inflow, 0),
             "inflow_parts": " · ".join(parts),
-            "overpay_lodz": round(overpay, 0),
+            "overpay_loan": round(overpay, 0),
             "liquid": round(liquid, 0),
-            "lodz_balance": round(lodz_bal, 0),
+            "loan_balance": round(loan_bal, 0),
             "below_buffer": liquid < buffer - 1,
             "is_vest": mm in vest_months and bool(vest_pln),
             "is_bonus": mm == bonus_month and bool(bonus),
@@ -1346,9 +1346,9 @@ def cashflow(months=15):
     return {
         "rows": rows,
         "buffer": buffer,
-        "lodz_start": lodz["balance"] if lodz else 0,
-        "lodz_paid_month": lodz_paid_month,
-        "lodz_freed_monthly": lodz_freed,
+        "loan_start": loan["balance"] if loan else 0,
+        "loan_paid_month": loan_paid_month,
+        "loan_freed_monthly": loan_freed,
         "assumptions": {
             "cf_monthly_surplus": surplus,
             "cf_safety_buffer": buffer,
@@ -1877,7 +1877,7 @@ def data_inventory():
     ins_c, _ = cnt_last("insurance_policies")
     brief_asof, brief_has = setting_asof("analysis_market_brief")
     vest_asof, vest_has = setting_asof("rsu_vest_analysis", "vest_month")
-    prop_asof, prop_has = setting_asof("analysis_italy_location")
+    prop_asof, prop_has = setting_asof("analysis_property")
     try:
         import market as _mkt
         sync = _mkt.last_sync()
@@ -1927,7 +1927,7 @@ def data_inventory():
                  "monthly", bar_last, bar_c, note=f"{bar_c} role-demand points"),
             item("Vest analysis (RSU)", "claude", "app_settings: rsu_vest_analysis",
                  "per vest (~quarterly)", vest_asof, note="earnings, guidance, targets" if vest_has else "none"),
-            item("Goal analysis (e.g. property)", "claude", "app_settings: analysis_italy_location",
+            item("Goal analysis (e.g. property)", "claude", "app_settings: analysis_property",
                  "on demand / rarely", prop_asof, note="deep analysis" if prop_has else "none"),
          ]},
         {"key": "manual_reg", "title": "\U0001F7E1 Manual \u2014 regular (what we want to reduce)",
@@ -2095,9 +2095,9 @@ def fire_projection():
     # po spłacie kredytu uwolniona rata dorzuca do oszczędności (uproszczenie: +3200 od startu+~1 rok)
     freed = 0
     try:
-        lodz = next((d for d in list_debts()["debts"] if "lodz" in d["name"].lower()
-                     ), None)
-        freed = lodz.get("monthly_cost_total", 0) if lodz else 0
+        loan = next((d for d in list_debts()["debts"] if any(k in d["name"].lower()
+                     for k in ("mortgage", "loan", "home", "house"))), None)
+        freed = loan.get("monthly_cost_total", 0) if loan else 0
     except Exception:
         freed = 0
 
@@ -2146,30 +2146,30 @@ def fire_projection():
             real_cross = label_at(m)
         bal = bal * (1 + real_r) + contrib + (freed if m >= 12 else 0)
 
-    # --- prognoza cel/Hiszpania (wkład 50%) ---
+    # --- property-goal projection (50% down payment) ---
     ig = next((x for x in goals if any(k in x["name"].lower()
-              for k in ("wło", "italy", "garda", "hiszp", "andaluz"))), None)
-    italy_target = (ig and ig.get("target_amount")) or 200000
-    italy_start = (ig and ig.get("current_amount")) or 0
+              for k in ("propert", "house", "home", "apartment", "flat", "down payment", "mortgage"))), None)
+    property_target = (ig and ig.get("target_amount")) or 200000
+    property_start = (ig and ig.get("current_amount")) or 0
     delay = 5
     try:
         cf = cashflow()
-        lp = cf.get("lodz_paid_month")
+        lp = cf.get("loan_paid_month")
         if lp:
             delay = max(0, (int(lp[:4]) - today.year) * 12 + (int(lp[5:7]) - today.month))
     except Exception:
         pass
-    italy_r = 0.04 / 12  # blisko celu → ostrożniej/płynniej
-    italy_contrib = contrib + freed
-    bal = italy_start
-    italy_series = []
-    italy_cross = None
+    property_r = 0.04 / 12  # blisko celu → ostrożniej/płynniej
+    property_contrib = contrib + freed
+    bal = property_start
+    property_series = []
+    property_cross = None
     for m in range(horizon + 1):
         if m % 12 == 0:
-            italy_series.append(round(bal))
-        if italy_cross is None and bal >= italy_target and m >= delay:
-            italy_cross = label_at(m)
-        bal = bal * (1 + italy_r) + (italy_contrib if m >= delay else 0)
+            property_series.append(round(bal))
+        if property_cross is None and bal >= property_target and m >= delay:
+            property_cross = label_at(m)
+        bal = bal * (1 + property_r) + (property_contrib if m >= delay else 0)
 
     # --- snapshot + tracking (plan vs realnie) ---
     try:
@@ -2184,12 +2184,12 @@ def fire_projection():
 
     return {
         "start": round(start), "target": round(target),
-        "monthly_contribution": round(contrib), "freed_after_lodz": round(freed),
+        "monthly_contribution": round(contrib), "freed_after_loan": round(freed),
         "labels": labels, "series": series, "crossover": crossover,
         "milestones": {str(k): v for k, v in milestones.items()},
         "real_crossover": real_cross,
-        "italy": {"target": round(italy_target), "start": round(italy_start),
-                  "crossover": italy_cross, "series": italy_series, "delay_months": delay,
+        "property": {"target": round(property_target), "start": round(property_start),
+                  "crossover": property_cross, "series": property_series, "delay_months": delay,
                   "note": "Down-payment accumulation starts after the loan is paid off (~" + (label_at(delay)) + "). Cautious 4% return (funds close to the goal). NOTE: the same surpluses as work-optional — buying the house delays reaching 3M."},
         "tracking": tracking,
         "assumptions": {"base_return": "6.5% nominal", "inflation": "3%",

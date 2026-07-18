@@ -15,7 +15,7 @@ async function renderGoals(el) {
     <div class="card mt">
       <h3>New goal</h3>
       <div class="row">
-        <input id="gName" placeholder="name (e.g. apartment in Italy)" style="flex:1">
+        <input id="gName" placeholder="name (e.g. house down payment)" style="flex:1">
         <input data-num id="gTarget" placeholder="target amount">
         <input data-num id="gCurrent" placeholder="already saved" value="0">
         <input data-num id="gMonthly" placeholder="monthly contribution (optional)">
@@ -48,8 +48,8 @@ async function renderGoals(el) {
           <div style="background:${CHART_COLORS[1]};width:${pct}%;height:10px;border-radius:6px"></div>
         </div>
         <div class="muted">${eta}</div>
-        ${/wło|italy|garda/i.test(g.name) ? `<div class="mt">
-          <a href="#italy" style="text-decoration:none;display:inline-block;padding:6px 12px;
+        ${/propert|house|home|apartment|flat|down.?payment|mortgage/i.test(g.name) ? `<div class="mt">
+          <a href="#property" style="text-decoration:none;display:inline-block;padding:6px 12px;
             border:1px solid ${CHART_COLORS[1]};border-radius:6px;color:${CHART_COLORS[1]};font-size:.9em">
             🇮🇹 Location analysis — where to buy →</a></div>` : ""}
         <div class="row mt">
