@@ -159,7 +159,27 @@ def market_analytics(ticker):
 
 @app.post("/api/market/refresh")
 def market_refresh():
-    return jsonify(market.refresh_cache())
+    out = market.refresh_cache()
+    try:  # samouczenie: po świeżych danych rozlicz i zapisz prognozy
+        out["forecast_cycle"] = market.record_and_score_forecasts()
+    except Exception as e:
+        out["forecast_cycle"] = {"error": str(e)[:80]}
+    return jsonify(out)
+
+
+@app.get("/api/forecast/bands/<path:ticker>")
+def forecast_bands(ticker):
+    return jsonify(market.ticker_bands(ticker))
+
+
+@app.get("/api/forecast/selfscore")
+def forecast_selfscore():
+    return jsonify(market.forecast_selfscore())
+
+
+@app.post("/api/forecast/cycle")
+def forecast_cycle():
+    return jsonify(market.record_and_score_forecasts())
 
 
 @app.get("/api/fx-analysis")
@@ -329,6 +349,11 @@ def health():
     return jsonify(planner.health())
 
 
+@app.get("/api/data-inventory")
+def data_inventory():
+    return jsonify(planner.data_inventory())
+
+
 @app.get("/api/git")
 def git_status():
     return jsonify(planner.git_status(do_fetch=request.args.get("fetch", "1") != "0"))
@@ -337,6 +362,49 @@ def git_status():
 @app.get("/api/security-scan")
 def security_scan():
     return jsonify(planner.security_scan())
+
+
+@app.get("/api/app-config")
+def app_config_get():
+    cfg = planner.get_app_config()
+    rows = eb._rows("select count(*) c from wealth_items")
+    cfg["has_data"] = bool(rows and rows[0]["c"] > 0)
+    return jsonify(cfg)
+
+
+@app.post("/api/app-config")
+def app_config_save():
+    return jsonify(planner.save_app_config(request.get_json(force=True)))
+
+
+@app.post("/api/sample-data")
+def sample_data():
+    """Load the demo persona into a fresh DB (wizard 'just show me around')."""
+    import subprocess
+    import sys as _sys
+    seed = Path(__file__).resolve().parent.parent / "seed.py"
+    r = subprocess.run([_sys.executable, str(seed)], capture_output=True, text=True, timeout=60)
+    ok = r.returncode == 0
+    return jsonify({"ok": ok, "output": (r.stdout + r.stderr)[-400:]}), (200 if ok else 500)
+
+
+@app.get("/api/security-review")
+def security_review_last():
+    import json as _json
+    raw = planner.get_setting("last_security_review")
+    try:
+        return jsonify(_json.loads(raw) if raw else {})
+    except ValueError:
+        return jsonify({})
+
+
+@app.post("/api/security-review/run")
+def security_review_run():
+    import json as _json
+    import security_review as _sr
+    report = _sr.run(full=True)
+    planner.set_settings({"last_security_review": _json.dumps(report, ensure_ascii=False)})
+    return jsonify(report)
 
 
 @app.get("/api/market-barometer")

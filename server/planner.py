@@ -46,7 +46,7 @@ def ensure_tables():
     for col in ("interest_month_actual", "principal_month_actual",
                 "margin_after_fixed"):
         try:
-            eb._exec(f"alter table debt_meta add column {col} real")
+            eb._exec("alter table debt_meta add column " + eb._ident(col) + " real")
         except Exception:
             pass  # column exists
     try:
@@ -129,6 +129,70 @@ def _num(v):
         return None
 
 
+# ---------- module registry + first-run app config ----------
+# The app is modular: core is always on; optional modules map to frontend
+# views (nav tabs). The first-run wizard writes app_config; the frontend
+# hides nav/routes for disabled modules.
+
+MODULES = [
+    {"id": "debts",    "label": "Loans & mortgage",  "icon": "🏠",
+     "desc": "Track loans with principal/interest split and overpayment scenarios.",
+     "views": ["debts"], "default": True},
+    {"id": "taxes",    "label": "Taxes",             "icon": "🏛️",
+     "desc": "Consolidated tax sources and a payment calendar.",
+     "views": ["taxes"], "default": True},
+    {"id": "markets",  "label": "Markets & FX",      "icon": "📈",
+     "desc": "Watchlist, price analytics and a currency signal engine (needs Supabase for live data).",
+     "views": ["market", "currency"], "default": True},
+    {"id": "rsu",      "label": "Equity / RSU",      "icon": "💎",
+     "desc": "Vesting schedule, Monte-Carlo projection, sell-vs-hold guidance. Skip if you get no stock comp.",
+     "views": ["rsu"], "default": False},
+    {"id": "business", "label": "Side business",     "icon": "🚁",
+     "desc": "Revenue/costs of a side business or self-employment.",
+     "views": ["firma"], "default": False},
+    {"id": "career",   "label": "Career tracker",    "icon": "💼",
+     "desc": "Inbound job offers, market barometer, commit-activity tracker.",
+     "views": ["offers", "career", "commits"], "default": False},
+    {"id": "property", "label": "Property analysis", "icon": "🏡",
+     "desc": "Deep-dive analysis for a property-purchase goal (location, financing, rental math).",
+     "views": ["property"], "default": False},
+]
+
+CORE_VIEWS = ["dashboard", "cashflow", "recs", "wealth", "allocation", "goals",
+              "forecasts", "control", "reminders", "data", "wizard"]
+
+
+def get_app_config():
+    import json as _json
+    raw = get_setting("app_config")
+    try:
+        cfg = _json.loads(raw) if raw else {}
+    except ValueError:
+        cfg = {}
+    mods = cfg.get("modules") or {m["id"]: m["default"] for m in MODULES}
+    enabled_views = list(CORE_VIEWS)
+    for m in MODULES:
+        if mods.get(m["id"], m["default"]):
+            enabled_views += m["views"]
+    return {
+        "wizard_completed": bool(cfg.get("wizard_completed")),
+        "modules": mods,
+        "registry": MODULES,
+        "enabled_views": enabled_views,
+    }
+
+
+def save_app_config(data):
+    import json as _json
+    cur = get_app_config()
+    mods = {m["id"]: bool((data.get("modules") or {}).get(m["id"], cur["modules"].get(m["id"], m["default"])))
+            for m in MODULES}
+    cfg = {"wizard_completed": bool(data.get("wizard_completed", cur["wizard_completed"])),
+           "modules": mods}
+    set_settings({"app_config": _json.dumps(cfg)})
+    return get_app_config()
+
+
 # ---------- wealth ----------
 
 def wealth_summary():
@@ -191,15 +255,14 @@ def add_wealth_item(data):
 
 
 def update_wealth_item(item_id, data):
-    fields, params = [], []
+    cols, params = [], []
     for k in ("name", "kind", "owner", "currency", "notes", "archived",
               "linked_debt_id"):
         if k in data:
-            fields.append(f"{k} = ?"); params.append(data[k])
-    if fields:
+            cols.append(k); params.append(data[k])
+    if cols:
         params.append(item_id)
-        eb._exec(f"update wealth_items set {', '.join(fields)} where id = ?",
-                 tuple(params))
+        eb._exec(eb.update_sql("wealth_items", cols), tuple(params))
         _audit("wealth_item", item_id, "update", data)
 
 
@@ -256,7 +319,11 @@ def _project(goal, cfg):
     y, m = date.today().year, date.today().month + int(months + 0.999)
     y += (m - 1) // 12
     m = (m - 1) % 12 + 1
-    return {"months": round(months, 1), "eta": f"{y:04d}-{m:02d}", "pace": pace}
+    # ETA jako ZAKRES, nie jedna data (pojedyncza data ukrywa niepewność tempa)
+    import forecast_models as _fm
+    band = _fm.goal_eta_band(remaining, pace)
+    return {"months": round(months, 1), "eta": f"{y:04d}-{m:02d}", "pace": pace,
+            "eta_band": band}
 
 
 def add_goal(data):
@@ -275,14 +342,14 @@ def add_goal(data):
 
 
 def update_goal(goal_id, data):
-    fields, params = [], []
+    cols, params = [], []
     for k in ("name", "target_amount", "current_amount", "target_date", "currency", "status"):
         if k in data:
-            fields.append(f"{k} = ?"); params.append(data[k])
-    if fields:
-        fields.append("updated_at = ?"); params.append(_now())
+            cols.append(k); params.append(data[k])
+    if cols:
+        cols.append("updated_at"); params.append(_now())
         params.append(goal_id)
-        eb._exec(f"update goals set {', '.join(fields)} where id = ?", tuple(params))
+        eb._exec(eb.update_sql("goals", cols), tuple(params))
     if "monthly_contribution" in data:
         mc = data["monthly_contribution"]
         if mc is None or mc == "":
@@ -303,7 +370,7 @@ def delete_goal(goal_id):
 # ---------- job offers ----------
 
 def _current_total_monthly():
-    """Auto: obecny total mies. = base/12 + (bonus + RSU)/12. Dynamiczne (RSU śledzi kurs TEAM)."""
+    """Auto: obecny total mies. = base/12 + (bonus + RSU)/12. Dynamiczne (RSU śledzi kurs spółki)."""
     base = (_num(get_setting("tax_salary_gross_annual")) or 120000) / 12.0
     extras = _annual_extras().get("monthly_equivalent", 0) or 0
     return round(base + extras)
@@ -396,14 +463,14 @@ def add_offer(data):
 
 
 def update_offer(offer_id, data):
-    fields, params = [], []
+    cols, params = [], []
     for k in ("company", "role", "recruiter", "total_monthly", "base_monthly",
               "bonus_pct", "work_model", "status", "received_at", "notes", "tier"):
         if k in data:
-            fields.append(f"{k} = ?"); params.append(data[k])
-    if fields:
+            cols.append(k); params.append(data[k])
+    if cols:
         params.append(offer_id)
-        eb._exec(f"update job_offers set {', '.join(fields)} where id = ?", tuple(params))
+        eb._exec(eb.update_sql("job_offers", cols), tuple(params))
         _audit("offer", offer_id, "update", data)
 
 
@@ -604,14 +671,14 @@ def add_debt(data):
 
 
 def update_debt(debt_id, data):
-    fields, params = [], []
+    cols, params = [], []
     for k in ("name", "balance", "interest_rate", "minimum_payment", "type"):
         if k in data:
-            fields.append(f"{k} = ?"); params.append(data[k])
-    if fields:
-        fields.append("updated_at = ?"); params.append(_now())
+            cols.append(k); params.append(data[k])
+    if cols:
+        cols.append("updated_at"); params.append(_now())
         params.append(debt_id)
-        eb._exec(f"update debts set {', '.join(fields)} where id = ?", tuple(params))
+        eb._exec(eb.update_sql("debts", cols), tuple(params))
     _save_debt_meta(debt_id, data)
     _audit("debt", debt_id, "update", data)
     if "balance" in data:  # manual correction becomes a history point
@@ -1117,16 +1184,16 @@ def add_action(data):
 
 
 def update_action(action_id, data):
-    fields, params = [], []
+    cols, params = [], []
     for k in ("title", "area", "detail", "status", "expected_impact",
               "actual_impact_pln", "actual_note"):
         if k in data:
-            fields.append(f"{k} = ?"); params.append(data[k])
+            cols.append(k); params.append(data[k])
     if data.get("status") == "zrobione":
-        fields.append("done_at = ?"); params.append(_now())
-    if fields:
+        cols.append("done_at"); params.append(_now())
+    if cols:
         params.append(action_id)
-        eb._exec(f"update actions set {', '.join(fields)} where id = ?", tuple(params))
+        eb._exec(eb.update_sql("actions", cols), tuple(params))
         _audit("action", action_id, "update", data)
 
 
@@ -1371,7 +1438,7 @@ ALLOC_TARGETS = {  # docelowe % netto (edytowalne)
 }
 ALLOC_LABELS = {
     "nieruchomosci": "🏠 Nieruchomości (equity)", "etf": "🌍 Akcje/ETF (brokerage)",
-    "team": "💎 TEAM/RSU", "gotowka": "💵 Gotówka", "emerytalne": "🏦 Emerytalne (pension accounts)",
+    "team": "💎 Akcje RSU", "gotowka": "💵 Gotówka", "emerytalne": "🏦 Emerytalne (pension accounts)",
     "auto": "🚗 Auto (konsumpcyjne)",
 }
 
@@ -1426,7 +1493,7 @@ def allocation():
         hints.append(f"Akcje/ETF tylko {etf_row['pct']}% — to główny kierunek dokładania (Plan Core VWCE) do dywersyfikacji z nieruchomości i pracodawcy.")
     team_row = next(r for r in rows if r["key"] == "team")
     if team_row["pct"] > 4:
-        hints.append(f"TEAM/RSU {team_row['pct']}% — plus przyszłe vesty. Sprzedawaj przy veście, nie kumuluj (ryzyko: pensja+bonus+akcje w jednej firmie).")
+        hints.append(f"Akcje RSU {team_row['pct']}% — plus przyszłe vesty. Sprzedawaj przy veście, nie kumuluj (ryzyko: pensja+bonus+akcje w jednej firmie).")
     return {"rows": rows, "total": round(total, 0), "hints": hints}
 
 
@@ -1473,12 +1540,13 @@ def _auto_reminders():
                             "due_date": fu, "auto": True, "kind": "Kredyt"})
     except Exception:
         pass
-    # TEAM near/above target
+    # RSU stock near/above target
     try:
-        an = _mkt.analytics("AAPL")
+        _tk = (_mkt.get_rsu() or {}).get("ticker") or "AAPL"
+        an = _mkt.analytics(_tk)
         tgt = an.get("analyst_target"); last = an.get("last_close")
         if tgt and last and last >= tgt * 0.95:
-            out.append({"title": f"TEAM ${last} blisko/ponad target ${tgt} — rozważ sprzedaż posiadanych",
+            out.append({"title": f"{_tk} ${last} blisko/ponad target ${tgt} — rozważ sprzedaż posiadanych",
                         "due_date": today.isoformat(), "auto": True, "kind": "Rynek"})
     except Exception:
         pass
@@ -1494,6 +1562,9 @@ def _auto_reminders():
     # monthly market barometer update (Claude task)
     out.append({"title": "📈 Claude: zaktualizuj barometr rynku (oferty EM/Head, Europa remote)",
                 "due_date": f"{by:04d}-{bm:02d}-05", "auto": True, "kind": "Barometr"})
+    # monthly market brief refresh (Claude task) — zakładka Rynek
+    out.append({"title": "🧭 Claude: odśwież brief rynkowy (ruchy, kontekst makro, rekomendacje per pozycja)",
+                "due_date": f"{by:04d}-{bm:02d}-05", "auto": True, "kind": "Rynek"})
     # monthly data backup
     out.append({"title": "💾 Backup danych — uruchom apps/budget/backup.sh (baza szyfrowana → Google Drive)",
                 "due_date": f"{by:04d}-{bm:02d}-01", "auto": True, "kind": "Backup"})
@@ -1607,15 +1678,16 @@ def health():
     # 1. kursy rynkowe (n8n → Supabase, dziennie 22:35)
     try:
         sync = _mkt.last_sync()
-        hist = _mkt.prices("AAPL", days=5)
+        _htk = (_mkt.get_rsu() or {}).get("ticker") or "AAPL"
+        hist = _mkt.prices(_htk, days=5)
         lastd = hist[-1]["date"] if hist else None
         d = _days_since(lastd) if lastd else None
         st = "ok" if (d is not None and d <= 4) else "warn"
-        task("Kursy rynkowe (TEAM/FX)", "codziennie ~22:35",
+        task("Kursy rynkowe (akcje/FX)", "codziennie ~22:35",
              (sync or lastd or "—"), st,
              f"ostatnie notowanie {lastd} ({d} dni temu)" if lastd else "brak danych")
     except Exception as e:
-        task("Kursy rynkowe (TEAM/FX)", "codziennie ~22:35", "—", "error", str(e)[:80])
+        task("Kursy rynkowe (akcje/FX)", "codziennie ~22:35", "—", "error", str(e)[:80])
 
     # 2. śledzenie predykcji RSU (dziennie przy otwarciu RSU)
     try:
@@ -1627,6 +1699,17 @@ def health():
              f"{r[0]['c']} prognoz; ostatnia {d} dni temu" if lastm else "jeszcze brak")
     except Exception as e:
         task("Śledzenie predykcji RSU", "codziennie", "—", "error", str(e)[:80])
+
+    # 2b. samouczący dziennik prognoz (pasma short-term, cała watchlista)
+    try:
+        ss = _mkt.forecast_selfscore()
+        h21 = next((h for h in ss["horizons"] if h["days"] == 21), None)
+        st = "ok" if (h21 and h21["coverage_pct"] and 70 <= h21["coverage_pct"] <= 92) else ("info" if ss["total_scored"] < 100 else "warn")
+        task("Samouczenie prognoz (pasma)", "codziennie po syncu",
+             f"{ss['total_scored']} rozliczonych", st,
+             f"pokrycie 1M: {h21['coverage_pct']}% (cel ~80%)" if h21 else "dziennik się buduje")
+    except Exception as e:
+        task("Samouczenie prognoz (pasma)", "codziennie po syncu", "—", "warn", str(e)[:60])
 
     # 3. marketing (ads-analyst, tygodniowo pon ~07:00)
     try:
@@ -1730,6 +1813,195 @@ def health():
     return {"tasks": tasks, "checked_at": now,
             "summary": {"ok": sum(1 for t in tasks if t["status"] == "ok"),
                         "warn": warns, "error": errors, "total": len(tasks)}}
+
+
+# ---------- inwentarz danych: co auto / claude / recznie ----------
+
+def data_inventory():
+    """Mapa wszystkich zrodel danych w aplikacji: tryb (auto/derived/claude/
+    manual), zrodlo, czestotliwosc, ostatnia aktualizacja, liczba rekordow i
+    szacowany reczny wysilek/mies. Cel: zminimalizowac reczne wprowadzanie."""
+    from datetime import datetime
+    import json as _json
+
+    def one(q):
+        try:
+            r = eb._rows(q)
+            return r[0] if r else {}
+        except Exception:
+            return {}
+
+    def cnt_last(table, tcol=None):
+        sel = "count(*) c" + (f", max({tcol}) m" if tcol else "")
+        r = one(f"select {sel} from {table}")
+        return r.get("c", 0), (r.get("m") if tcol else None)
+
+    def setting_asof(key, field="as_of"):
+        raw = get_setting(key)
+        if not raw:
+            return None, False
+        try:
+            return _json.loads(raw).get(field), True
+        except Exception:
+            return None, True
+
+    acc_c, acc_last = cnt_last("accounts", "updated_at")
+    wv_c, wv_last = cnt_last("wealth_values", "created_at")
+    wi_c, _ = cnt_last("wealth_items")
+    debt_c, debt_last = cnt_last("debts", "updated_at")
+    dv_c, dv_last = cnt_last("debt_values", "created_at")
+    goal_c, goal_last = cnt_last("goals", "updated_at")
+    tx_c, tx_last = cnt_last("transactions", "created_at")
+    off_c, off_last = cnt_last("job_offers", "created_at")
+    biz_c, biz_last = cnt_last("biz_entries", "created_at")
+    px_c, px_last = cnt_last("market_prices_cache", "date")
+    bar_c, bar_last = cnt_last("market_barometer", "month")
+    pred_c, pred_last = cnt_last("rsu_predictions", "made_on")
+    snap_c, snap_last = cnt_last("snapshots", "date")
+    fire_c, fire_last = cnt_last("fire_snapshots", "month")
+    ins_c, _ = cnt_last("insurance_policies")
+    brief_asof, brief_has = setting_asof("analysis_market_brief")
+    vest_asof, vest_has = setting_asof("rsu_vest_analysis", "vest_month")
+    prop_asof, prop_has = setting_asof("analysis_property_location")
+    try:
+        import market as _mkt
+        sync = _mkt.last_sync()
+    except Exception:
+        sync = None
+
+    def item(name, mode, source, freq, last, count=None, minutes=0, note="", suggest=""):
+        return {"name": name, "mode": mode, "source": source, "freq": freq,
+                "last": last or "\u2014", "count": count, "minutes": minutes,
+                "note": note, "suggest": suggest}
+
+    groups = [
+        {"key": "auto", "title": "\U0001F7E2 W pelni automatyczne \u2014 zero pracy",
+         "note": "Pobierane przez n8n/Supabase/gita albo liczone przez aplikacje. Nic nie wpisujesz.",
+         "items": [
+            item("Kursy akcji + FX", "auto", "n8n \u2192 Supabase \u2192 cache",
+                 "codziennie", sync or px_last, px_c,
+                 note=f"{px_c} notowan w cache; ostatnie {px_last}"),
+            item("Raporty marketingu/ads", "auto", "n8n \u2192 Supabase (analysis_reports)",
+                 "tygodniowo", None, note="czytane z Supabase; offline gdy brak polaczenia"),
+            item("Aktywnosc commitow (GitHub)", "auto", "lokalne repo (git log)",
+                 "na zadanie / dziennie", None, note="liczone z gita, nic nie wpisujesz"),
+            item("Audyt danych wrazliwych", "auto", "git ls-files + skan sekretow",
+                 "przy pushu / tygodniowo", None, note="pilnuje, ze .finance/.env nie trafia do gita"),
+         ]},
+        {"key": "derived", "title": "\U0001F535 Liczone z innych danych \u2014 zero pracy",
+         "note": "Aplikacja wylicza je sama z tego, co juz masz. Tez nic nie wpisujesz.",
+         "items": [
+            item("Snapshot majatku (miesieczny)", "derived", "auto z pozycji majatku",
+                 "1x/mies. (auto)", snap_last, snap_c, note="jeden punkt netto na miesiac do wykresu majatku"),
+            item("Snapshot FIRE (plan vs realnie)", "derived", "auto z plynnosci",
+                 "1x/mies. (auto)", fire_last, fire_c, note="karmi prognoze work-optional"),
+            item("Przypomnienia automatyczne", "derived", "z danych (vesty, koniec stalej stopy...)",
+                 "na biezaco", None, note="wyliczane z danych \u2014 nie trzymane recznie"),
+            item("Sledzenie trafnosci predykcji", "derived", "auto przy otwarciu RSU",
+                 "codziennie", pred_last, pred_c, note=f"{pred_c} prognoz do backtestu"),
+            item("Saldo kredytu (model)", "derived", "rata \u2212 odsetki co miesiac",
+                 "co miesiac (auto)", debt_last, debt_c,
+                 note="saldo spada samo; korekta wg banku tylko okazjonalnie (nizej)"),
+         ]},
+        {"key": "claude", "title": "\U0001F7E3 Utrzymywane offline (Claude/notatki) \u2014 miesiecznie/na zadanie",
+         "note": "Snapshoty researchu, autorowane poza runtime. Aplikacja tylko je czyta.",
+         "items": [
+            item("Brief rynkowy", "claude", "app_settings: analysis_market_brief",
+                 "miesiecznie", brief_asof, note="ruchy + kontekst makro + rekomendacje per pozycja" if brief_has else "brak \u2014 do wygenerowania"),
+            item("Barometr rynku pracy", "claude", "market_barometer",
+                 "miesiecznie", bar_last, bar_c, note=f"{bar_c} punktow popytu na role"),
+            item("Analiza vestu (RSU)", "claude", "app_settings: rsu_vest_analysis",
+                 "co vest (~kwartalnie)", vest_asof, note="wyniki, guidance, targety" if vest_has else "brak"),
+            item("Analiza celu (np. nieruchomosc)", "claude", "app_settings: analysis_property_location",
+                 "na zadanie / rzadko", prop_asof, note="gleboka analiza" if prop_has else "brak"),
+         ]},
+        {"key": "manual_reg", "title": "\U0001F7E1 Recznie \u2014 regularnie (to chcemy zredukowac)",
+         "note": "Jedyne, co realnie wpisujesz co miesiac. Cel: doprowadzic to do minimum.",
+         "items": [
+            item("Salda kont / gotowka", "manual", "Ty (zakladka Majatek)",
+                 "miesiecznie", acc_last, acc_c, minutes=3,
+                 note="najbardziej reczny punkt \u2014 banki nie maja otwartego API bez integracji",
+                 suggest="n8n + GoCardless/Nordigen (darmowe PSD2 w UE) \u2192 dzienne saldo bez wpisywania"),
+            item("Wartosc portfela (broker/ETF)", "manual", "Ty (setting portfela + pozycje majatku)",
+                 "miesiecznie / przy transakcji", wv_last, wi_c, minutes=3,
+                 note="dzis wpisujesz WARTOSC recznie",
+                 suggest="trzymaj tylko LICZBE jednostek; wartosc policzy sie sama z kursow w cache \u2014 aktualizacja tylko przy zakupie"),
+            item("Stan celow (odlozone)", "manual", "Ty (zakladka Cele)",
+                 "miesiecznie", goal_last, goal_c, minutes=1,
+                 note="ile uzbierane",
+                 suggest="wyliczaj z plynnych aktywow (konta \u2212 bufor) zamiast wpisywac recznie"),
+            item("Przychody/koszty dzialalnosci", "manual", "Ty (zakladka Firma)",
+                 "miesiecznie", biz_last, biz_c, minutes=2,
+                 note="wynik dzialalnosci",
+                 suggest="jesli masz dane sprzedazy w Supabase \u2014 auto-zaciagaj przychod z pipeline'u"),
+            item("Korekta salda kredytu wg banku", "manual", "Ty (zakladka Kredyty)",
+                 "okazjonalnie (model liczy sam)", dv_last, dv_c, minutes=1,
+                 note="tylko gdy chcesz zgrac co do grosza z wyciagiem",
+                 suggest="import 1 liczby z wyciagu bankowego (PSD2) zamiast recznej korekty"),
+         ]},
+        {"key": "manual_rare", "title": "\u26AA Recznie \u2014 rzadko / zdarzeniowo (setup)",
+         "note": "Wpisujesz raz albo tylko gdy cos sie realnie zmienia \u2014 nie obciaza miesiecznie.",
+         "items": [
+            item("Oferty pracy", "manual", "Ty (zakladka Oferty)",
+                 "gdy przyjda (zdarzeniowo)", off_last, off_c, minutes=0,
+                 note="nie cykliczne \u2014 dopisujesz, gdy rekruter napisze"),
+            item("Koszty stale / plan budzetu", "manual", "setting: fixed_costs",
+                 "rzadko (gdy sie zmienia)", None, minutes=0, note="raty, czynsz, subskrypcje \u2014 stabilne"),
+            item("Dane podatkowe", "manual", "settings: tax_*",
+                 "~rocznie", None, minutes=0, note="zmiana raz na jakis czas"),
+            item("Konfiguracja RSU (ticker, vesty, akcje)", "manual", "market_meta / RSU",
+                 "rzadko", None, minutes=0, note="aktualizacja przy grancie/vescie"),
+            item("Watchlista + targety cenowe", "manual", "Ty (zakladka Rynek)",
+                 "okazjonalnie", None, minutes=0, note="dodajesz ticker/target, gdy chcesz go sledzic"),
+            item("Ubezpieczenia", "manual", "insurance_policies",
+                 "rzadko", None, ins_c, minutes=0, note="polisy \u2014 zmiana przy odnowieniu"),
+         ]},
+    ]
+
+    manual_reg = next(g for g in groups if g["key"] == "manual_reg")["items"]
+    minutes = sum(i["minutes"] for g in groups for i in g["items"])
+    counts = {g["key"]: len(g["items"]) for g in groups}
+
+    roadmap = [
+        {"title": "Portfel: trzymaj liczbe jednostek, nie wartosc",
+         "impact": "wysoki", "effort": "niski",
+         "saves": "~3 min/mies + zawsze aktualne",
+         "how": "Masz juz kursy w cache. Zapisuj tylko ile masz jednostek; wartosc = jednostki x ostatni kurs. "
+                "Wpis tylko przy zakupie, nie co miesiac."},
+        {"title": "Stan celow liczony z plynnosci",
+         "impact": "sredni", "effort": "niski",
+         "saves": "~1 min/mies + spojnosc",
+         "how": "Uzbierane wylicz z (konta plynne \u2212 bufor bezpieczenstwa) zamiast osobnego pola. "
+                "Jedno zrodlo prawdy zamiast dwoch."},
+        {"title": "Salda kont przez PSD2 (GoCardless/Nordigen)",
+         "impact": "wysoki", "effort": "sredni",
+         "saves": "~3 min/mies \u2014 likwiduje ostatni reczny punkt",
+         "how": "Darmowe UE API bankowe (Open Banking). n8n raz dziennie pobiera saldo do Supabase, "
+                "apka czyta jak kursy. Zostaje zero comiesiecznego wpisywania sald."},
+        {"title": "Przychod dzialalnosci auto z pipeline'u",
+         "impact": "sredni", "effort": "sredni",
+         "saves": "~2 min/mies",
+         "how": "Jesli dane sprzedazy sa w Supabase, auto-uzupelniaj przychod zamiast wpisywac wynik recznie."},
+        {"title": "Alert przy nieswiezych danych \u2705 gotowe",
+         "impact": "niski", "effort": "zrobione",
+         "saves": "spokoj \u2014 lapiesz zerwany sync sam",
+         "how": "Gotowy workflow n8n \u2192 Telegram w integrations/n8n/ (codzienny check swiezosci "
+                "market_prices w Supabase, alert gdy > prog dni). Import do n8n wg README; rozszerzalny."},
+    ]
+
+    return {
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "groups": groups,
+        "roadmap": roadmap,
+        "summary": {
+            "auto": counts.get("auto", 0) + counts.get("derived", 0),
+            "claude": counts.get("claude", 0),
+            "manual_regular": len(manual_reg),
+            "manual_rare": counts.get("manual_rare", 0),
+            "manual_minutes": minutes,
+            "manual_touchpoints": sum(1 for i in manual_reg if i["minutes"] > 0),
+        },
+    }
 
 
 # ---------- git / GitHub sync status ----------
@@ -1911,7 +2183,7 @@ def fire_projection():
 
 
 def _liquid_now():
-    """Płynny portfel = ETF + TEAM/RSU + gotówka + emerytalne (bez nieruchomości)."""
+    """Płynny portfel = ETF + akcje RSU + gotówka + emerytalne (bez nieruchomości)."""
     try:
         a = allocation()
         keys = {"etf", "team", "gotowka", "emerytalne"}
