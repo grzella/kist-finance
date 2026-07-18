@@ -76,6 +76,23 @@ def _gather():
             add("analysis", s.get("key"), f"{s.get('key')}: {s.get('value','')}")
     except Exception:
         pass
+    # derived data (computed by planner) — recommendations and reminders
+    try:
+        import planner
+        rec = planner.recommendation()
+        recs = (rec.get("items") or rec.get("recs")) if isinstance(rec, dict) else rec
+        for r in (recs or []):
+            add("recommendation", r.get("area", ""), r.get("text") or r.get("title", ""))
+    except Exception:
+        pass
+    try:
+        import planner
+        rem = planner.list_reminders()
+        for r in ((rem.get("reminders") if isinstance(rem, dict) else rem) or []):
+            add("reminder", r.get("title") or r.get("area", ""),
+                " ".join(str(r.get(k, "")) for k in ("title", "text", "note", "message") if r.get(k)))
+    except Exception:
+        pass
     return out
 
 
