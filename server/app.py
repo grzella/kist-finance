@@ -388,6 +388,20 @@ def sample_data():
     return jsonify({"ok": ok, "output": (r.stdout + r.stderr)[-400:]}), (200 if ok else 500)
 
 
+@app.get("/api/llm/status")
+def llm_status():
+    import llm_local
+    return jsonify(llm_local.status())
+
+
+@app.post("/api/llm/chat")
+def llm_chat():
+    import llm_local
+    b = request.get_json(force=True)
+    out = llm_local.chat(b.get("prompt", ""), system=b.get("system"))
+    return jsonify({"ok": out is not None, "text": out})
+
+
 @app.get("/api/security-review")
 def security_review_last():
     import json as _json

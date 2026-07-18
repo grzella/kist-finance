@@ -1711,6 +1711,21 @@ def health():
     except Exception as e:
         task("Forecast self-learning (bands)", "daily after sync", "—", "warn", str(e)[:60])
 
+    # 2c. optional local LLM — online + exposure
+    try:
+        import os as _os, llm_local
+        st = llm_local.status()
+        if not st.get("online"):
+            task("Local LLM (optional)", "on demand", "—", "info",
+                 "off — zero attack surface; to enable: " + st.get("hint", ""))
+        else:
+            protected = bool(_os.environ.get("LOCAL_LLM_KEY"))
+            task("Local LLM (optional)", "when running",
+                 st.get("model", "?"), "ok" if protected else "warn",
+                 f"{st.get('url')} — {'key-protected' if protected else 'no API key (run llama-server --api-key, set LOCAL_LLM_KEY)'}")
+    except Exception as e:
+        task("Local LLM (optional)", "on demand", "—", "info", str(e)[:60])
+
     # 3. marketing (ads-analyst, tygodniowo pon ~07:00)
     try:
         rep = _mkt._supabase_get("analysis_reports?select=week_end&order=week_end.desc&limit=1")

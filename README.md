@@ -53,8 +53,28 @@ The app **runs fully offline**. Live market data and alerts are opt-in:
   2. Put keys in `.env` (copy `.env.example`): `SUPABASE_URL=…`, `SUPABASE_ANON_KEY=…`.
   3. Feed the table daily however you like — e.g. an [n8n](https://n8n.io) workflow pulling quotes from Yahoo/Stooq. Without this, market views simply show "no data".
 - **Data-freshness alerts (n8n → Telegram)** — importable workflow in [`integrations/n8n/`](integrations/n8n/) that messages you when the pipeline goes stale. Setup guide in its README.
-- **AI assistant** — the app itself calls no LLM at runtime. Some snapshot content (market brief, analyses) is authored offline; wire your own AI (Claude/OpenAI/local llama.cpp) around the JSON API if you want.
+- **Local AI (optional, fully private)** — the app never *requires* an LLM, but it ships a thin client (`server/llm_local.py`) for a **local** [llama.cpp](https://github.com/ggml-org/llama.cpp) server, so AI features run on your machine and **your numbers never leave it**. See ["Local AI"](#local-ai-optional) below.
 - **Commit tracker** — set `commit_repos` / `commit_author` in settings or `COMMIT_REPOS` / `COMMIT_AUTHOR` env vars.
+
+## Local AI (optional)
+
+Cloud finance assistants send your balances to someone else's server. This app takes the opposite route: point it at a **local** model and every AI feature runs on your machine — no API keys, no data egress, no per-call cost.
+
+**What it gives you concretely:**
+
+- **Private transaction categorization** — label imported transactions ("BIEDRONKA 4231" → "Groceries") without shipping your spending to a cloud API. `categorize_transaction()` returns a category in well under a second on a small model.
+- **Plain-language narration over your own data** — e.g. `explain_forecast_miss()` turns the self-learning forecast journal into a sentence ("the band was too tight because earnings gapped the stock"), so the numbers come with a *why*.
+- **A private, keyless `/api/llm/chat`** — a generic hook other features (or your own scripts) can call to summarize, extract, or draft over sensitive figures, all offline.
+- **Zero lock-in** — it speaks the OpenAI API, so the same code works against `llama.cpp`, LM Studio, or Ollama; swap the model with one flag.
+
+**Enable it:**
+
+```bash
+brew install llama.cpp        # or build from source; any OpenAI-compatible server works
+llama-server -hf bartowski/Qwen2.5-3B-Instruct-GGUF:Q4_K_M --port 8080 --api-key <secret>
+```
+
+Then set `LOCAL_LLM_KEY=<secret>` (and optionally `LOCAL_LLM_URL`) in `.env`. Control Center shows the model's status, and the security review actively **probes the local server to confirm it rejects keyless requests** — a local model on `localhost:8080` with no key is reachable by any web page in your browser, so the suite flags an unprotected one. Without a running server, AI features simply report "offline"; nothing breaks.
 
 ## Data & privacy
 
