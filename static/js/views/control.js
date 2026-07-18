@@ -28,13 +28,15 @@ function securityReviewHtml(rev) {
 }
 
 async function renderControl(el) {
-  const [d, rev, ai, ragStatus, bk] = await Promise.all([
+  const [d, rev, ai, ragStatus, bk, aiLog] = await Promise.all([
     api.get("/api/health"),
     api.get("/api/security-review").catch(() => ({})),
     api.get("/api/llm/config").catch(() => null),
     api.get("/api/rag/status").catch(() => null),
     api.get("/api/backup/status").catch(() => null),
+    api.get("/api/llm/log").catch(() => null),
   ]);
+  const esc = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const s = d.summary;
   const vColor = { ok: "#3ecf8e", warn: "#ffd166", error: "#ff5c5c" };
   const secColor = vColor[rev && rev.verdict] || "#8a90a6";
@@ -102,6 +104,13 @@ async function renderControl(el) {
         <span>🔎 Local RAG: <b>${ragStatus.chunks}</b> chunks <span class="muted">(${ragStatus.engine})</span></span>
         <button id="ragReindex">Reindex</button>
         <span class="muted">${ragStatus.hint || "AI questions are automatically grounded in your own data"}</span></div>` : ""}
+      ${aiLog && aiLog.stats.total ? `<details class="mt" style="font-size:.85em">
+        <summary style="cursor:pointer">📊 AI prompt log (${aiLog.stats.total}) — ${aiLog.stats.rag_grounded} RAG-grounded · ${aiLog.stats.cloud_calls} cloud calls</summary>
+        <div class="mt">${aiLog.recent.slice(0, 8).map((e) => `<div style="border-top:1px solid #2a2f45;padding:6px 0">
+          <div class="muted" style="font-size:.8em">${e.ts} · ${e.mode}${e.rag_used ? " · RAG" : ""}</div>
+          <div><b>${esc(e.prompt)}</b></div>
+          <div style="white-space:pre-wrap;color:#c9cee0">${esc(e.synthesis_text || e.cloud_text || e.local_text)}</div></div>`).join("")}</div>
+      </details>` : ""}
     </div>` : ""}
 
     ${bk ? `<div class="card mt" style="border-left:4px solid #4c8dff">

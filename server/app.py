@@ -422,7 +422,7 @@ def llm_config_save():
 def llm_ask():
     """Ask a question per the AI mode: 'local' = local model only;
     'both' = local AND Claude (for comparison — best result from the pair)."""
-    import llm_local, llm_cloud, finance_prompt, rag
+    import llm_local, llm_cloud, finance_prompt, rag, llm_log
     b = request.get_json(force=True)
     prompt = b.get("prompt", "")
     system = b.get("system") or finance_prompt.SYSTEM
@@ -449,7 +449,14 @@ def llm_ask():
                 by = "local"
             if sy:
                 out["synthesis"] = {"ok": True, "text": sy, "by": by}
+    llm_log.record(prompt, out)
     return jsonify(out)
+
+
+@app.get("/api/llm/log")
+def llm_log_view():
+    import llm_log
+    return jsonify({"stats": llm_log.stats(), "recent": llm_log.recent(int(request.args.get("n", 25)))})
 
 
 @app.get("/api/rag/status")
