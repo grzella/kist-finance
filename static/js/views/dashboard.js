@@ -1,4 +1,6 @@
 async function renderDashboard(el) {
+  const cfg = await appCfg();
+  const bizOn = !cfg.enabled_views || cfg.enabled_views.includes("firma");
   const [sum, w, nw, rec, xtb, gs, biz, bizMkt] = await Promise.all([
     api.get("/api/dashboard/summary"),
     api.get("/api/wealth/summary"),
@@ -42,7 +44,7 @@ async function renderDashboard(el) {
       <div class="muted mt">Symulacja mies. po mies.: w scenariuszach nadpłat całe wolne środki idą najpierw w kredyt
         (efektywne oprocentowanie), po spłacie uwolniona rata + ubezpieczenia zasilają cel.</div>
     </div>` : ""}
-    ${biz ? `<details class="card mt" style="border-left:4px solid ${CHART_COLORS[6]}">
+    ${bizOn && biz ? `<details class="card mt" style="border-left:4px solid ${CHART_COLORS[6]}">
       <summary style="cursor:pointer"><b>🚁 Firma działalności:</b>
         wynik od startu <b class="${biz.total_result >= 0 ? "pos" : "neg"}">${fmt.pln(biz.total_result)}</b>
         ${!bizMkt.error && bizMkt.weeks.length ? `· ostatni tydzień ads: €${bizMkt.weeks[0].spend_eur}
