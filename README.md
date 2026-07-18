@@ -76,12 +76,21 @@ llama-server -hf bartowski/Qwen2.5-3B-Instruct-GGUF:Q4_K_M --port 8080 --api-key
 
 Then set `LOCAL_LLM_KEY=<secret>` (and optionally `LOCAL_LLM_URL`) in `.env`. Control Center shows the model's status, and the security review actively **probes the local server to confirm it rejects keyless requests** — a local model on `localhost:8080` with no key is reachable by any web page in your browser, so the suite flags an unprotected one. Without a running server, AI features simply report "offline"; nothing breaks.
 
+**AI mode — local by default, cloud strictly opt-in.** Control Center has an **AI mode** switch. The default is **local only**: every AI question stays on your machine. Optionally flip it to **local + Claude**, which asks *both* your local model and Anthropic's Claude and shows the answers side by side — often the best of the two — with a plain warning that this mode **sends the prompt to Anthropic**. Cloud is never on unless you turn it on; set your own `ANTHROPIC_API_KEY` in `.env` to enable it. AI answers are framed by a rigorous financial-analyst system prompt (explicit assumptions, scenario ranges, opportunity-cost/tax, a one-line bottom line).
+
+**Local RAG — answers grounded in your own numbers.** A pure-stdlib **BM25 retriever** (zero dependencies, fully offline) indexes your own data — goals, wealth, offers, business entries, saved analyses — into a `rag_chunks` table. Every AI question is automatically grounded in the most relevant snippets, so the model reasons about *your* figures, not generic ones. Hit **Reindex** in Control Center after adding data. (Deliberately not a vector DB: it needs no extensions, no embedding server, and works out of the box.)
+
+## Backups
+
+Your data is one local SQLite file, so a backup is just a copy — but a copy you don't have to think about. Control Center's **Data backup** card writes a consistent snapshot (SQLite's online-backup API, WAL-safe) into a folder your desktop **Google Drive / Dropbox / iCloud** client already syncs. The app itself talks to **no** cloud API and holds **no** OAuth keys — your own sync client pushes the file. Common synced folders are auto-detected; the last 14 snapshots are kept. For at-rest encryption, `pip install cryptography` and set `BACKUP_KEY` in `.env` — snapshots are then Fernet-encrypted before they touch the cloud.
+
 ## Data & privacy
 
+- **Everything is local out of the box.** No account, no server, no cloud dependency — the whole app runs against a single local SQLite file. Live market data and alerts are the only cloud touchpoints, and they're opt-in (see above).
 - `.finance/`, `.env`, and `backups/` are git-ignored — **never commit them**.
 - `seed.py` refuses to overwrite existing data (use `--force` only on a throwaway DB).
 - **Demo mode** (Control Center or `?demo`) masks all figures with a `0-1` pattern and hides chart axis values — safe screenshots.
-- **Language**: UI is Polish-first with an English toggle (Control Center or `?lang=en`); i18n contributions welcome.
+- **Language**: UI is English-native with a Polish toggle (Control Center or `?lang=pl`); i18n contributions welcome.
 
 ## Security
 
