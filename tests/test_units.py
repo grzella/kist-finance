@@ -32,13 +32,20 @@ def test_rag_empty_query_returns_nothing(client):
 
 def test_forecast_bands_are_ordered():
     import forecast_models as fm
-    # a rising-ish series; bands (low<=mid<=high) must be ordered whatever the API
-    series = [100, 101, 99, 102, 103, 101, 104, 105, 103, 106]
-    fn = getattr(fm, "forecast_bands", None) or getattr(fm, "bands", None)
-    if fn is None:
-        return  # module shape differs; skip gracefully
-    out = fn(series, horizon=5) if "horizon" in fn.__code__.co_varnames else fn(series)
-    assert out is not None
+    # 80 sessions of gently trending noise → bands must satisfy p10 <= p50 <= p90
+    import math
+    closes = [100 * math.exp(0.0004 * i + 0.01 * math.sin(i)) for i in range(80)]
+    out = fm.short_term_bands(closes)
+    assert out and out["horizons"], "expected bands for a decent series"
+    for h in out["horizons"]:
+        assert h["p10"] <= h["p50"] <= h["p90"]
+    assert out["ewma_vol_annual_pct"] >= 0
+
+
+def test_forecast_goal_eta_band():
+    import forecast_models as fm
+    band = fm.goal_eta_band(remaining=120000, pace=5000)
+    assert band is not None  # ~24 months at 5k/mo, returned as a range
 
 
 def test_backup_snapshot_is_consistent(client, tmp_path):
@@ -48,7 +55,40 @@ def test_backup_snapshot_is_consistent(client, tmp_path):
     assert r["ok"] and r["size_kb"] > 0
 
 
-def test_security_review_imports_and_scans():
+def test_backup_restore_reverts_changes(client, tmp_path):
+    import data_backup as backup
+    backup.set_destination(str(tmp_path))
+    before = len(client.get("/api/goals").get_json())
+    snap = backup.create_backup()["file"]
+    gid = client.post("/api/goals", json={"name": "temp", "target_amount": 1}).get_json()["id"]
+    assert len(client.get("/api/goals").get_json()) == before + 1
+    res = backup.restore(snap)
+    assert res["ok"] and res["safety_copy"]
+    assert len(client.get("/api/goals").get_json()) == before  # reverted
+    # guard against path traversal
+    assert backup.restore("../../etc/passwd")["ok"] is False
+
+
+def test_rag_indexes_derived_sources(client):
+    import rag
+    rag.reindex()
+    import engine_bridge as eb
+    sources = {r["source"] for r in eb._rows("select source from rag_chunks")}
+    assert "reminder" in sources  # derived data now indexed, not just tables
+
+
+def test_llm_log_records_and_reads(client):
+    import llm_log
+    llm_log.record("test question?", {"mode": "local", "rag_used": True,
+                                       "local": {"ok": True, "text": "answer"}})
+    recent = llm_log.recent(5)
+    assert recent and recent[0]["prompt"] == "test question?"
+    assert llm_log.stats()["total"] >= 1
+
+
+def test_security_review_runs_and_reports(client):
     import security_review as sr
-    # the module must import and expose a runnable entrypoint
-    assert any(hasattr(sr, n) for n in ("main", "run", "review", "run_all"))
+    rep = sr.run(full=False)  # static checks only (fast, no server needed)
+    assert set(("verdict", "score", "findings", "counts")) <= set(rep)
+    assert 0 <= rep["score"] <= 100
+    assert isinstance(rep["findings"], list) and rep["findings"]
