@@ -31,7 +31,7 @@ async function renderOffers(el) {
         🧑‍💻 Commitowanie${gh ? ` — dziś ${gh.today}, seria ${gh.streak}🔥` : ""} →</a></div>
     ${statsBar}
     <div class="muted" style="margin:6px 0 12px;font-size:.88em">Punkt odniesienia (auto): <b>${s ? fmt.pln(s.current) : "—"}</b>/mies. —
-      obecny total (base + bonus + RSU, liczony dynamicznie z kursem TEAM). Delty ofert i wpływ na cele liczone względem tego.</div>
+      obecny total (base + bonus + RSU, liczony dynamicznie z kursem akcji RSU). Delty ofert i wpływ na cele liczone względem tego.</div>
     <div class="card" id="baroCard">
       <h3>📈 Barometr rynku — popyt na role EM / Head of Engineering (+ Twój inbound)</h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">Ile łącznie ofert (Europa, remote) jest na rynku dla ról EM / Head of Engineering — trend miesięczny na tle Twojego inbound (słupki).

@@ -11,6 +11,7 @@ async function renderReminders(el) {
     <div class="row" style="gap:8px;margin-bottom:12px">
       <a href="#control" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">🛠️ Automatyzacje &amp; health</a>
       <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;background:${CHART_COLORS[0]};color:#fff">🔔 Przypomnienia</a>
+      <a href="#data" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">📊 Dane w aplikacji</a>
     </div>
     <div class="muted" style="margin-bottom:12px">Automatyczne (z danych: vesty, bonus, koniec stałej stopy, targety, przeglądy)
       + Twoje własne. Sortowane wg terminu.</div>

@@ -15,9 +15,10 @@ async function renderDebts(el) {
         <div class="value">${fmt.pln(data.debts.reduce((s, d) => s + (d.schedule.total_interest || 0), 0))}</div>
         <div class="sub">przy obecnych ratach</div></div>
     </div>
-    <div class="card mt">
-      <h3>Dodaj kredyt</h3>
-      <div class="row">
+    <div id="dList" class="mt"></div>
+    <details class="card mt">
+      <summary style="cursor:pointer;color:var(--muted,#9aa)">➕ Dodaj kredyt (rzadka akcja)</summary>
+      <div class="row mt">
         <input id="dName" placeholder="nazwa (np. hipoteka mBank)" style="flex:1">
         <input data-num id="dBalance" placeholder="saldo PLN">
         <input type="number" step="0.01" id="dRate" placeholder="oprocentowanie % rocznie" style="width:200px">
@@ -32,12 +33,11 @@ async function renderDebts(el) {
       </div>
       <div class="muted mt">Saldo spada samo co miesiąc o część kapitałową raty
         (rata − odsetki); odsetki liczone od bieżącego salda.</div>
-    </div>
-    <div id="dList" class="mt"></div>`;
+    </details>`;
 
   const list = document.getElementById("dList");
   if (!data.debts.length) {
-    list.innerHTML = '<div class="empty">Brak kredytów — dodaj pierwszy powyżej</div>';
+    list.innerHTML = '<div class="empty">Brak kredytów — dodaj pierwszy poniżej</div>';
   } else {
     list.innerHTML = data.debts.map((d, idx) => {
       const s = d.schedule || {};

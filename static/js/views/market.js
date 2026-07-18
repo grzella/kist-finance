@@ -1,10 +1,52 @@
+function marketBriefHtml(b) {
+  if (!b || !b.headline) {
+    return `<div class="card"><h3 style="margin-top:0">🧭 Brief rynkowy</h3>
+      <div class="muted">Brak zapisanego briefu. Authored offline (Claude/own notes) and stored under the
+        <code>analysis_market_brief</code> setting — key moves, macro context, and a per-position stance.</div></div>`;
+  }
+  const hi = (b.highlights || []).map((h) => `<div class="card" style="margin:0">
+      <div style="font-size:1.4em">${h.icon || "•"}</div>
+      <div style="font-weight:600;margin:2px 0">${h.title}</div>
+      <div class="muted" style="font-size:.9em">${h.text}</div></div>`).join("");
+  const geo = (b.geopolitics || []).map((g) => `<details class="mt">
+      <summary style="cursor:pointer;font-weight:600">${g.title}</summary>
+      <div class="muted mt" style="font-size:.92em">${g.text}</div></details>`).join("");
+  const stanceColor = (s) => /sell|sprzedaj/i.test(s) ? "#3ecf8e" : /hold|trzymaj|core|rdzeń/i.test(s) ? "#4c8dff"
+    : /accumulate|dca|buduj|stopniowo/i.test(s) ? "#ffd166" : "#9aa";
+  const pos = (b.positions || []).map((p) => `<tr>
+      <td><b>${p.ticker}</b></td>
+      <td><span class="badge" style="background:${stanceColor(p.stance)}22;color:${stanceColor(p.stance)}">${p.stance}</span></td>
+      <td class="muted" style="font-size:.9em">${p.text}</td></tr>`).join("");
+  return `
+    <div class="card" style="border-left:4px solid #4c8dff">
+      <div class="row" style="justify-content:space-between;align-items:baseline">
+        <h3 style="margin:0">🧭 Brief rynkowy</h3>
+        <span class="muted" style="font-size:.82em">stan na ${b.as_of || "—"}</span>
+      </div>
+      ${b.regime ? `<div class="mt" style="font-weight:600;color:#ffd166">${b.regime}</div>` : ""}
+      <div class="mt">${b.headline}</div>
+    </div>
+    ${hi ? `<div class="grid cols-4 mt">${hi}</div>` : ""}
+    ${geo ? `<div class="card mt"><h3 style="margin-top:0">🌍 Kontekst — co napędza ruchy</h3>${geo}</div>` : ""}
+    ${pos ? `<div class="card mt"><h3 style="margin-top:0">🎯 Co z tym zrobić — per pozycja</h3>
+      <table><thead><tr><th>Ticker</th><th>Nastawienie</th><th>Uzasadnienie</th></tr></thead>
+      <tbody>${pos}</tbody></table>
+      ${b.fx_note ? `<div class="muted mt" style="border-left:3px solid #e0a458;padding-left:8px">💱 ${b.fx_note}</div>` : ""}</div>` : ""}
+    ${b.method_note ? `<div class="muted mt" style="font-size:.8em">${b.method_note}</div>` : ""}`;
+}
+
 async function renderMarket(el) {
-  const wl = await api.get("/api/watchlist");
+  const [wl, brief] = await Promise.all([
+    api.get("/api/watchlist"),
+    api.get("/api/analysis/market_brief").catch(() => ({})),
+  ]);
   el.innerHTML = `
-    <h2>Rynek — watchlista</h2>
+    <h2>Rynek</h2>
+    ${marketBriefHtml(brief)}
+    <h3 class="mt">Watchlista</h3>
     <div class="card">
       <div class="row">
-        <input id="wlTicker" placeholder="ticker np. TEAM" style="width:140px">
+        <input id="wlTicker" placeholder="ticker np. AAPL" style="width:140px">
         <button class="primary" id="wlAdd">Dodaj</button>
         <button id="wlRefresh">Odśwież z chmury</button>
         <span class="muted">ostatnia synchronizacja: ${wl.last_sync || "nigdy"}</span>

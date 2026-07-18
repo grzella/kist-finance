@@ -1,0 +1,171 @@
+{
+  "name": "Finance app — alert świeżości danych (Telegram)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 23 * * *"
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Codziennie 23:15",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://YOUR-PROJECT.supabase.co/rest/v1/market_prices?select=date&order=date.desc&limit=1",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "node-http",
+      "name": "Supabase: ostatnia data kursów",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Supabase anon key (apikey)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ocena świeżości danych rynkowych z Supabase (tabela market_prices).\n// Wejście: odpowiedź HTTP z Supabase (najnowsza data notowania).\nlet data = $input.all().map((i) => i.json);\n// HTTP Request może zwrócić tablicę jako jeden item — spłaszcz na wszelki wypadek.\nif (data.length === 1 && Array.isArray(data[0])) data = data[0];\n\nconst latest = data.length && data[0] ? data[0].date : null;\n\nconst MAX_AGE_DAYS = 2; // > tyle dni bez świeżych kursów = alert. Ustaw -1, by wymusić test.\nconst ageDays = (d) => {\n  if (!d) return null;\n  const t = new Date(d + 'T00:00:00Z').getTime();\n  return Math.floor((Date.now() - t) / 86400000);\n};\nconst age = ageDays(latest);\n\nconst problems = [];\nif (latest === null) {\n  problems.push('Brak danych w tabeli market_prices — pipeline syncu nic nie wgrał.');\n} else if (age > MAX_AGE_DAYS) {\n  problems.push('Kursy/FX nieświeże: ostatnie notowanie ' + latest + ' (' + age + ' dni temu).');\n}\n\nconst alert = problems.length > 0;\nconst message = alert\n  ? '🔴 *Finance app — alert danych*\\n' + problems.map((p) => '• ' + p).join('\\n')\n    + '\\n\\nSprawdź workflow syncu (n8n) i Supabase.'\n  : '🟢 Finance app — dane świeże (ostatnie kursy: ' + latest + ').';\n\nreturn [{ json: { alert: alert, message: message, latest: latest, age: age } }];\n"
+      },
+      "id": "node-code",
+      "name": "Oceń świeżość + zbuduj alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-alert",
+              "leftValue": "={{ $json.alert }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if",
+      "name": "Jest problem?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "node-telegram",
+      "name": "Telegram: wyślij alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1140,
+        200
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Telegram bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Codziennie 23:15": {
+      "main": [
+        [
+          {
+            "node": "Supabase: ostatnia data kursów",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: ostatnia data kursów": {
+      "main": [
+        [
+          {
+            "node": "Oceń świeżość + zbuduj alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Oceń świeżość + zbuduj alert": {
+      "main": [
+        [
+          {
+            "node": "Jest problem?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jest problem?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: wyślij alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

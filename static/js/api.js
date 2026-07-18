@@ -54,6 +54,17 @@ function toggleDemo(on) {
   localStorage.setItem("demoMode", on ? "1" : "0");
   location.reload();
 }
+
+// ---------- JĘZYK / LANGUAGE (pl default, en via toggle) ----------
+function langGet() {
+  const q = /[?&#]lang=(pl|en)\b/.exec(location.search + location.hash);
+  if (q) return q[1];
+  return localStorage.getItem("lang") === "en" ? "en" : "pl";
+}
+function langSet(l) {
+  localStorage.setItem("lang", l === "en" ? "en" : "pl");
+  location.reload();
+}
 function _maskInt(v) {
   const d = Math.max(1, String(Math.floor(Math.abs(Number(v) || 0))).length);
   let s = "";
