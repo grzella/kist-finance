@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 
-APP_DIR = Path(__file__).resolve().parent.parent          # financeapp root (server/..)
+APP_DIR = Path(__file__).resolve().parent.parent          # Kist repo root (server/..)
 
 
 def load_env():
@@ -21,12 +21,12 @@ def load_env():
 
 def _external_data_dir():
     """A per-user app-data dir OUTSIDE the repo (so a stray `git add` can never
-    stage your finances). macOS: ~/Library/Application Support/financeapp;
-    Linux: $XDG_DATA_HOME or ~/.local/share/financeapp."""
+    stage your finances). macOS: ~/Library/Application Support/Kist;
+    Linux: $XDG_DATA_HOME or ~/.local/share/kist."""
     home = Path.home()
     if sys.platform == "darwin":
-        return home / "Library" / "Application Support" / "financeapp"
-    return Path(os.environ.get("XDG_DATA_HOME", home / ".local" / "share")) / "financeapp"
+        return home / "Library" / "Application Support" / "Kist"
+    return Path(os.environ.get("XDG_DATA_HOME", home / ".local" / "share")) / "kist"
 
 
 def default_project_dir():

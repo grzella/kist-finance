@@ -8,8 +8,8 @@ minimal, and the repo stays generic (no maintainer-specific data).
 ## Dev setup
 
 ```bash
-git clone https://github.com/grzella/financeapp.git
-cd financeapp
+git clone https://github.com/grzella/kist.git
+cd kist
 pip install -r requirements.txt -r requirements-dev.txt
 ./run.sh                       # → http://127.0.0.1:8321
 ```

@@ -20,7 +20,7 @@ import engine_bridge as eb
 import planner
 
 KEEP = 14              # how many recent backups to keep
-SUBDIR = "financeapp-backups"
+SUBDIR = "kist-backups"
 
 
 def _db_path():
