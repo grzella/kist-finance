@@ -111,12 +111,12 @@ def _check_repo_leaks(repo, tracked):
     tracked_bad = [t for t in tracked
                    if _SENSITIVE_PATHS.search(t) and not t.endswith(".env.example")]
     if tracked_bad:
-        f("critical", "fail", "Wrażliwe pliki śledzone w repo",
+        f("critical", "fail", "Sensitive files tracked in the repo",
           ", ".join(tracked_bad[:8]),
-          "git rm --cached <plik>, dodaj do .gitignore, rozważ przepisanie historii")
+          "git rm --cached <file>, add to .gitignore, consider rewriting history")
     else:
-        f("info", "pass", "Brak wrażliwych plików w drzewie roboczym",
-          f"{len(tracked)} śledzonych plików, żaden nie pasuje do wzorców wrażliwych")
+        f("info", "pass", "No sensitive files in the working tree",
+          f"{len(tracked)} tracked files, none match sensitive patterns")
 
     # 1b. sensitive paths EVER in history (critical before going public)
     hist = _git(repo, ["log", "--all", "--pretty=format:", "--name-only"], timeout=40)
@@ -124,25 +124,25 @@ def _check_repo_leaks(repo, tracked):
     hist_bad = sorted(p for p in ever
                       if _SENSITIVE_PATHS.search(p) and not p.endswith(".env.example"))
     if hist_bad:
-        f("critical", "fail", "Wrażliwe pliki obecne w HISTORII gita",
-          f"{len(hist_bad)} plików kiedyś commitowanych: " + ", ".join(hist_bad[:8]),
-          "Publiczne repo ujawnia całą historię. Przepisz historię "
-          "(git filter-repo --path <plik> --invert-paths) PRZED upublicznieniem.")
+        f("critical", "fail", "Sensitive files present in git HISTORY",
+          f"{len(hist_bad)} files committed at some point: " + ", ".join(hist_bad[:8]),
+          "A public repo exposes the whole history. Rewrite history "
+          "(git filter-repo --path <file> --invert-paths) BEFORE going public.")
     else:
-        f("info", "pass", "Historia gita bez wrażliwych plików",
-          f"przeskanowano {len(ever)} unikalnych ścieżek w całej historii")
+        f("info", "pass", "Git history free of sensitive files",
+          f"scanned {len(ever)} unique paths across all history")
 
     # 1c. secret PATTERNS in current tree
     pat = "|".join("(?:%s)" % p for _, p in _SECRET_PATTERNS)
     r = _git(repo, ["grep", "-nIE", pat, "--"] + ["."] + _SCAN_EXCLUDES)
     hits = [l for l in (r.stdout.splitlines() if r else []) if l.strip()][:12]
     if hits:
-        f("high", "fail", "Wzorce sekretów w śledzonym kodzie",
+        f("high", "fail", "Secret patterns in tracked code",
           " | ".join(h[:90] for h in hits[:6]),
-          "Usuń sekret z kodu, trzymaj w .env (gitignored), użyj .env.example z placeholderem")
+          "Remove the secret from code, keep it in .env (gitignored), use .env.example with a placeholder")
     else:
-        f("info", "pass", "Brak wzorców sekretów w kodzie",
-          f"sprawdzono {len(_SECRET_PATTERNS)} sygnatur (JWT, Supabase, tokeny, klucze prywatne…)")
+        f("info", "pass", "No secret patterns in code",
+          f"checked {len(_SECRET_PATTERNS)} signatures (JWT, Supabase, tokens, private keys…)")
 
     # 1d. secret patterns in HISTORY (pickaxe over all commits)
     rl = _git(repo, ["rev-list", "--all"], timeout=20)
@@ -154,12 +154,12 @@ def _check_repo_leaks(repo, tracked):
         # drop matches that are only in the current tree (already reported in 1c)
         hh = [l for l in hh if not l.startswith("./") and ":" in l][:12]
         if hh:
-            f("high", "fail", "Wzorce sekretów w HISTORII gita",
-              f"{len(hh)} trafień w starych commitach: " + " | ".join(h[:70] for h in hh[:4]),
-              "Sekret w historii = sekret spalony. Zrotuj klucz ORAZ przepisz historię.")
+            f("high", "fail", "Secret patterns in git HISTORY",
+              f"{len(hh)} hits in old commits: " + " | ".join(h[:70] for h in hh[:4]),
+              "A secret in history is a burned secret. Rotate the key AND rewrite history.")
         else:
-            f("info", "pass", "Historia gita bez wzorców sekretów",
-              f"pickaxe po {min(len(commits),400)} commitach, zero trafień")
+            f("info", "pass", "Git history free of secret patterns",
+              f"pickaxe over {min(len(commits),400)} commits, zero hits")
 
     # 1e. leak-check: real .env values appearing anywhere tracked
     env = Path(repo) / "apps" / "budget" / ".env"
@@ -180,11 +180,11 @@ def _check_repo_leaks(repo, tracked):
             if gr and gr.stdout.strip():
                 leaked.append(k.strip())
     if leaked:
-        f("critical", "fail", "Realna wartość z .env znaleziona w repo",
-          "wyciekłe zmienne: " + ", ".join(leaked), "Natychmiast zrotuj te sekrety i usuń z repo")
+        f("critical", "fail", "A real .env value found in the repo",
+          "leaked variables: " + ", ".join(leaked), "Rotate these secrets immediately and remove them from the repo")
     elif checked:
-        f("info", "pass", "Wartości z .env nie wyciekają do repo",
-          f"{checked} sekretów z .env zweryfikowanych — żaden nie występuje w śledzonych plikach")
+        f("info", "pass", "No .env values leak into the repo",
+          f"{checked} .env secrets verified — none appear in tracked files")
 
     return out
 
@@ -193,7 +193,7 @@ def _check_personal_data(repo):
     out = []
 
     def f(sev, status, title, detail, fix=""):
-        out.append({"id": "pii", "area": "AUDYT DANYCH OSOBOWYCH (repo publiczne)",
+        out.append({"id": "pii", "area": "PERSONAL-DATA AUDIT (public repo)",
                     "severity": sev, "status": status, "title": title,
                     "detail": detail, "fix": fix})
 
@@ -207,13 +207,13 @@ def _check_personal_data(repo):
             if ln.strip():
                 hits.append((label, ln.strip()))
     if hits:
-        f("critical", "fail", "Dane osobowe maintainera w publicznym repo",
+        f("critical", "fail", "Maintainer personal data in a public repo",
           "; ".join(f"{lbl}: {ln[:60]}" for lbl, ln in hits[:6]),
-          "Repo publiczne musi byc generyczne. Usun/zamien realne dane; trzymaj je "
-          "wylacznie w lokalnej .finance (gitignored).")
+          "A public repo must be generic. Remove/replace real data; keep it "
+          "only in the local .finance (gitignored).")
     else:
-        f("info", "pass", "Brak danych osobowych w kodzie",
-          f"sprawdzono {len(_PERSONAL_MARKERS)} wzorcow (pracodawca, miasta, nazwisko) — czysto")
+        f("info", "pass", "No personal data in the code",
+          f"checked {len(_PERSONAL_MARKERS)} patterns (employer, cities, surname) — clean")
     return out
 
 
@@ -223,25 +223,25 @@ def _check_code(repo):
     out = []
 
     def f(sev, status, title, detail, fix=""):
-        out.append({"id": "code", "area": "KOD (contributorzy)", "severity": sev,
+        out.append({"id": "code", "area": "CODE (contributors)", "severity": sev,
                     "status": status, "title": title, "detail": detail, "fix": fix})
 
     # dangerous-pattern grep across python + js (docs/vendor excluded)
     checks = [
-        ("high",   r"\beval\s*\(",                       "eval() — wykonanie dowolnego kodu",
-         "Zastąp bezpiecznym parserem (json.loads / ast.literal_eval)"),
-        ("high",   r"\bexec\s*\(",                       "exec() — wykonanie dowolnego kodu",
-         "Usuń exec; przeprojektuj bez dynamicznego kodu"),
-        ("high",   r"os\.system\s*\(",                   "os.system() — wstrzyknięcie powłoki",
-         "Użyj subprocess z listą argumentów, bez powłoki"),
-        ("high",   r"subprocess\.[a-z]+\([^)]*shell\s*=\s*True", "subprocess(shell=True) — wstrzyknięcie powłoki",
-         "shell=False + lista argumentów"),
-        ("critical", r"(pickle|cPickle)\.loads?\s*\(",   "pickle.load — deserializacja = RCE",
-         "Nie deserializuj pickle z niezaufanych źródeł; użyj JSON"),
-        ("high",   r"yaml\.load\s*\((?![^)]*Loader)",    "yaml.load bez SafeLoader",
+        ("high",   r"\beval\s*\(",                       "eval() — arbitrary code execution",
+         "Replace with a safe parser (json.loads / ast.literal_eval)"),
+        ("high",   r"\bexec\s*\(",                       "exec() — arbitrary code execution",
+         "Remove exec; redesign without dynamic code"),
+        ("high",   r"os\.system\s*\(",                   "os.system() — shell injection",
+         "Use subprocess with an argument list, no shell"),
+        ("high",   r"subprocess\.[a-z]+\([^)]*shell\s*=\s*True", "subprocess(shell=True) — shell injection",
+         "shell=False + argument list"),
+        ("critical", r"(pickle|cPickle)\.loads?\s*\(",   "pickle.load — deserialization = RCE",
+         "Do not deserialize pickle from untrusted sources; use JSON"),
+        ("high",   r"yaml\.load\s*\((?![^)]*Loader)",    "yaml.load without SafeLoader",
          "yaml.safe_load(...)"),
         ("high",   r"render_template_string\s*\(",       "render_template_string — SSTI",
-         "Renderuj statyczne szablony, nie sklejaj z danych"),
+         "Render static templates; do not build them from data"),
     ]
     files = ["*.py", "static/js/**"]
     for sev, rx, title, fix in checks:
@@ -259,40 +259,40 @@ def _check_code(repo):
     # elevate to injection if request data is on the same line
     inj = [h for h in sqlhits if re.search(r"request\.|args\[|\.json|get_json", h)]
     if inj:
-        f("critical", "fail", "Możliwy SQL injection (dane żądania sklejane w zapytaniu)",
+        f("critical", "fail", "Possible SQL injection (request data concatenated into the query)",
           " | ".join(h[:90] for h in inj[:3]),
-          "Przekazuj wartości jako parametry (?, tuple), nigdy nie sklejaj stringów")
+          "Pass values as parameters (?, tuple); never concatenate strings")
     elif sqlhits:
-        f("medium", "warn", "SQL budowany przez interpolację (przejrzyj)",
+        f("medium", "warn", "SQL built via interpolation (review)",
           f"{len(sqlhits)}×: " + " | ".join(h[:80] for h in sqlhits[:3]),
-          "Jeśli interpolujesz nazwę tabeli/kolumny — trzymaj ją na białej liście stałych; "
-          "wartości zawsze przez parametry (?, tuple)")
+          "If you interpolate a table/column name, keep it on a whitelist of constants; "
+          "values always via parameters (?, tuple)")
     else:
-        f("info", "pass", "Zapytania SQL parametryzowane",
-          "brak sklejania stringów w wywołaniach execute/_exec/_rows")
+        f("info", "pass", "SQL queries are parameterized",
+          "no string concatenation in execute/_exec/_rows calls")
 
     # Flask misconfig: debug=True / host 0.0.0.0
     r = _git(repo, ["grep", "-nIE", r"debug\s*=\s*True", "--", "*.py"] + _SCAN_EXCLUDES)
     if r and r.stdout.strip():
         f("high", "fail", "Flask debug=True", r.stdout.strip().splitlines()[0][:90],
-          "debug=False w produkcji (debugger Werkzeug = RCE)")
+          "debug=False in production (the Werkzeug debugger = RCE)")
     else:
-        f("info", "pass", "Brak debug=True", "aplikacja nie startuje z debuggerem Werkzeug")
+        f("info", "pass", "No debug=True", "the app does not start with the Werkzeug debugger")
 
     r = _git(repo, ["grep", "-nIE", r"host\s*=\s*['\"]0\.0\.0\.0['\"]", "--", "*.py"] + _SCAN_EXCLUDES)
     if r and r.stdout.strip():
-        f("medium", "warn", "Bind na 0.0.0.0 (dostęp z sieci)",
+        f("medium", "warn", "Bind on 0.0.0.0 (network-reachable)",
           r.stdout.strip().splitlines()[0][:90],
-          "Bind na 127.0.0.1 — apka lokalna nie powinna słuchać na wszystkich interfejsach")
+          "Bind on 127.0.0.1 — a local app should not listen on all interfaces")
     else:
-        f("info", "pass", "Bind tylko na 127.0.0.1", "serwer nie jest wystawiony na sieć")
+        f("info", "pass", "Bind only on 127.0.0.1", "the server is not exposed to the network")
 
     # CORS wildcard
     r = _git(repo, ["grep", "-nIE", r"Access-Control-Allow-Origin['\"]?\s*[,:]\s*['\"]\*|CORS\([^)]*\*",
                     "--", "*.py"] + _SCAN_EXCLUDES)
     if r and r.stdout.strip():
         f("medium", "warn", "CORS wildcard (*)", r.stdout.strip().splitlines()[0][:90],
-          "Ogranicz CORS do znanych origin albo usuń dla apki lokalnej")
+          "Restrict CORS to known origins, or remove it for a local app")
 
     return out
 
@@ -303,7 +303,7 @@ def _check_config(repo, tracked):
     out = []
 
     def f(sev, status, title, detail, fix=""):
-        out.append({"id": "config", "area": "KONFIGURACJA / POŁĄCZENIA", "severity": sev,
+        out.append({"id": "config", "area": "CONFIGURATION / CONNECTIONS", "severity": sev,
                     "status": status, "title": title, "detail": detail, "fix": fix})
 
     root = Path(repo)
@@ -315,11 +315,11 @@ def _check_config(repo, tracked):
     need = [".env", ".finance", "backups"]
     missing = [n for n in need if n not in gi]
     if missing:
-        f("high", "fail", ".gitignore nie pokrywa wrażliwych ścieżek",
-          "brakuje: " + ", ".join(missing), "Dodaj wpisy do .gitignore")
+        f("high", "fail", ".gitignore does not cover sensitive paths",
+          "missing: " + ", ".join(missing), "Add entries to .gitignore")
     else:
-        f("info", "pass", ".gitignore pokrywa wrażliwe ścieżki",
-          "obecne: " + ", ".join(need))
+        f("info", "pass", ".gitignore covers sensitive paths",
+          "present: " + ", ".join(need))
 
     # .env.example must exist and hold NO real values
     exa = None
@@ -331,24 +331,24 @@ def _check_config(repo, tracked):
         txt = exa.read_text(errors="ignore")
         pat = "|".join("(?:%s)" % p for _, p in _SECRET_PATTERNS[:6])
         if re.search(pat, txt):
-            f("high", "fail", ".env.example zawiera realny sekret",
-              "placeholdery powinny być puste / oczywiście fałszywe", "Zamień na <your-key-here>")
+            f("high", "fail", ".env.example contains a real secret",
+              "placeholders should be empty / obviously fake", "Replace with <your-key-here>")
         else:
-            f("info", "pass", ".env.example czysty (placeholdery)",
-              "szablon konfiguracji bez realnych sekretów")
+            f("info", "pass", ".env.example is clean (placeholders)",
+              "config template with no real secrets")
     else:
-        f("low", "warn", "Brak .env.example",
-          "kontrybutorzy nie wiedzą, jakie zmienne ustawić", "Dodaj .env.example z placeholderami")
+        f("low", "warn", "No .env.example",
+          "contributors don't know which variables to set", "Add .env.example with placeholders")
 
     # secrets must come from env, not tracked settings
     r = _git(repo, ["grep", "-nIE", r"(SUPABASE|ANON_KEY|SERVICE_ROLE|SECRET)\s*=\s*['\"][^'\"]{12,}",
                     "--", "*.py"] + _SCAN_EXCLUDES)
     if r and r.stdout.strip():
-        f("critical", "fail", "Klucz połączenia zaszyty w kodzie",
-          r.stdout.strip().splitlines()[0][:90], "Czytaj z os.environ, trzymaj w .env")
+        f("critical", "fail", "Connection key hard-coded in the source",
+          r.stdout.strip().splitlines()[0][:90], "Read from os.environ; keep it in .env")
     else:
-        f("info", "pass", "Klucze połączeń tylko ze środowiska",
-          "Supabase/n8n czytane z .env, nie z kodu")
+        f("info", "pass", "Connection keys come only from the environment",
+          "Supabase/n8n read from .env, not from code")
 
     return out
 
@@ -359,7 +359,7 @@ def _check_functional():
     out = []
 
     def f(sev, status, title, detail, fix=""):
-        out.append({"id": "func", "area": "TESTY FUNKCJONALNE", "severity": sev,
+        out.append({"id": "func", "area": "FUNCTIONAL TESTS", "severity": sev,
                     "status": status, "title": title, "detail": detail, "fix": fix})
 
     # DB schema intact
@@ -371,12 +371,12 @@ def _check_functional():
                 "app_settings", "reminders", "snapshots"}
         miss = need - tabs
         if miss:
-            f("high", "fail", "Brakuje tabel w bazie", "brak: " + ", ".join(sorted(miss)),
-              "Uruchom migracje / ensure_tables()")
+            f("high", "fail", "Missing tables in the database", "missing: " + ", ".join(sorted(miss)),
+              "Run migrations / ensure_tables()")
         else:
-            f("info", "pass", "Schemat bazy kompletny", f"{len(tabs)} tabel, wszystkie kluczowe obecne")
+            f("info", "pass", "Database schema is complete", f"{len(tabs)} tables, all key ones present")
     except Exception as e:
-        f("high", "fail", "Baza niedostępna", str(e)[:120])
+        f("high", "fail", "Database unreachable", str(e)[:120])
 
     # every GET endpoint answers 200 + JSON (in-process test client)
     try:
@@ -396,13 +396,13 @@ def _check_functional():
             except Exception as e:
                 bad.append(f"{rule.rule} → {str(e)[:30]}")
         if bad:
-            f("medium", "warn", "Część endpointów GET nie zwraca 200",
-              f"OK {ok}/{len(rules)}; problemy: " + ", ".join(bad[:5]), "Sprawdź logi endpointu")
+            f("medium", "warn", "Some GET endpoints do not return 200",
+              f"OK {ok}/{len(rules)}; problems: " + ", ".join(bad[:5]), "Check the endpoint logs")
         else:
-            f("info", "pass", "Wszystkie endpointy GET odpowiadają 200",
-              f"{ok} tras przetestowanych in-process")
+            f("info", "pass", "All GET endpoints respond 200",
+              f"{ok} routes tested in-process")
     except Exception as e:
-        f("medium", "warn", "Nie udało się przetestować endpointów", str(e)[:120])
+        f("medium", "warn", "Could not test the endpoints", str(e)[:120])
 
     # market data pipe alive / gracefully offline
     try:
@@ -418,15 +418,15 @@ def _check_functional():
             except Exception:
                 age = None
             if age is not None and age <= 5:
-                f("info", "pass", "Dane rynkowe świeże", f"ostatnie notowanie {last} ({age} dni temu)")
+                f("info", "pass", "Market data is fresh", f"last quote {last} ({age} days ago)")
             else:
-                f("low", "warn", "Dane rynkowe nieświeże",
-                  f"ostatnie {last} ({age} dni temu)", "Sprawdź pipeline n8n → Supabase")
+                f("low", "warn", "Market data is stale",
+                  f"last {last} ({age} days ago)", "Check the n8n → Supabase pipeline")
         else:
-            f("low", "warn", "Brak danych rynkowych w cache",
-              "market/RSU/FX pokażą 'brak danych'", "Uruchom sync z chmury lub podłącz Supabase")
+            f("low", "warn", "No market data in cache",
+              "market/RSU/FX will show 'no data'", "Run the cloud sync or connect Supabase")
     except Exception as e:
-        f("low", "warn", "Pipeline rynkowy offline", str(e)[:100])
+        f("low", "warn", "Market pipeline offline", str(e)[:100])
 
     # core computations don't throw
     try:
@@ -437,11 +437,11 @@ def _check_functional():
             try:
                 fn()
             except Exception as e:
-                f("medium", "warn", f"Obliczenie '{name}' rzuca wyjątek", str(e)[:100])
-        f("info", "pass", "Kluczowe obliczenia liczą się bez błędu",
-          "dashboard, health, inwentarz danych — OK")
+                f("medium", "warn", f"Computation '{name}' throws an exception", str(e)[:100])
+        f("info", "pass", "Core computations run without error",
+          "dashboard, health, data inventory — OK")
     except Exception as e:
-        f("low", "warn", "Nie udało się sprawdzić obliczeń", str(e)[:100])
+        f("low", "warn", "Could not check the computations", str(e)[:100])
 
     return out
 
@@ -547,13 +547,13 @@ def run(full=True):
 
     if fails:
         verdict = "error"
-        summary = f"🚨 {len(fails)} krytycznych/wysokich problemów — NIE upubliczniaj repo"
+        summary = f"🚨 {len(fails)} critical/high issues — do NOT publish the repo"
     elif warns:
         verdict = "warn"
-        summary = f"⚠️ {len(warns)} ostrzeżeń, 0 blokerów — do przejrzenia"
+        summary = f"⚠️ {len(warns)} warnings, 0 blockers — review recommended"
     else:
         verdict = "ok"
-        summary = f"✅ Czysto — {len(passes)} testów zaliczonych, 0 znalezisk"
+        summary = f"✅ Clean — {len(passes)} checks passed, 0 findings"
 
     # group by area for the UI
     areas = {}
