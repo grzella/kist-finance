@@ -2,7 +2,7 @@ async function renderOffers(el) {
   const data = await api.get("/api/offers");
   const gh = await api.get("/api/github-activity").catch(() => null);
   const cfg = data.settings;
-  const OFFER_STATUS = { nowa: "new", rozmowy: "interviewing", oferta: "offer", odrzucona: "rejected", "przyjęta": "accepted" };
+  const OFFER_STATUS = { new: "New", interviewing: "Interviewing", offer: "Offer", rejected: "Rejected", accepted: "Accepted" };
   const s = data.stats;
   const statsBar = s ? `
     <div class="card" style="padding:10px 16px">
@@ -87,7 +87,7 @@ async function renderOffers(el) {
         ${o.notes ? `<div class="muted mt">${o.notes}</div>` : ""}
         <div class="row mt">
           <select data-ost="${o.id}">
-            ${["nowa", "rozmowy", "oferta", "odrzucona", "przyjęta"].map((s) =>
+            ${["new", "interviewing", "offer", "rejected", "accepted"].map((s) =>
               `<option value="${s}" ${o.status === s ? "selected" : ""}>${OFFER_STATUS[s]}</option>`).join("")}
           </select>
           <button data-osave="${o.id}">Save status</button>

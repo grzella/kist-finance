@@ -139,7 +139,7 @@ def _default_account_id():
     _exec(
         "insert into accounts (id, name, type, balance, currency, institution, updated_at) "
         "values (?,?,?,?,?,?,?)",
-        (acc_id, "Główne", "checking", 0, "PLN", "",
+        (acc_id, "Main", "checking", 0, "PLN", "",
          datetime.now().isoformat(timespec="seconds")))
     return acc_id
 

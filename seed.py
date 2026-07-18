@@ -73,7 +73,7 @@ planner.add_offer({"company": "Acme Corp", "role": "Engineering Manager", "total
                    "work_model": "hybrid", "status": "new", "received_at": "2026-05-10",
                    "notes": "Sample offer — demo data.", "tier": 2})
 planner.add_offer({"company": "Globex", "role": "Senior Engineering Manager", "total_monthly": 55000,
-                   "work_model": "remote", "status": "talking", "received_at": "2026-06-18",
+                   "work_model": "remote", "status": "interviewing", "received_at": "2026-06-18",
                    "notes": "Sample offer — demo data.", "tier": 1})
 
 # --- RSU grant (sample) ---

@@ -3,13 +3,13 @@ async function renderBusiness(el) {
     api.get("/api/business"),
     api.get("/api/business/marketing").catch(() => ({ error: "no data" }))]);
   const cur = b.current;
-  const KIND_LABELS = { koszt: "cost", "przychód": "revenue" };
+  const KIND_LABELS = { cost: "cost", revenue: "revenue" };
   el.innerHTML = `
     <h2>Business</h2>
     <div class="grid cols-4">
       <div class="card kpi"><div class="label">This month: result</div>
-        <div class="value ${(cur.wynik ?? cur.przychody - cur.koszty) >= 0 ? "pos" : "neg"}">${fmt.pln((cur.przychody || 0) - (cur.koszty || 0))}</div>
-        <div class="sub">revenue ${fmt.pln(cur.przychody || 0)} · costs ${fmt.pln(cur.koszty || 0)}</div></div>
+        <div class="value ${(cur.result ?? cur.revenue - cur.costs) >= 0 ? "pos" : "neg"}">${fmt.pln((cur.revenue || 0) - (cur.costs || 0))}</div>
+        <div class="sub">revenue ${fmt.pln(cur.revenue || 0)} · costs ${fmt.pln(cur.costs || 0)}</div></div>
       <div class="card kpi"><div class="label">Invested since launch</div>
         <div class="value">${fmt.pln(b.total_cost)}</div></div>
       <div class="card kpi"><div class="label">Revenue since launch</div>
@@ -22,7 +22,7 @@ async function renderBusiness(el) {
       <h3>Add an entry</h3>
       <div class="row">
         <input type="date" id="bDate" value="${new Date().toISOString().slice(0, 10)}">
-        <select id="bKind"><option value="koszt">cost</option><option value="przychód">revenue</option></select>
+        <select id="bKind"><option value="cost">cost</option><option value="revenue">revenue</option></select>
         <select id="bCat">${b.categories.map((c) => `<option>${c}</option>`).join("")}</select>
         <input data-num id="bAmount" placeholder="net amount PLN">
         <input id="bDesc" placeholder="description (e.g. Ad spend July, materials…)" style="flex:1">
@@ -73,11 +73,11 @@ async function renderBusiness(el) {
       <th style="text-align:right">Result</th><th style="text-align:right">Cumulative</th><th>ROAS</th></tr></thead><tbody>` +
       [...b.months].reverse().map((m) => `<tr>
         <td>${m.month}</td>
-        <td style="text-align:right" class="neg">${fmt.pln(m.koszty)}</td>
+        <td style="text-align:right" class="neg">${fmt.pln(m.costs)}</td>
         <td style="text-align:right">${fmt.pln(m.marketing)}</td>
-        <td style="text-align:right" class="pos">${fmt.pln(m.przychody)}</td>
-        <td style="text-align:right" class="${m.wynik >= 0 ? "pos" : "neg"}">${fmt.pln(m.wynik)}</td>
-        <td style="text-align:right">${fmt.pln(m.narastajaco)}</td>
+        <td style="text-align:right" class="pos">${fmt.pln(m.revenue)}</td>
+        <td style="text-align:right" class="${m.result >= 0 ? "pos" : "neg"}">${fmt.pln(m.result)}</td>
+        <td style="text-align:right">${fmt.pln(m.cumulative)}</td>
         <td>${m.roas != null ? m.roas + "×" : "—"}</td>
       </tr>`).join("") + "</tbody></table>";
   }
@@ -93,7 +93,7 @@ async function renderBusiness(el) {
         <td><span class="badge">${KIND_LABELS[e.kind] || e.kind}</span></td>
         <td>${e.category}</td>
         <td>${e.description || "—"}</td>
-        <td style="text-align:right" class="${e.kind === "przychód" ? "pos" : "neg"}">${fmt.pln(e.amount)}</td>
+        <td style="text-align:right" class="${e.kind === "revenue" ? "pos" : "neg"}">${fmt.pln(e.amount)}</td>
         <td><button class="danger" data-bdel="${e.id}">✕</button></td>
       </tr>`).join("") + "</tbody></table>";
   }
@@ -123,8 +123,8 @@ async function renderBusiness(el) {
       data: {
         labels: b.months.map((m) => m.month),
         datasets: [
-          { label: "Costs", data: b.months.map((m) => m.koszty), backgroundColor: "#ff6b6b" },
-          { label: "Revenue", data: b.months.map((m) => m.przychody), backgroundColor: "#3ecf8e" },
+          { label: "Costs", data: b.months.map((m) => m.costs), backgroundColor: "#ff6b6b" },
+          { label: "Revenue", data: b.months.map((m) => m.revenue), backgroundColor: "#3ecf8e" },
         ],
       },
     }));
@@ -132,7 +132,7 @@ async function renderBusiness(el) {
       type: "line",
       data: {
         labels: b.months.map((m) => m.month),
-        datasets: [{ label: "Cumulative result", data: b.months.map((m) => m.narastajaco),
+        datasets: [{ label: "Cumulative result", data: b.months.map((m) => m.cumulative),
           borderColor: CHART_COLORS[0], backgroundColor: "transparent", tension: 0.25 }],
       },
       options: { plugins: { legend: { display: false } } },

@@ -9,7 +9,7 @@ from datetime import date, datetime
 
 import engine_bridge as eb
 
-OWNERS = ("ja", "żona", "wspólne")
+OWNERS = ("me", "partner", "joint")
 WEALTH_KINDS = ("investment", "cushion", "savings", "income")
 
 
@@ -20,7 +20,7 @@ def _now():
 def ensure_tables():
     eb._exec("""create table if not exists wealth_items (
         id text primary key, name text not null, kind text not null,
-        owner text default 'wspólne', currency text default 'PLN',
+        owner text default 'joint', currency text default 'PLN',
         notes text default '', archived integer default 0,
         created_at text not null)""")
     eb._exec("""create table if not exists wealth_values (
@@ -32,7 +32,7 @@ def ensure_tables():
         id text primary key, company text not null, role text default '',
         recruiter text default '', total_monthly real not null,
         base_monthly real, bonus_pct real, work_model text default '',
-        status text default 'nowa', received_at text, notes text default '',
+        status text default 'new', received_at text, notes text default '',
         created_at text not null)""")
     eb._exec("""create table if not exists app_settings (
         key text primary key, value text)""")
@@ -245,7 +245,7 @@ def add_wealth_item(data):
     eb._exec(
         "insert into wealth_items (id, name, kind, owner, currency, notes, "
         "linked_debt_id, created_at) values (?,?,?,?,?,?,?,?)",
-        (item_id, data["name"], data["kind"], data.get("owner", "wspólne"),
+        (item_id, data["name"], data["kind"], data.get("owner", "joint"),
          data.get("currency", "PLN"), data.get("notes", ""),
          data.get("linked_debt_id"), _now()))
     _audit("wealth_item", item_id, "add", data)
@@ -454,7 +454,7 @@ def add_offer(data):
         (offer_id, data["company"], data.get("role", ""), data.get("recruiter", ""),
          float(data["total_monthly"]),
          _num(data.get("base_monthly")), _num(data.get("bonus_pct")),
-         data.get("work_model", ""), data.get("status", "nowa"),
+         data.get("work_model", ""), data.get("status", "new"),
          data.get("received_at") or date.today().isoformat(),
          data.get("notes", ""),
          int(data["tier"]) if data.get("tier") not in (None, "") else None, _now()))
@@ -1075,16 +1075,16 @@ def ensure_monthly_snapshot():
 
 # ---------- side business (revenue/cost ledger) ----------
 
-BIZ_KINDS = ("koszt", "przychód")
-BIZ_CATEGORIES = ("sprzęt", "marketing", "software", "ubezpieczenie",
-                  "uprawnienia", "dojazd", "księgowość", "inne",
-                  "usługa", "content", "licencje")
+BIZ_KINDS = ("cost", "revenue")
+BIZ_CATEGORIES = ("equipment", "marketing", "software", "insurance",
+                  "certifications", "travel", "accounting", "other",
+                  "service", "content", "licenses")
 
 
 def ensure_biz_table():
     eb._exec("""create table if not exists biz_entries (
         id text primary key, date text not null, kind text not null,
-        category text default 'inne', amount real not null,
+        category text default 'other', amount real not null,
         description text default '', created_at text not null)""")
 
 
@@ -1094,30 +1094,30 @@ def biz_summary():
     monthly = {}
     for r in rows:
         m = r["date"][:7]
-        monthly.setdefault(m, {"month": m, "koszty": 0, "przychody": 0,
+        monthly.setdefault(m, {"month": m, "costs": 0, "revenue": 0,
                                "marketing": 0})
-        if r["kind"] == "koszt":
-            monthly[m]["koszty"] += r["amount"]
+        if r["kind"] == "cost":
+            monthly[m]["costs"] += r["amount"]
             if r["category"] == "marketing":
                 monthly[m]["marketing"] += r["amount"]
         else:
-            monthly[m]["przychody"] += r["amount"]
+            monthly[m]["revenue"] += r["amount"]
     months = sorted(monthly.values(), key=lambda x: x["month"])
     cum = 0
     for m in months:
-        m["wynik"] = round(m["przychody"] - m["koszty"], 2)
-        cum += m["wynik"]
-        m["narastajaco"] = round(cum, 2)
-        m["roas"] = round(m["przychody"] / m["marketing"], 2) if m["marketing"] else None
-        for k in ("koszty", "przychody", "marketing"):
+        m["result"] = round(m["revenue"] - m["costs"], 2)
+        cum += m["result"]
+        m["cumulative"] = round(cum, 2)
+        m["roas"] = round(m["revenue"] / m["marketing"], 2) if m["marketing"] else None
+        for k in ("costs", "revenue", "marketing"):
             m[k] = round(m[k], 2)
-    total_cost = sum(m["koszty"] for m in months)
-    total_rev = sum(m["przychody"] for m in months)
+    total_cost = sum(m["costs"] for m in months)
+    total_rev = sum(m["revenue"] for m in months)
     cur = date.today().strftime("%Y-%m")
     return {
         "entries": rows[:200],
         "months": months,
-        "current": monthly.get(cur, {"koszty": 0, "przychody": 0, "wynik": 0}),
+        "current": monthly.get(cur, {"costs": 0, "revenue": 0, "result": 0}),
         "total_cost": round(total_cost, 2),
         "total_revenue": round(total_rev, 2),
         "total_result": round(total_rev - total_cost, 2),
@@ -1133,7 +1133,7 @@ def add_biz_entry(data):
         "insert into biz_entries (id, date, kind, category, amount, description, created_at) "
         "values (?,?,?,?,?,?,?)",
         (entry_id, data.get("date") or date.today().isoformat(), data["kind"],
-         data.get("category", "inne"), float(data["amount"]),
+         data.get("category", "other"), float(data["amount"]),
          data.get("description", ""), _now()))
     _audit("biz", entry_id, "add", data)
     return entry_id

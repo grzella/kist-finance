@@ -21,7 +21,7 @@ async function renderCurrency(el) {
     const v = it.equity != null ? it.equity : (it.latest_value || 0);
     const n = (it.name || "").toLowerCase();
     if (n.includes("usd") || n.includes("rsu") || n.includes("team")) exp.USD += v;
-    else if (n.includes("vwce") || n.includes("eur") || n.includes("świat")) exp.EUR += v;
+    else if (n.includes("vwce") || n.includes("eur") || n.includes("world")) exp.EUR += v;
     else exp.PLN += v;
   });
   const totalExp = exp.PLN + exp.USD + exp.EUR || 1;

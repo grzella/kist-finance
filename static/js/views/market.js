@@ -11,7 +11,7 @@ function marketBriefHtml(b) {
   const geo = (b.geopolitics || []).map((g) => `<details class="mt">
       <summary style="cursor:pointer;font-weight:600">${g.title}</summary>
       <div class="muted mt" style="font-size:.92em">${g.text}</div></details>`).join("");
-  const stanceColor = (s) => /sell|sprzedaj/i.test(s) ? "#3ecf8e" : /hold|trzymaj|core|rdzeń/i.test(s) ? "#4c8dff"
+  const stanceColor = (s) => /sell/i.test(s) ? "#3ecf8e" : /hold|core/i.test(s) ? "#4c8dff"
     : /accumulate|dca|buduj|stopniowo/i.test(s) ? "#ffd166" : "#9aa";
   const pos = (b.positions || []).map((p) => `<tr>
       <td><b>${p.ticker}</b></td>

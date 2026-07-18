@@ -1,6 +1,6 @@
 async function renderAllocation(el) {
   const d = await api.get("/api/allocation");
-  const flagCls = (f) => f === "za dużo" || f === "too much" ? "neg" : f === "dokładaj" || f === "add more" ? "pos" : "muted";
+  const flagCls = (f) => f === "too much" ? "neg" : f === "add more" ? "pos" : "muted";
   el.innerHTML = `
     <h2>📊 Asset allocation — structure and concentration</h2>
     <div class="muted" style="margin-bottom:12px">Net wealth ${fmt.pln(d.total)} (real estate counted as equity net of loans).

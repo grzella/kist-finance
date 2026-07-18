@@ -3,7 +3,7 @@ async function renderCommits(el) {
     api.get("/api/github-activity").catch(() => null),
     api.get("/api/analysis/contributions").catch(() => ({}))]);
 
-  const diffCls = (d) => /łatwe/.test(d) ? "pos" : /trudne/.test(d) ? "neg" : "";
+  const diffCls = (d) => /easy/i.test(d) ? "pos" : /hard/i.test(d) ? "neg" : "";
 
   el.innerHTML = `
     <div class="muted" style="margin-bottom:4px"><a href="#offers" style="text-decoration:none">← Career</a></div>
@@ -45,7 +45,7 @@ async function renderCommits(el) {
         <h3>🏆 Badges to earn</h3>
         <table><tbody>${c.badges.map((b) => `<tr>
           <td><b>${b.name}</b><div class="muted" style="font-size:.82em">${b.how}</div></td>
-          <td style="text-align:right"><span class="badge ${/instant|łatwe/.test(b.status) ? "pos" : ""}">${b.status}</span></td>
+          <td style="text-align:right"><span class="badge ${/instant|easy/i.test(b.status) ? "pos" : ""}">${b.status}</span></td>
         </tr>`).join("")}</tbody></table>
         <div class="muted mt" style="font-size:.82em">You already have: Pull Shark, Pair Extraordinaire, Quickdraw, YOLO.</div>
       </div>

@@ -74,7 +74,7 @@ def dashboard_summary():
     if fc_raw:
         try:
             items = _json.loads(fc_raw).get("items", [])
-            mine = sorted((i for i in items if i.get("payer") == "ja"),
+            mine = sorted((i for i in items if i.get("payer") == "me"),
                           key=lambda i: -i["monthly"])
             top = mine[:8]
             rest = sum(i["monthly"] for i in mine[8:])

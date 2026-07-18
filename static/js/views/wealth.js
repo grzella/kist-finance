@@ -28,7 +28,7 @@ async function renderWealth(el) {
       <div class="row">
         <input id="wName" placeholder="name (e.g. Brokerage account)" style="flex:1">
         <select id="wKind">${Object.entries(WEALTH_KINDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
-        <select id="wOwner"><option value="ja">me</option><option value="żona">wife</option><option value="wspólne" selected>joint</option></select>
+        <select id="wOwner"><option value="me">Me</option><option value="partner">Partner</option><option value="joint" selected>Joint</option></select>
         <input data-num id="wValue" placeholder="value PLN">
         <select id="wDebt"><option value="">no loan</option>
           ${s.debts.map((d) => `<option value="${d.id}">${d.name}</option>`).join("")}</select>
