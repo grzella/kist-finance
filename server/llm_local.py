@@ -38,13 +38,21 @@ def status():
                 "error": str(e)[:80]}
 
 
-def chat(prompt, system=None, max_tokens=400, temperature=0.2):
-    """Single completion. Returns text, or None when offline."""
+def chat(prompt, system=None, max_tokens=400, temperature=0.2, json_schema=None):
+    """Single completion. Returns text, or None when offline.
+
+    json_schema (optional): a JSON Schema — llama.cpp compiles it into a GBNF
+    grammar and CONSTRAINS the output to be valid, schema-conforming JSON at the
+    token level. No more parse failures or retries: the model cannot emit
+    anything outside the schema.
+    """
     msgs = ([{"role": "system", "content": system}] if system else []) + \
            [{"role": "user", "content": prompt}]
-    body = json.dumps({"messages": msgs, "max_tokens": max_tokens,
-                       "temperature": temperature}).encode()
-    req = urllib.request.Request(BASE + "/chat/completions", data=body,
+    payload = {"messages": msgs, "max_tokens": max_tokens, "temperature": temperature}
+    if json_schema:
+        payload["response_format"] = {"type": "json_schema",
+            "json_schema": {"name": "out", "schema": json_schema, "strict": True}}
+    req = urllib.request.Request(BASE + "/chat/completions", data=json.dumps(payload).encode(),
                                  headers=_headers({"Content-Type": "application/json"}))
     try:
         with urllib.request.urlopen(req, timeout=120) as r:
@@ -54,17 +62,46 @@ def chat(prompt, system=None, max_tokens=400, temperature=0.2):
         return None
 
 
+def chat_json(prompt, schema, system=None, max_tokens=400, temperature=0.2):
+    """Like chat(), but guarantees a dict conforming to `schema` (GBNF), or None."""
+    raw = chat(prompt, system=system, max_tokens=max_tokens,
+               temperature=temperature, json_schema=schema)
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
 def categorize_transaction(description, amount, categories):
-    """Categorize a transaction locally (data does not leave the machine)."""
+    """Categorize a transaction locally (data does not leave the machine).
+
+    Uses GBNF (an enum in the JSON Schema) — the model MUST pick one of the
+    given categories, so the result is always valid (no free-text parsing).
+    """
+    cats = list(categories)
+    schema = {"type": "object", "additionalProperties": False,
+              "required": ["category"],
+              "properties": {"category": {"type": "string", "enum": cats}}}
+    data = chat_json(
+        f'Transaction: "{description}", amount {amount}. '
+        f'Pick the best category from: {", ".join(cats)}.',
+        schema,
+        system="You are an expense-categorization assistant.",
+        max_tokens=30)
+    if data and data.get("category") in cats:
+        return data["category"]
+    # Fallback for servers without response_format support: text matching.
     ans = chat(
         f'Transaction: "{description}", amount {amount}. '
-        f'Pick exactly ONE category from: {", ".join(categories)}. '
+        f'Pick exactly ONE category from: {", ".join(cats)}. '
         f'Answer with the category name only.',
         system="You are an expense-categorization assistant. Answer in one word.",
         max_tokens=20)
     if ans:
         ans = ans.strip().strip('."')
-        for c in categories:
+        for c in cats:
             if c.lower() in ans.lower():
                 return c
     return None
