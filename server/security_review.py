@@ -1,6 +1,6 @@
 """Pentest-grade security + functional self-review for the budget app.
 
-Runs a battery of checks in four areas and returns a structured report:
+Runs a battery of checks in five areas and returns a structured report:
   1. REPO LEAKS   — secrets / sensitive data in the working tree AND git history
                     (history matters most: making a repo public exposes every
                     commit ever made, not just the current files).
@@ -452,6 +452,69 @@ _SEV_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 _SEV_SCORE = {"critical": 40, "high": 20, "medium": 8, "low": 3, "info": 0}
 
 
+# ---------------------------------------------------------------- 5. LOCAL SERVICES / LLM
+
+def _check_local_services():
+    """Active pentest of local AI services (e.g. a llama.cpp server). If you wire
+    a local LLM to sensitive data, its exposure must be *verified*, not just
+    warned about in a server log."""
+    import json as _json
+    import os as _os
+    import urllib.request as _u
+    out = []
+
+    def f(sev, status, title, detail, fix=""):
+        out.append({"id": "llm", "area": "LOCAL SERVICES / LLM", "severity": sev,
+                    "status": status, "title": title, "detail": detail, "fix": fix})
+
+    base = _os.environ.get("LOCAL_LLM_URL", "http://127.0.0.1:8080/v1")
+    host = base.split("//", 1)[-1].split("/", 1)[0].split(":")[0]
+    if host in ("127.0.0.1", "localhost", "::1", "0.0.0.0"):
+        f("info", "pass", "Local LLM targets localhost",
+          f"LOCAL_LLM_URL={base} — sensitive data does not leave the machine")
+    else:
+        f("high", "fail", "Local LLM targets a REMOTE host",
+          f"LOCAL_LLM_URL={base} → sensitive data would leave the machine!",
+          "Point LOCAL_LLM_URL at http://127.0.0.1:...; use a deliberate separate path for any cloud model")
+
+    up = False
+    try:
+        with _u.urlopen(base.rsplit("/v1", 1)[0] + "/health", timeout=2) as r:
+            up = r.status == 200
+    except Exception:
+        try:
+            with _u.urlopen(base + "/models", timeout=2) as r:
+                up = r.status == 200
+        except Exception:
+            up = False
+    if not up:
+        f("info", "pass", "No local LLM server running",
+          "nothing listening on LOCAL_LLM_URL — zero attack surface right now")
+        return out
+
+    try:
+        req = _u.Request(base + "/chat/completions",
+                         data=_json.dumps({"messages": [{"role": "user", "content": "ping"}],
+                                           "max_tokens": 1}).encode(),
+                         headers={"Content-Type": "application/json"})
+        with _u.urlopen(req, timeout=8) as r:
+            noauth_ok = r.status == 200
+    except Exception as e:
+        noauth_ok = None if ("401" in str(e) or "403" in str(e)) else True
+    if noauth_ok is True:
+        f("medium", "warn", "Local LLM accepts requests WITHOUT a key",
+          f"{base} answered a prompt with no Authorization — any web page in your browser could "
+          "hit localhost and drain/abuse the model (CSRF / DNS-rebinding).",
+          "Start llama-server with --api-key <secret> and set LOCAL_LLM_KEY in .env")
+    elif noauth_ok is None:
+        f("info", "pass", "Local LLM requires authentication",
+          "keyless request rejected (401/403) — well protected")
+    else:
+        f("info", "pass", "Local LLM up (auth policy undetermined)",
+          "server alive; could not conclusively determine auth policy")
+    return out
+
+
 def run(full=True):
     # Make sure config (FINANCE_PROJECT_DIR, module sys.path) is initialised so
     # the functional imports work standalone (CLI/CI), not only inside the app.
@@ -471,6 +534,7 @@ def run(full=True):
     findings += _check_config(repo, tracked)
     if full:
         findings += _check_functional()
+        findings += _check_local_services()
 
     findings.sort(key=lambda x: (_SEV_RANK.get(x["severity"], 9),
                                  0 if x["status"] == "fail" else 1))
