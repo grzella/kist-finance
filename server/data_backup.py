@@ -116,6 +116,97 @@ def create_backup():
             "encrypted": encrypted, "size_kb": round(size / 1024, 1)}
 
 
+def list_backups():
+    """Snapshots in the backup folder, newest first (excludes safety copies)."""
+    folder = _folder()
+    if not folder or not os.path.isdir(folder):
+        return []
+    out = []
+    for p in sorted(Path(folder).glob("finance-*.db*"), key=lambda p: p.stat().st_mtime, reverse=True):
+        out.append({"file": p.name,
+                    "when": datetime.fromtimestamp(p.stat().st_mtime).isoformat(timespec="minutes"),
+                    "size_kb": round(p.stat().st_size / 1024, 1),
+                    "encrypted": p.name.endswith(".enc")})
+    return out
+
+
+def _decrypt_to(src, dst):
+    from cryptography.fernet import Fernet
+    fkey = base64.urlsafe_b64encode(hashlib.sha256(os.environ["BACKUP_KEY"].encode()).digest())
+    Path(dst).write_bytes(Fernet(fkey).decrypt(Path(src).read_bytes()))
+
+
+def restore(filename):
+    """Restore a snapshot into the live DB. Makes a pre-restore safety copy first,
+    and writes via SQLite's backup API (safe with WAL / open connections)."""
+    folder = _folder()
+    if not folder:
+        return {"ok": False, "error": "no backup folder set"}
+    if not filename or "/" in filename or ".." in filename:
+        return {"ok": False, "error": "invalid backup name"}
+    src = Path(folder) / filename
+    if not src.exists():
+        return {"ok": False, "error": "backup not found"}
+    live = _db_path()
+    if not live or not os.path.exists(live):
+        return {"ok": False, "error": "live database not found"}
+
+    plain, tmp = str(src), None
+    if filename.endswith(".enc"):
+        if not os.environ.get("BACKUP_KEY"):
+            return {"ok": False, "error": "encrypted backup — set BACKUP_KEY to restore"}
+        try:
+            import cryptography  # noqa: F401
+        except Exception:
+            return {"ok": False, "error": "encrypted backup — pip install cryptography to restore"}
+        tmp = str(src) + ".plain.tmp"
+        try:
+            _decrypt_to(str(src), tmp)
+        except Exception as e:
+            return {"ok": False, "error": "decrypt failed: " + str(e)[:60]}
+        plain = tmp
+
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    safety = os.path.join(folder, f"pre-restore-{ts}.db")
+    try:
+        sl = sqlite3.connect(live); sd = sqlite3.connect(safety)
+        sl.backup(sd); sd.close(); sl.close()
+    except Exception:
+        safety = None
+    try:
+        ss = sqlite3.connect(plain); dl = sqlite3.connect(live)
+        ss.backup(dl); dl.close(); ss.close()
+    except Exception as e:
+        return {"ok": False, "error": "restore failed: " + str(e)[:80]}
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
+    return {"ok": True, "restored": filename,
+            "safety_copy": os.path.basename(safety) if safety else None}
+
+
+def set_auto(enabled):
+    planner.set_settings({"backup_auto": bool(enabled)})
+    return {"ok": True, "auto": bool(enabled)}
+
+
+def maybe_auto_backup(min_hours=24):
+    """If auto-backup is on and the newest snapshot is older than min_hours (or
+    none exists), create one. Best-effort; safe to call on every app start."""
+    try:
+        if not planner.get_setting("backup_auto") or not _folder():
+            return None
+        st = status()
+        last = st.get("last")
+        if last:
+            age_h = (datetime.now() - datetime.fromisoformat(last["when"])).total_seconds() / 3600
+            if age_h < min_hours:
+                return None
+        return create_backup()
+    except Exception:
+        return None
+
+
 def status():
     d = planner.get_setting("backup_dir") or ""
     folder = _folder()
@@ -134,6 +225,8 @@ def status():
     except Exception:
         enc_avail = False
     return {"dir": d, "configured": bool(d), "last": last, "count": count,
+            "auto": bool(planner.get_setting("backup_auto")),
             "destinations": list_destinations(),
+            "backups": list_backups(),
             "encryption": {"on": enc_ready and enc_avail, "lib": enc_avail,
                            "hint": "" if enc_avail else "optional: pip install cryptography + BACKUP_KEY in .env"}}

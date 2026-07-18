@@ -18,6 +18,11 @@ import planner  # noqa: E402
 
 db.init_db()          # base tables (self-contained; replaces external skill)
 planner.ensure_tables()
+try:                  # auto-backup on start if enabled and the last one is stale
+    import data_backup as _bk
+    _bk.maybe_auto_backup()
+except Exception:
+    pass
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
@@ -487,6 +492,18 @@ def backup_config():
 def backup_run():
     import data_backup as backup
     return jsonify(backup.create_backup())
+
+
+@app.post("/api/backup/restore")
+def backup_restore():
+    import data_backup as backup
+    return jsonify(backup.restore(request.get_json(force=True).get("file", "")))
+
+
+@app.post("/api/backup/auto")
+def backup_auto():
+    import data_backup as backup
+    return jsonify(backup.set_auto(bool(request.get_json(force=True).get("enabled"))))
 
 
 @app.get("/api/security-review")

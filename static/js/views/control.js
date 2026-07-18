@@ -126,6 +126,12 @@ async function renderControl(el) {
         </select>
         <button class="primary" id="bkRun" ${bk.configured ? "" : "disabled"}>Back up now</button>
       </div>
+      <div class="row mt" style="gap:14px;align-items:center;flex-wrap:wrap">
+        <label style="cursor:pointer;font-size:.85em"><input type="checkbox" id="bkAuto" ${bk.auto ? "checked" : ""}> Auto-backup on start (if the last one is older than 24h)</label>
+        ${bk.backups && bk.backups.length ? `<select id="bkRestoreSel" style="min-width:260px">
+          ${bk.backups.map((s) => `<option value="${s.file}">${s.file} · ${s.when} · ${s.size_kb} KB${s.encrypted ? " 🔒" : ""}</option>`).join("")}
+        </select><button id="bkRestore" class="danger">Restore</button>` : ""}
+      </div>
       <div class="muted mt" style="font-size:.82em">
         ${bk.last ? `Last: <b>${bk.last.name}</b> (${bk.last.when}) · ${bk.count} total` : "No backups yet."}
         ${bk.encryption.on ? " · 🔒 encrypted" : bk.encryption.lib ? " · set BACKUP_KEY in .env to encrypt" : " · " + bk.encryption.hint}
@@ -222,6 +228,27 @@ async function renderControl(el) {
           : `<div class="neg">${r.error}</div>`;
       } catch (e) { o.innerHTML = `<div class="neg">${e.message}</div>`; }
       finally { bkRun.disabled = false; }
+    });
+  }
+  const bkAuto = document.getElementById("bkAuto");
+  if (bkAuto) {
+    bkAuto.addEventListener("change", (e) => api.post("/api/backup/auto", { enabled: e.target.checked }));
+  }
+  const bkRestore = document.getElementById("bkRestore");
+  if (bkRestore) {
+    bkRestore.addEventListener("click", async () => {
+      const file = document.getElementById("bkRestoreSel").value;
+      if (!confirm(`Restore the database from "${file}"? Current data will be replaced (a pre-restore copy is made first).`)) return;
+      bkRestore.disabled = true;
+      const o = document.getElementById("bkOut");
+      o.innerHTML = '<div class="muted">Restoring…</div>';
+      try {
+        const r = await api.post("/api/backup/restore", { file });
+        o.innerHTML = r.ok
+          ? `<div class="pos">✅ Restored ${r.restored}${r.safety_copy ? " · pre-restore copy: " + r.safety_copy : ""}. Refresh the page.</div>`
+          : `<div class="neg">${r.error}</div>`;
+      } catch (e) { o.innerHTML = `<div class="neg">${e.message}</div>`; }
+      finally { bkRestore.disabled = false; }
     });
   }
   document.getElementById("secRun").addEventListener("click", async (e) => {
