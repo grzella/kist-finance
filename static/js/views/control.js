@@ -101,7 +101,7 @@ async function renderControl(el) {
       </div>
       <div id="aiOut" class="mt"></div>
       ${ragStatus ? `<div class="row mt" style="gap:10px;align-items:center;font-size:.85em;padding-top:8px;border-top:1px solid #2a2f45">
-        <span>🔎 Local RAG: <b>${ragStatus.chunks}</b> chunks <span class="muted">(${ragStatus.engine})</span></span>
+        <span>🔎 Local RAG: <b>${ragStatus.chunks}</b> chunks <span class="muted">(${ragStatus.engine}${ragStatus.embedded ? ", " + ragStatus.embedded + " embedded" : ""})</span></span>
         <button id="ragReindex">Reindex</button>
         <span class="muted">${ragStatus.hint || "AI questions are automatically grounded in your own data"}</span></div>` : ""}
       ${aiLog && aiLog.stats.total ? `<details class="mt" style="font-size:.85em">

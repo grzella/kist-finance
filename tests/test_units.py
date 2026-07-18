@@ -69,6 +69,38 @@ def test_backup_restore_reverts_changes(client, tmp_path):
     assert backup.restore("../../etc/passwd")["ok"] is False
 
 
+def test_rag_semantic_hybrid_finds_without_lexical_overlap(client, monkeypatch):
+    """With embeddings present, a query semantically close but sharing NO words
+    still surfaces the right chunk — what pure BM25 cannot do."""
+    import json
+    import uuid
+    import rag
+    import llm_local
+    import engine_bridge as eb
+
+    # toy embedder: "retirement" ~ "pension" (close), "car" far away
+    vocab = {"pension": [1.0, 0, 0], "retirement": [0.95, 0.1, 0],
+             "car": [0, 1.0, 0], "loan": [0, 0.95, 0.1]}
+
+    def fake_embed(text):
+        v = [0.0, 0.0, 0.0]
+        for w, vec in vocab.items():
+            if w in text.lower():
+                v = [a + b for a, b in zip(v, vec)]
+        return v if any(v) else [0.01, 0.01, 0.01]
+
+    monkeypatch.setattr(llm_local, "embed", fake_embed)
+    rag.ensure_tables()
+    eb._exec("delete from rag_chunks")
+    for src, txt in [("a", "my pension account balance"), ("b", "the car loan payment")]:
+        emb = json.dumps(rag._normalize(fake_embed(txt)))
+        eb._exec("insert into rag_chunks (id, source, ref, text, created_at, embedding) "
+                 "values (?,?,?,?,?,?)", (uuid.uuid4().hex, src, "", txt, "now", emb))
+
+    hits = rag.search("saving for retirement", k=2)  # no word overlap with "pension"
+    assert hits and hits[0]["text"] == "my pension account balance"
+
+
 def test_rag_indexes_derived_sources(client):
     import rag
     rag.reindex()

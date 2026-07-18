@@ -78,7 +78,19 @@ Then set `LOCAL_LLM_KEY=<secret>` (and optionally `LOCAL_LLM_URL`) in `.env`. Co
 
 **AI mode — local by default, cloud strictly opt-in.** Control Center has an **AI mode** switch. The default is **local only**: every AI question stays on your machine. Optionally flip it to **local + Claude**, which asks *both* your local model and Anthropic's Claude and shows the answers side by side — often the best of the two — with a plain warning that this mode **sends the prompt to Anthropic**. Cloud is never on unless you turn it on; set your own `ANTHROPIC_API_KEY` in `.env` to enable it. AI answers are framed by a rigorous financial-analyst system prompt (explicit assumptions, scenario ranges, opportunity-cost/tax, a one-line bottom line).
 
-**Local RAG — answers grounded in your own numbers.** A pure-stdlib **BM25 retriever** (zero dependencies, fully offline) indexes your own data — goals, wealth, offers, business entries, saved analyses — into a `rag_chunks` table. Every AI question is automatically grounded in the most relevant snippets, so the model reasons about *your* figures, not generic ones. Hit **Reindex** in Control Center after adding data. (Deliberately not a vector DB: it needs no extensions, no embedding server, and works out of the box.)
+**Local RAG — answers grounded in your own numbers.** A pure-stdlib retriever (zero dependencies, fully offline) indexes your own data — goals, wealth, offers, business entries, saved analyses, plus computed recommendations and reminders — into a `rag_chunks` table. Every AI question is automatically grounded in the most relevant snippets, so the model reasons about *your* figures, not generic ones. Hit **Reindex** in Control Center after adding data.
+
+Retrieval is **BM25 (lexical) out of the box**, and upgrades to a **BM25 + semantic hybrid** if you point it at a local embedding server — then a question can match by *meaning* even with different words or across languages ("saving for retirement" finds your "pension account"). To enable it, run an embedding model and set two env vars, then Reindex:
+
+```bash
+llama-server -hf <embedding-model-GGUF> --embeddings --port 8081
+# in .env:
+LOCAL_EMBED_URL=http://127.0.0.1:8081/v1
+# LOCAL_EMBED_MODEL=...   # optional, if the server needs an explicit model id
+# LOCAL_EMBED_KEY=...     # optional, if the embedding server requires a key
+```
+
+Embeddings are stored per chunk (L2-normalized) and cosine similarity is computed in plain Python — no vector DB, no SQLite extension. Without an embedding server, everything stays lexical and works exactly as before; Control Center shows how many chunks are embedded.
 
 ## Backups
 

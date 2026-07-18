@@ -74,6 +74,36 @@ def chat_json(prompt, schema, system=None, max_tokens=400, temperature=0.2):
         return None
 
 
+# --- embeddings (optional, for semantic RAG) ---
+EMBED_URL = os.environ.get("LOCAL_EMBED_URL") or BASE
+EMBED_MODEL = os.environ.get("LOCAL_EMBED_MODEL", "")
+
+
+def embed(text):
+    """Embedding vector for text from a local server (OpenAI-compatible
+    /embeddings). None if the server serves no embeddings — RAG then stays
+    lexical. Run a dedicated embedding server, e.g.:
+      llama-server -hf <embed-model-GGUF> --embeddings --port 8081
+    and set LOCAL_EMBED_URL=http://127.0.0.1:8081/v1 (+ LOCAL_EMBED_KEY if keyed)."""
+    if not text:
+        return None
+    payload = {"input": text[:8000]}
+    if EMBED_MODEL:
+        payload["model"] = EMBED_MODEL
+    headers = {"Content-Type": "application/json"}
+    ek = os.environ.get("LOCAL_EMBED_KEY", "") or KEY
+    if ek:
+        headers["Authorization"] = "Bearer " + ek
+    req = urllib.request.Request(EMBED_URL + "/embeddings",
+                                 data=json.dumps(payload).encode(), headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            out = json.loads(r.read())
+        return out["data"][0]["embedding"]
+    except Exception:
+        return None
+
+
 def categorize_transaction(description, amount, categories):
     """Categorize a transaction locally (data does not leave the machine).
 

@@ -10,12 +10,16 @@ loading disabled (no enable_load_extension), and a local llama-server serves no
 embeddings without `--embeddings`. Lexical BM25 gives a working, private RAG with
 none of that machinery. An embedding backend can be added later.
 """
+import json
 import math
 import re
 import uuid
 from datetime import datetime
 
 import engine_bridge as eb
+
+# hybrid weighting: how much semantic (cosine) vs lexical (BM25) in the blend
+_SEMANTIC_WEIGHT = 0.5
 
 _TOKEN = re.compile(r"[0-9a-zA-Ząćęłńóśźż]+")
 # short PL/EN stoplist — drops noise, keeps content words
@@ -30,10 +34,24 @@ def ensure_tables():
     eb._exec("""create table if not exists rag_chunks (
         id text primary key, source text not null, ref text default '',
         text text not null, created_at text not null)""")
+    # semantic RAG: an optional per-chunk embedding (JSON array, L2-normalized)
+    try:
+        eb._exec("alter table rag_chunks add column embedding text")
+    except Exception:
+        pass  # column already exists
 
 
 def _tok(s):
     return [t for t in _TOKEN.findall((s or "").lower()) if len(t) >= 2 and t not in _STOP]
+
+
+def _normalize(vec):
+    n = math.sqrt(sum(x * x for x in vec)) or 1.0
+    return [x / n for x in vec]
+
+
+def _dot(a, b):
+    return sum(x * y for x, y in zip(a, b))
 
 
 def _gather():
@@ -97,39 +115,45 @@ def _gather():
 
 
 def reindex():
-    """Rebuild the index from scratch. Returns the number of chunks."""
+    """Rebuild the index from scratch. Returns the number of chunks.
+
+    If a local embedding server is reachable, each chunk is embedded (stored
+    L2-normalized) so search can run the semantic + lexical hybrid. If not,
+    chunks are stored without embeddings and search stays pure BM25."""
+    import llm_local
     ensure_tables()
     eb._exec("delete from rag_chunks")
+    use_emb = llm_local.embed("probe") is not None   # one probe, not per-chunk
     now = datetime.now().isoformat(timespec="seconds")
     n = 0
     for source, ref, text in _gather():
-        eb._exec("insert into rag_chunks (id, source, ref, text, created_at) values (?,?,?,?,?)",
-                 (uuid.uuid4().hex, source, ref, text, now))
+        emb = None
+        if use_emb:
+            vec = llm_local.embed(text)
+            if vec:
+                emb = json.dumps(_normalize(vec))
+        eb._exec("insert into rag_chunks (id, source, ref, text, created_at, embedding) "
+                 "values (?,?,?,?,?,?)",
+                 (uuid.uuid4().hex, source, ref, text, now, emb))
         n += 1
     return n
 
 
-def search(query, k=5):
-    """BM25 ranking. Returns a list of {source, ref, text, score}."""
+def _bm25_scores(query, rows):
+    """{row_index: bm25} for rows whose text lexically overlaps the query."""
     q = set(_tok(query))
     if not q:
-        return []
-    try:
-        rows = eb._rows("select source, ref, text from rag_chunks")
-    except Exception:
-        return []
-    if not rows:
-        return []
-    docs = [(_tok(r["text"]), r) for r in rows]
+        return {}
+    docs = [_tok(r["text"]) for r in rows]
     N = len(docs)
-    avgdl = sum(len(d) for d, _ in docs) / N or 1
+    avgdl = sum(len(d) for d in docs) / N or 1
     df = {}
-    for toks, _ in docs:
+    for toks in docs:
         for t in set(toks):
             df[t] = df.get(t, 0) + 1
     k1, b = 1.5, 0.75
-    scored = []
-    for toks, r in docs:
+    out = {}
+    for i, toks in enumerate(docs):
         if not toks:
             continue
         tf = {}
@@ -143,7 +167,50 @@ def search(query, k=5):
             idf = math.log(1 + (N - df[t] + 0.5) / (df[t] + 0.5))
             s += idf * (tf[t] * (k1 + 1)) / (tf[t] + k1 * (1 - b + b * dl / avgdl))
         if s > 0:
-            scored.append((s, r))
+            out[i] = s
+    return out
+
+
+def search(query, k=5):
+    """Hybrid ranking: BM25 (lexical) blended with cosine similarity of query and
+    chunk embeddings (semantic), when embeddings are present. Degrades to pure
+    BM25 when no chunk has an embedding. Returns [{source, ref, text, score}]."""
+    if not query or not query.strip():
+        return []
+    try:
+        rows = eb._rows("select source, ref, text, embedding from rag_chunks")
+    except Exception:
+        return []
+    if not rows:
+        return []
+
+    bm = _bm25_scores(query, rows)                      # index -> bm25
+    has_emb = any(r.get("embedding") for r in rows)
+    cos = {}
+    if has_emb:
+        import llm_local
+        qv = llm_local.embed(query)
+        if qv:
+            qn = _normalize(qv)
+            for i, r in enumerate(rows):
+                if r.get("embedding"):
+                    try:
+                        cos[i] = max(0.0, _dot(qn, json.loads(r["embedding"])))
+                    except Exception:
+                        pass
+
+    if not bm and not cos:
+        return []
+    bm_max = max(bm.values()) if bm else 0.0
+    cos_max = max(cos.values()) if cos else 0.0
+    w = _SEMANTIC_WEIGHT if cos else 0.0                 # no semantic → pure lexical
+    scored = []
+    for i in set(bm) | set(cos):
+        bn = (bm.get(i, 0.0) / bm_max) if bm_max else 0.0
+        cn = (cos.get(i, 0.0) / cos_max) if cos_max else 0.0
+        score = (1 - w) * bn + w * cn
+        if score > 0:
+            scored.append((score, rows[i]))
     scored.sort(key=lambda x: -x[0])
     return [{"source": r["source"], "ref": r["ref"], "text": r["text"], "score": round(s, 3)}
             for s, r in scored[:k]]
@@ -165,9 +232,18 @@ def context_for(query, k=4, max_chars=1400):
 
 
 def status():
+    n, emb = 0, 0
     try:
         n = eb._rows("select count(*) c from rag_chunks")[0]["c"]
+        emb = eb._rows("select count(*) c from rag_chunks where embedding is not null")[0]["c"]
     except Exception:
-        n = 0
-    return {"available": True, "engine": "BM25 (stdlib, offline)", "chunks": n,
-            "hint": "" if n else "click “Reindex” in Control to build the index from your data"}
+        pass
+    engine = "BM25 + semantic (hybrid)" if emb else "BM25 (lexical, offline)"
+    if not n:
+        hint = "click “Reindex” in Control to build the index from your data"
+    elif not emb:
+        hint = ("lexical only — run an embedding server (LOCAL_EMBED_URL) and Reindex "
+                "to enable semantic search")
+    else:
+        hint = ""
+    return {"available": True, "engine": engine, "chunks": n, "embedded": emb, "hint": hint}
