@@ -212,16 +212,16 @@ _RSU_DEFAULT = {
     "grant_month": "2026-09",
     "vesting_years": 4,
     "vests_per_year": 4,
-    "shares_held": 0,                  # akcje już posiadane (po vestach)
-    "shares_next_vest": 0,             # ile akcji wpadnie w następnym veście
-    "vest_months": [2, 5, 8, 11],      # luty, maj, sierpień, listopad
-    "target_bear": 75,                 # dolny target analityków / 52w low
-    "target_bull": 115,                # górny target analityków
-    "analyst_target_mid": 145,         # konsensus (mediana targetów)
+    "shares_held": 0,                  # shares already held (after vests)
+    "shares_next_vest": 0,             # how many shares vest next
+    "vest_months": [2, 5, 8, 11],      # Feb, May, Aug, Nov
+    "target_bear": 75,                 # lower analyst target / 52w low
+    "target_bull": 115,                # upper analyst target
+    "analyst_target_mid": 145,         # consensus (median of targets)
     "mc_drift_annual": 0.08,           # dryf w symulacji Monte Carlo (roczny)
-    "mc_sims": 1500,                   # liczba ścieżek MC
+    "mc_sims": 1500,                   # number of MC paths
     "perf_equity_multiplier": 1.5,     # 150% akcji rocznie (Twoja ocena Exceeds/Greatly)
-    "perf_base_raise_annual": 0.08,    # ~8% podwyżki base rocznie
+    "perf_base_raise_annual": 0.08,    # ~8% base raise per year
 }
 
 
@@ -685,11 +685,11 @@ def _fx_one(cfg):
         trend = "?"
     # „favorable position": jak blisko korzystnego skraju (0-100, 100 = idealny moment poziomowo)
     fav_pos = pos if fav_high else (100 - pos)
-    # czy trend/momentum pcha DALEJ w korzystną stronę (czyli warto poczekać)?
-    # dla fav_high: korzystnie=wyżej; jeśli momentum dodatnie i trend wzrostowy -> może iść wyżej -> poczekaj
+    # does trend/momentum push FURTHER the favorable way (i.e. worth waiting)?
+    # for fav_high: favorable=higher; if momentum positive and trend up -> may rise -> wait
     pushing_further = ((mom30 > 0.5 and trend == "up") if fav_high
                        else (mom30 < -0.5 and trend == "down"))
-    # przewartościowanie względem SMA50 (mean-reversion): korzystny skraj + wychylenie = teraz
+    # overshoot vs SMA50 (mean-reversion): favorable extreme + deviation = now
     overshoot = (dist50 > 1.5) if fav_high else (dist50 < -1.5)
 
     reasons = []
@@ -729,11 +729,11 @@ def _fx_one(cfg):
 
 
 def _fx_backtest(closes, fav_high, horizon=21):
-    """Czy sygnał 'poziom korzystny' faktycznie łapał dobre momenty?
-    Mierzy: po sygnale, jak kurs ruszył w ciągu ~miesiąca (w Twoją stronę = źle,
-    bo mogłeś poczekać; przeciw Tobie = dobrze, złapałeś skraj)."""
+    """Did the 'favorable level' signal actually catch good moments?
+    Measures: after a signal, how the rate moved over ~a month (in your favor = bad,
+    you could have waited; against you = good, you caught the extreme)."""
     n = len(closes)
-    win = 120  # krótsze okno (dane FX ~1 rok) — więcej testowalnych punktów
+    win = 120  # shorter window (FX data ~1 year) — more testable points
     hits = 0; total = 0; fwd_sum = 0.0
     for i in range(win, n - horizon):
         window = closes[i - win:i + 1]
@@ -742,13 +742,13 @@ def _fx_backtest(closes, fav_high, horizon=21):
             continue
         p = 100 * (closes[i] - lo) / (hi - lo)
         favp = p if fav_high else (100 - p)
-        if favp >= 70:  # sygnał 'korzystny poziom'
+        if favp >= 70:  # 'favorable level' signal
             total += 1
             fwd = (closes[i + horizon] / closes[i] - 1) * 100
-            # 'w Twoją stronę' dalej = fwd>0 gdy fav_high (kurs dalej rósł -> mogłeś czekać)
+            # 'in your favor' further = fwd>0 when fav_high (rate kept rising -> could have waited)
             moved_further = fwd > 0 if fav_high else fwd < 0
             if not moved_further:
-                hits += 1  # kurs się cofnął = dobrze, złapałeś dobry moment
+                hits += 1  # rate pulled back = good, you caught a good moment
             fwd_sum += (fwd if fav_high else -fwd)
     if total < 5:
         return {"status": "not enough signals in history", "n": total}
@@ -761,7 +761,7 @@ def fx_analysis():
     return {"pairs": [_fx_one(c) for c in _FX_PAIRS]}
 
 
-# ---------- samouczący dziennik prognoz (conformal) ----------
+# ---------- self-learning forecast journal (conformal) ----------
 
 def _ft_rows(q, params=()):
     with db.get_conn() as conn:
@@ -771,7 +771,7 @@ def _ft_rows(q, params=()):
 
 
 def forecast_residuals(ticker):
-    """Znormalizowane błędy rozliczonych prognoz per horyzont (do kalibracji)."""
+    """Normalized errors of settled forecasts per horizon (for calibration)."""
     rows = _ft_rows("select horizon_days, resid_z from forecast_track "
                     "where ticker=? and resid_z is not null "
                     "order by made_on desc limit 400", (ticker,))
@@ -782,9 +782,9 @@ def forecast_residuals(ticker):
 
 
 def record_and_score_forecasts():
-    """Codzienny cykl samouczenia: (1) rozlicz dojrzałe prognozy przeciw
-    realnym cenom, (2) zapisz dzisiejsze pasma dla całej watchlisty.
-    Wywoływane przy odświeżeniu danych i z health()."""
+    """Daily self-learning cycle: (1) settle matured forecasts against real
+    prices, (2) store today's bands for the whole watchlist.
+    Called on data refresh and from health()."""
     import forecast_models as fm
     _ensure_cache()
     tickers = [t["ticker"] for t in get_watchlist()]
@@ -796,7 +796,7 @@ def record_and_score_forecasts():
         closes = [h["close"] for h in hist]
         dates = [h["date"] for h in hist]
         idx = {d: i for i, d in enumerate(dates)}
-        # 1) rozlicz dojrzałe
+        # 1) settle matured
         for row in _ft_rows("select * from forecast_track where ticker=? "
                             "and realized_close is null", (tk,)):
             i0 = idx.get(row["made_on"])
@@ -817,7 +817,7 @@ def record_and_score_forecasts():
                               round(move / s_n, 4) if s_n else None, row["id"]))
                 conn.commit()
             scored += 1
-        # 2) zapisz dzisiejsze pasma (kalibrowane własnymi błędami, gdy są)
+        # 2) store today's bands (calibrated with own errors when available)
         today = dates[-1]
         bands = fm.short_term_bands_calibrated(closes, forecast_residuals(tk))
         if not bands:
@@ -836,7 +836,7 @@ def record_and_score_forecasts():
 
 
 def forecast_selfscore():
-    """Skuteczność własna: pokrycie pasm per horyzont (cel ~80%) + liczność."""
+    """Own accuracy: band coverage per horizon (target ~80%) + count."""
     rows = _ft_rows("select horizon_days h, count(*) n, sum(inside) k "
                     "from forecast_track where inside is not null group by horizon_days")
     out = {"horizons": [], "total_scored": 0}
@@ -852,7 +852,7 @@ def forecast_selfscore():
 
 
 def ticker_bands(ticker):
-    """Pasma short-term dla tickera, samo-kalibrowane gdy mamy dość rozliczeń."""
+    """Short-term bands for a ticker, self-calibrated when we have enough settlements."""
     import forecast_models as fm
     hist = prices(ticker, days=600)
     closes = [h["close"] for h in hist]
@@ -865,8 +865,8 @@ def ticker_bands(ticker):
 
 def backfill_forecasts(step=5):
     """Jednorazowe zasilenie dziennika: prognozy walk-forward wstecz po historii
-    (tylko dane dostępne w danym dniu), od razu rozliczane. Dzięki temu
-    kalibracja konformalna startuje z realnym materiałem, zamiast czekać kwartał."""
+    (only data available on that day), settled immediately. This lets the
+    conformal calibration start with real material instead of waiting a quarter."""
     import forecast_models as fm
     _ensure_cache()
     added = 0

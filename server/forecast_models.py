@@ -1,14 +1,13 @@
-"""Prognozowanie: wspólny silnik modeli (czysty stdlib, bez numpy).
+"""Forecasting: a shared model engine (pure stdlib, no numpy).
 
-Fundament z researchu (2026-07, pełny raport: analysis_forecast_models):
-- KRÓTKI horyzont (1 dzień–3 mies.): kierunku pojedynczej akcji/waluty NIE da
-  się wiarygodnie przewidzieć (Meese-Rogoff dla FX; ~52% trafności kierunku
-  dla modeli ML na akcjach ≈ rzut monetą). Przewidywalna jest ZMIENNOŚĆ
-  (clustering) — więc prognozujemy PASMA (zakresy), nie kierunek:
-  EWMA λ=0.94 (RiskMetrics) + krzyżowa kontrola z empirycznymi kwantylami
-  realnych N-dniowych ruchów (łapie grube ogony, których EWMA nie widzi).
-  Pasmo = szersze z dwóch. Samoocena: pokrycie pasma p10–p90 (cel ~80%).
-- DŁUGI horyzont: patrz long_term_* niżej (bootstrap blokowy / scenariusze).
+Grounded in research (2026-07, full report: analysis_forecast_models):
+- SHORT horizon (1 day–3 months): the direction of a single stock/FX rate can
+  NOT be reliably predicted (Meese-Rogoff for FX; ~52% directional accuracy for
+  ML stock models ≈ a coin flip). VOLATILITY is predictable (clustering) — so we
+  forecast BANDS (ranges), not direction: EWMA λ=0.94 (RiskMetrics) cross-checked
+  against empirical quantiles of real N-day moves (catches fat tails EWMA misses).
+  The band is the wider of the two. Self-grading: p10–p90 coverage (target ~80%).
+- LONG horizon: see long_term_* below (block bootstrap / scenarios).
 """
 import math
 from statistics import NormalDist
@@ -27,7 +26,7 @@ def log_returns(closes):
 
 
 def ewma_vol_daily(returns, lam=0.94):
-    """EWMA (RiskMetrics λ=0.94) dzienna sigma z dziennych log-zwrotów."""
+    """EWMA (RiskMetrics λ=0.94) daily sigma from daily log-returns."""
     if not returns:
         return None
     var = returns[0] ** 2
@@ -48,7 +47,7 @@ def _quantile(sorted_vals, q):
 
 
 def empirical_nday_quantiles(closes, n, qs=(0.10, 0.50, 0.90)):
-    """Kwantyle REALNYCH n-sesyjnych log-ruchów (okna nakładające się)."""
+    """Quantiles of REAL n-session log-moves (overlapping windows)."""
     moves = []
     for i in range(len(closes) - n):
         a, b = closes[i], closes[i + n]
@@ -62,8 +61,8 @@ def empirical_nday_quantiles(closes, n, qs=(0.10, 0.50, 0.90)):
 
 def short_term_bands(closes, horizons=(5, 21, 63)):
     """Pasma cen p10/p50/p90 na N sesji: EWMA vs empiryczne kwantyle,
-    per kwantyl bierzemy szersze (konserwatywne). Zwraca też metadane
-    do jedno-zdaniowego wyjaśnienia w UI."""
+    per quantile we take the wider (conservative) one. Also returns metadata
+    for a one-sentence explanation in the UI."""
     if not closes or len(closes) < 60:
         return None
     last = closes[-1]
@@ -88,7 +87,7 @@ def short_term_bands(closes, horizons=(5, 21, 63)):
             elif e is None:
                 merged[q] = p
             else:
-                # szersze pasmo: dalej od zera w stronę danego ogona
+                # wider band: further from zero toward the given tail
                 merged[q] = min(e, p) if q < 0.5 else max(e, p)
         para_only = emp == {}
         out["horizons"].append({
@@ -102,14 +101,14 @@ def short_term_bands(closes, horizons=(5, 21, 63)):
 
 
 def short_term_coverage_backtest(closes, n=21, min_obs=60):
-    """Walk-forward samoocena pasm: jak często realna cena po n sesjach
-    mieściła się w p10–p90 liczonym z danych dostępnych w danym dniu.
+    """Walk-forward self-grading of bands: how often the real price after n
+    sessions fell inside p10–p90 computed from data available on that day.
     Cel ~80% (pasmo 80-procentowe)."""
     if len(closes) < 120 + n:
         return None
     inside = total = 0
     start = 100
-    step = max(1, (len(closes) - n - start) // 120)  # max ~120 punktów pomiaru
+    step = max(1, (len(closes) - n - start) // 120)  # at most ~120 measurement points
     z10, z90 = _ND.inv_cdf(0.10), _ND.inv_cdf(0.90)
     for i in range(start, len(closes) - n, step):
         window = closes[:i + 1]
@@ -134,9 +133,9 @@ def short_term_coverage_backtest(closes, n=21, min_obs=60):
 # ---------------------------------------------------------------- long term
 
 def block_bootstrap_annual(monthly_returns, years, sims=1000, block=24, seed=42):
-    """Bootstrap blokowy (bloki ~24-mies. zachowują autokorelację; Cogneau-Zakamouline) na REALNYCH
-    miesięcznych zwrotach. Zwraca percentyle salda końcowego mnożnika.
-    Gdy brak danych — użyj scenariuszy deterministycznych (fire_projection)."""
+    """Block bootstrap (~24-month blocks preserve autocorrelation; Cogneau-Zakamouline) on REAL
+    monthly returns. Returns percentiles of the ending balance multiplier.
+    With no data, fall back to deterministic scenarios (fire_projection)."""
     import random
     if not monthly_returns or len(monthly_returns) < block * 2:
         return None
@@ -162,8 +161,8 @@ def block_bootstrap_annual(monthly_returns, years, sims=1000, block=24, seed=42)
 
 
 def goal_eta_band(remaining, pace, pace_wobble=0.25):
-    """Niepewność ETA celu: tempo ±25% (empiryczna zmienność nadwyżek mies.).
-    Zwraca (miesiące_optymistycznie, bazowo, pesymistycznie)."""
+    """Goal-ETA uncertainty: pace ±25% (empirical volatility of monthly surpluses).
+    Returns (months_optimistic, base, pessimistic)."""
     if not pace or pace <= 0 or remaining is None or remaining <= 0:
         return None
     base = remaining / pace
@@ -175,13 +174,13 @@ def goal_eta_band(remaining, pace, pace_wobble=0.25):
 
 # ---------------------------------------------------------------- samouczenie
 # Kalibracja konformalna: pasma budowane z EMPIRYCZNYCH kwantyli znormalizowanych
-# błędów własnych prognoz (z = realny log-ruch / przewidziana sigma_n). Gdy model
-# systematycznie niedoszacowuje zmienność danego tickera, jego pasma same się
-# poszerzają — bez LLM, czysta statystyka (conformal prediction).
+# a model's own past errors (z = real log-move / predicted sigma_n). When a model
+# systematically underestimates a ticker's volatility, its bands widen by
+# themselves — no LLM, pure statistics (conformal prediction).
 
 def conformal_quantiles(residuals_z, min_n=40):
-    """Kwantyle 10/90 znormalizowanych błędów historycznych prognoz.
-    None gdy za mało danych (wtedy silnik używa teorii + kwantyli cen)."""
+    """10/90 quantiles of normalized historical forecast errors.
+    None when there's too little data (then the engine uses theory + price quantiles)."""
     if not residuals_z or len(residuals_z) < min_n:
         return None
     zs = sorted(residuals_z)
@@ -189,8 +188,8 @@ def conformal_quantiles(residuals_z, min_n=40):
 
 
 def short_term_bands_calibrated(closes, residuals_by_h=None, horizons=(5, 21, 63)):
-    """Jak short_term_bands, ale jeśli mamy ≥40 rozliczonych własnych prognoz
-    dla horyzontu — kwantyle pasma biorą się z NASZYCH błędów (samouczenie)."""
+    """Like short_term_bands, but if we have ≥40 settled own-forecasts for a
+    horizon, the band quantiles come from OUR errors (self-learning)."""
     base = short_term_bands(closes, horizons)
     if not base:
         return None
