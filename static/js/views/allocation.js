@@ -1,18 +1,18 @@
 async function renderAllocation(el) {
   const d = await api.get("/api/allocation");
-  const flagCls = (f) => f === "za dużo" ? "neg" : f === "dokładaj" ? "pos" : "muted";
+  const flagCls = (f) => f === "za dużo" || f === "too much" ? "neg" : f === "dokładaj" || f === "add more" ? "pos" : "muted";
   el.innerHTML = `
-    <h2>📊 Alokacja aktywów — struktura i koncentracja</h2>
-    <div class="muted" style="margin-bottom:12px">Majątek netto ${fmt.pln(d.total)} (nieruchomości liczone jako equity po odjęciu kredytów).
-      Cele to orientacyjne docelowe udziały — edytowalne w kodzie (ALLOC_TARGETS).</div>
+    <h2>📊 Asset allocation — structure and concentration</h2>
+    <div class="muted" style="margin-bottom:12px">Net wealth ${fmt.pln(d.total)} (real estate counted as equity net of loans).
+      Targets are indicative desired shares — editable in code (ALLOC_TARGETS).</div>
 
     <div class="grid cols-2">
-      <div class="card"><h3>Struktura majątku</h3><canvas id="allocChart" height="220"></canvas></div>
+      <div class="card"><h3>Wealth structure</h3><canvas id="allocChart" height="220"></canvas></div>
       <div class="card">
-        <h3>Udział vs cel</h3>
+        <h3>Share vs target</h3>
         <div style="overflow-x:auto"><table>
-          <thead><tr><th>Klasa</th><th style="text-align:right">Wartość</th>
-            <th style="text-align:right">Udział</th><th style="text-align:right">Cel</th><th style="text-align:right">Odchył</th></tr></thead>
+          <thead><tr><th>Class</th><th style="text-align:right">Value</th>
+            <th style="text-align:right">Share</th><th style="text-align:right">Target</th><th style="text-align:right">Drift</th></tr></thead>
           <tbody>${d.rows.map((r) => `<tr>
             <td>${r.label}</td>
             <td style="text-align:right">${fmt.pln(r.value)}</td>
@@ -25,9 +25,9 @@ async function renderAllocation(el) {
     </div>
 
     <div class="card mt" style="border-left:4px solid #ffd166">
-      <h3 style="margin-top:0">💡 Wnioski i rebalancing</h3>
+      <h3 style="margin-top:0">💡 Takeaways and rebalancing</h3>
       <ul style="padding-left:18px">${d.hints.map((h) => `<li class="mt" style="font-size:.93em">${h}</li>`).join("")}</ul>
-      <div class="muted mt" style="font-size:.85em">Auto (EV9) liczone jako aktywo, ale to dobro konsumpcyjne (traci na wartości) — realnie „inwestycyjny" majątek jest bardziej skoncentrowany w nieruchomościach.</div>
+      <div class="muted mt" style="font-size:.85em">The car (EV9) is counted as an asset, but it is a consumable (depreciates) — in reality "investment" wealth is more concentrated in real estate.</div>
     </div>`;
 
   const palette = ["#4c8dff", "#3ecf8e", "#ffd166", "#ff6b6b", "#a78bfa", "#f59e0b"];

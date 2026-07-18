@@ -4,23 +4,23 @@ async function renderData(el) {
 
   const MODE = {
     auto: ["🟢 auto", "#3ecf8e"],
-    derived: ["🔵 liczone", "#4c8dff"],
+    derived: ["🔵 derived", "#4c8dff"],
     claude: ["🟣 Claude", "#b78cff"],
-    manual: ["🟡 ręcznie", "#ffd166"],
+    manual: ["🟡 manual", "#ffd166"],
   };
   const modeBadge = (m) => {
     const [label, color] = MODE[m] || ["·", "#9aa"];
     return `<span class="badge" style="background:${color}22;color:${color};white-space:nowrap">${label}</span>`;
   };
-  const lvl = (v) => v === "wysoki" ? "pos" : v === "niski" ? "muted" : "";
+  const lvl = (v) => v === "wysoki" || v === "high" ? "pos" : v === "niski" || v === "low" ? "muted" : "";
 
   const groupCard = (g) => `
     <div class="card mt">
       <h3 style="margin-top:0">${g.title}</h3>
       <div class="muted" style="margin:-4px 0 10px;font-size:.9em">${g.note}</div>
       <div style="overflow-x:auto"><table>
-        <thead><tr><th>Dane</th><th>Tryb</th><th>Źródło</th><th>Częstotliwość</th>
-          <th>Ostatnia akt.</th><th style="text-align:right">Rek.</th><th style="text-align:right">min/mies</th></tr></thead>
+        <thead><tr><th>Data</th><th>Mode</th><th>Source</th><th>Frequency</th>
+          <th>Last upd.</th><th style="text-align:right">Recs</th><th style="text-align:right">min/mo</th></tr></thead>
         <tbody>${g.items.map((i) => `<tr>
           <td><b>${i.name}</b>${i.note ? `<div class="muted" style="font-size:.82em">${i.note}</div>` : ""}
             ${i.suggest ? `<div style="font-size:.82em;color:#ffd166">💡 ${i.suggest}</div>` : ""}</td>
@@ -37,32 +37,32 @@ async function renderData(el) {
   el.innerHTML = `
     <h2>🛠️ Control Center</h2>
     <div class="row" style="gap:8px;margin-bottom:12px">
-      <a href="#control" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">🛠️ Automatyzacje &amp; health</a>
-      <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">🔔 Przypomnienia</a>
-      <a href="#data" style="text-decoration:none;padding:5px 12px;border-radius:6px;background:${CHART_COLORS[0]};color:#fff">📊 Dane w aplikacji</a>
+      <a href="#control" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">🛠️ Automation &amp; health</a>
+      <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">🔔 Reminders</a>
+      <a href="#data" style="text-decoration:none;padding:5px 12px;border-radius:6px;background:${CHART_COLORS[0]};color:#fff">📊 Data in the app</a>
     </div>
-    <div class="muted" style="margin-bottom:12px">Co jest zaciągane automatycznie, a co musisz wpisać sam i jak często.
-      Cel: jak najwięcej w pełni zautomatyzowane, a ręcznie tylko absolutne minimum co miesiąc. Stan: ${d.generated_at}.</div>
+    <div class="muted" style="margin-bottom:12px">What is pulled in automatically, what you have to enter yourself and how often.
+      Goal: as much as possible fully automated, with only the absolute monthly minimum done by hand. As of: ${d.generated_at}.</div>
 
     <div class="grid cols-4">
-      <div class="card kpi"><div class="label">Źródła bez pracy</div><div class="value pos">${s.auto}</div>
-        <div class="sub">auto + liczone przez apkę</div></div>
-      <div class="card kpi"><div class="label">Utrzymuje Claude</div><div class="value" style="color:#b78cff">${s.claude}</div>
-        <div class="sub">miesięcznie / na żądanie</div></div>
-      <div class="card kpi"><div class="label">Ręczne punkty / mies.</div><div class="value" style="color:#ffd166">${s.manual_touchpoints}</div>
-        <div class="sub">+ ${s.manual_rare} rzadkich/zdarzeniowych</div></div>
-      <div class="card kpi"><div class="label">Czas ręczny / mies.</div><div class="value">~${s.manual_minutes} min</div>
-        <div class="sub">cel po automatyzacji: ~3 min</div></div>
+      <div class="card kpi"><div class="label">Zero-effort sources</div><div class="value pos">${s.auto}</div>
+        <div class="sub">auto + derived by the app</div></div>
+      <div class="card kpi"><div class="label">Maintained by Claude</div><div class="value" style="color:#b78cff">${s.claude}</div>
+        <div class="sub">monthly / on demand</div></div>
+      <div class="card kpi"><div class="label">Manual touchpoints / mo</div><div class="value" style="color:#ffd166">${s.manual_touchpoints}</div>
+        <div class="sub">+ ${s.manual_rare} rare/event-driven</div></div>
+      <div class="card kpi"><div class="label">Manual time / mo</div><div class="value">~${s.manual_minutes} min</div>
+        <div class="sub">target after automation: ~3 min</div></div>
     </div>
 
     ${d.groups.map(groupCard).join("")}
 
     <div class="card mt" style="border-left:4px solid #ffd166">
-      <h3 style="margin-top:0">🚀 Roadmapa automatyzacji — jak zejść do minimum</h3>
-      <div class="muted" style="margin:-4px 0 10px;font-size:.9em">Priorytet: usunąć comiesięczne wpisywanie.
-        Kolejność wg stosunku efektu do nakładu.</div>
+      <h3 style="margin-top:0">🚀 Automation roadmap — getting down to the minimum</h3>
+      <div class="muted" style="margin:-4px 0 10px;font-size:.9em">Priority: eliminate monthly data entry.
+        Ordered by impact-to-effort ratio.</div>
       <div style="overflow-x:auto"><table>
-        <thead><tr><th>Usprawnienie</th><th>Efekt</th><th>Nakład</th><th>Zysk</th><th>Jak</th></tr></thead>
+        <thead><tr><th>Improvement</th><th>Impact</th><th>Effort</th><th>Payoff</th><th>How</th></tr></thead>
         <tbody>${d.roadmap.map((r) => `<tr>
           <td><b>${r.title}</b></td>
           <td class="${lvl(r.impact)}">${r.impact}</td>
@@ -74,8 +74,8 @@ async function renderData(el) {
     </div>
 
     <div class="card mt muted" style="font-size:.85em">
-      <b>Kierunek docelowy:</b> jedyny nieautomatyzowalny „za darmo” punkt to salda kont —
-      i to też znika po podpięciu darmowego PSD2 (Open Banking) przez n8n. Po realizacji roadmapy
-      wpisujesz ręcznie tylko rzeczy zdarzeniowe (nowa oferta, zakup ETF, zmiana raty), a nie nic cyklicznego.
+      <b>End state:</b> the only point that can't be automated "for free" is account balances —
+      and even that goes away once free PSD2 (Open Banking) is hooked up via n8n. Once the roadmap is done
+      you only enter event-driven things by hand (a new offer, an ETF purchase, an installment change), nothing recurring.
     </div>`;
 }

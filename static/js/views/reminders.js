@@ -4,44 +4,44 @@ async function renderReminders(el) {
   const urgency = (days) => days == null ? "muted"
     : days < 0 ? "neg" : days <= 14 ? "neg" : days <= 45 ? "" : "muted";
   const daysTxt = (days) => days == null ? "—"
-    : days < 0 ? `${-days} dni temu` : days === 0 ? "dziś" : `za ${days} dni`;
+    : days < 0 ? `${-days} days ago` : days === 0 ? "today" : `in ${days} days`;
 
   el.innerHTML = `
     <h2>🛠️ Control Center</h2>
     <div class="row" style="gap:8px;margin-bottom:12px">
-      <a href="#control" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">🛠️ Automatyzacje &amp; health</a>
-      <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;background:${CHART_COLORS[0]};color:#fff">🔔 Przypomnienia</a>
-      <a href="#data" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">📊 Dane w aplikacji</a>
+      <a href="#control" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">🛠️ Automation &amp; health</a>
+      <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;background:${CHART_COLORS[0]};color:#fff">🔔 Reminders</a>
+      <a href="#data" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">📊 Data in the app</a>
     </div>
-    <div class="muted" style="margin-bottom:12px">Automatyczne (z danych: vesty, bonus, koniec stałej stopy, targety, przeglądy)
-      + Twoje własne. Sortowane wg terminu.</div>
+    <div class="muted" style="margin-bottom:12px">Automatic (from data: vests, bonus, fixed-rate end, targets, reviews)
+      + your own. Sorted by due date.</div>
 
     <div class="card">
-      <h3>Dodaj przypomnienie</h3>
+      <h3>Add a reminder</h3>
       <div class="row">
-        <input id="rmTitle" placeholder="tytuł" style="flex:1">
+        <input id="rmTitle" placeholder="title" style="flex:1">
         <input type="date" id="rmDate">
-        <button class="primary" id="rmAdd">Dodaj</button>
+        <button class="primary" id="rmAdd">Add</button>
       </div>
     </div>
 
     <div class="card mt">
       <div style="overflow-x:auto"><table>
-        <thead><tr><th style="width:120px">Termin</th><th>Co</th><th style="width:90px">Typ</th><th style="width:60px"></th></tr></thead>
+        <thead><tr><th style="width:120px">Due</th><th>What</th><th style="width:90px">Type</th><th style="width:60px"></th></tr></thead>
         <tbody>${rem.map((r) => `<tr>
           <td class="${urgency(r.days)}"><b>${daysTxt(r.days)}</b><div class="muted" style="font-size:.8em">${r.due_date || ""}</div></td>
           <td>${r.title}${r.note ? `<div class="muted" style="font-size:.82em">${r.note}</div>` : ""}</td>
-          <td>${r.auto ? `<span class="badge">${r.kind || "auto"}</span>` : '<span class="badge">własne</span>'}</td>
+          <td>${r.auto ? `<span class="badge">${r.kind || "auto"}</span>` : '<span class="badge">own</span>'}</td>
           <td>${r.auto ? '<span class="muted" style="font-size:.8em">auto</span>'
-            : `<button data-rdone="${r.id}" title="zrobione">✓</button> <button class="danger" data-rdel="${r.id}">✕</button>`}</td>
+            : `<button data-rdone="${r.id}" title="done">✓</button> <button class="danger" data-rdel="${r.id}">✕</button>`}</td>
         </tr>`).join("")}</tbody>
       </table></div>
-      ${d.done_count ? `<div class="muted mt" style="font-size:.85em">✅ Zrobione: ${d.done_count}</div>` : ""}
+      ${d.done_count ? `<div class="muted mt" style="font-size:.85em">✅ Done: ${d.done_count}</div>` : ""}
     </div>`;
 
   document.getElementById("rmAdd").addEventListener("click", async () => {
     const title = document.getElementById("rmTitle").value.trim();
-    if (!title) { alert("Podaj tytuł"); return; }
+    if (!title) { alert("Enter a title"); return; }
     await api.post("/api/reminders", { title, due_date: document.getElementById("rmDate").value || null });
     route();
   });

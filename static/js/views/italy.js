@@ -6,8 +6,8 @@ async function renderItaly(el) {
   const eurpln = eurplnRes.last_close || 4.34;
 
   if (!a.headline) {
-    el.innerHTML = '<div class="card"><h2>Włochy — analiza lokalizacji</h2>'
-      + '<div class="muted">Brak zapisanej analizy. Poproś Claude: „odśwież analizę lokalizacji Włochy".</div></div>';
+    el.innerHTML = '<div class="card"><h2>Italy — location analysis</h2>'
+      + '<div class="muted">No saved analysis. Ask Claude: "refresh the Italy location analysis".</div></div>';
     return;
   }
 
@@ -28,19 +28,19 @@ async function renderItaly(el) {
   const critHead = a.criteria.map((c) => `<th style="text-align:center">${c.label}</th>`).join("");
 
   el.innerHTML = `
-    <div class="muted" style="margin-bottom:4px"><a href="#goals" style="text-decoration:none">← Cele</a></div>
-    <h2>🇮🇹🇪🇸 Dom za granicą — Włochy vs Andaluzja</h2>
+    <div class="muted" style="margin-bottom:4px"><a href="#goals" style="text-decoration:none">← Goals</a></div>
+    <h2>🇮🇹🇪🇸 A home abroad — Italy vs Andalusia</h2>
     <div class="card" style="border-left:4px solid #3ecf8e">
       <div style="font-size:1.05em"><b>${a.headline}</b></div>
-      <div class="muted mt" style="font-size:.85em">Stan na ${a.as_of} · budżet celu ${fmt.eur ? fmt.eur(a.budget_eur) : "€" + fmt.grouped(a.budget_eur)}
-        ${italyGoal ? ` · postęp celu: ${fmt.pln(italyGoal.current_amount)} / ${fmt.pln(italyGoal.target_amount)}` : ""}</div>
+      <div class="muted mt" style="font-size:.85em">As of ${a.as_of} · goal budget ${fmt.eur ? fmt.eur(a.budget_eur) : "€" + fmt.grouped(a.budget_eur)}
+        ${italyGoal ? ` · goal progress: ${fmt.pln(italyGoal.current_amount)} / ${fmt.pln(italyGoal.target_amount)}` : ""}</div>
     </div>
 
     ${a.country_comparison ? `<div class="card mt" style="border-left:4px solid #e0a458">
-      <h3 style="margin-top:0">🇮🇹 vs 🇪🇸 Włochy czy Andaluzja? — porównanie przy budżecie 400 k €</h3>
+      <h3 style="margin-top:0">🇮🇹 vs 🇪🇸 Italy or Andalusia? — comparison at a €400k budget</h3>
       <div style="font-size:1.0em"><b>${a.country_comparison.headline}</b></div>
       <div style="overflow-x:auto" class="mt"><table>
-        <thead><tr><th>Kryterium</th><th>🇮🇹 Włochy</th><th>🇪🇸 Andaluzja</th></tr></thead>
+        <thead><tr><th>Criterion</th><th>🇮🇹 Italy</th><th>🇪🇸 Andalusia</th></tr></thead>
         <tbody>${a.country_comparison.dimensions.map((d) => `<tr>
           <td><b>${d.label}</b></td>
           <td style="font-size:.88em;${d.winner === "italy" ? "background:rgba(62,207,142,0.10)" : ""}">${d.italy}${d.winner === "italy" ? ' <span class="pos">✓</span>' : ""}</td>
@@ -48,33 +48,33 @@ async function renderItaly(el) {
         </tr>`).join("")}</tbody>
       </table></div>
       <div class="mt" style="padding:8px 12px;background:#00000022;border-radius:6px;font-size:.92em">
-        <b>Werdykt:</b> ${a.country_comparison.verdict}</div>
-      <div class="muted mt" style="font-size:.88em"><b>Gdzie w Andaluzji:</b> ${a.country_comparison.spain_pick}</div>
+        <b>Verdict:</b> ${a.country_comparison.verdict}</div>
+      <div class="muted mt" style="font-size:.88em"><b>Where in Andalusia:</b> ${a.country_comparison.spain_pick}</div>
     </div>` : ""}
 
     <div class="card mt" style="border-left:4px solid #4c8dff">
-      <h3 style="margin-top:0">🧮 Kalkulator zakupu — realny koszt i bilans</h3>
+      <h3 style="margin-top:0">🧮 Purchase calculator — real cost and balance</h3>
       <div class="row" style="align-items:center;gap:10px;margin-bottom:8px">
-        <b>Kraj:</b>
+        <b>Country:</b>
         <select id="icCountry" style="width:220px">
-          <option value="italy">🇮🇹 Włochy (Puglia/Liguria)</option>
-          <option value="spain">🇪🇸 Hiszpania (Andaluzja)</option>
+          <option value="italy">🇮🇹 Italy (Puglia/Liguria)</option>
+          <option value="spain">🇪🇸 Spain (Andalusia)</option>
         </select>
-        <span class="muted" style="font-size:.82em">podstawia koszty transakcyjne, podatek najmu, oprocentowanie, wkład i koszty utrzymania dla wybranego kraju</span>
+        <span class="muted" style="font-size:.82em">fills in transaction costs, rental tax, interest rate, down payment and upkeep costs for the selected country</span>
       </div>
-      <div class="muted" style="font-size:.85em;margin-bottom:8px">Liczy się na żywo. EUR/PLN ${fmt.num(eurpln, 3)} (z Rynku).
-        Wszystko w € (przeliczenie PLN obok). Zmiany zapisują się w przeglądarce.</div>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">Computed live. EUR/PLN ${fmt.num(eurpln, 3)} (from Market).
+        Everything in € (PLN conversion alongside). Changes are saved in the browser.</div>
       <div id="icInputs" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"></div>
       <div id="icOut" class="mt"></div>
     </div>
 
     <div class="card mt">
-      <h3>Porównanie — ranking wg Twoich kryteriów</h3>
-      <div class="muted" style="margin-bottom:8px;font-size:.85em">Waga kryteriów:
-        ${a.criteria.map((c) => `${c.label} ×${c.weight}`).join(" · ")}. Ocena 1–5 (● pełne).</div>
+      <h3>Comparison — ranking by your criteria</h3>
+      <div class="muted" style="margin-bottom:8px;font-size:.85em">Criteria weights:
+        ${a.criteria.map((c) => `${c.label} ×${c.weight}`).join(" · ")}. Scored 1–5 (● filled).</div>
       <div style="overflow-x:auto">
       <table>
-        <thead><tr><th>Lokalizacja</th><th style="text-align:center">Wynik</th>${critHead}<th style="text-align:right">€/m²</th></tr></thead>
+        <thead><tr><th>Location</th><th style="text-align:center">Score</th>${critHead}<th style="text-align:right">€/m²</th></tr></thead>
         <tbody>
         ${ranked.map((l, i) => `<tr>
           <td><b>${i === 0 ? "🏆 " : ""}${l.name}</b><div class="muted" style="font-size:.8em">${l.region}</div></td>
@@ -90,30 +90,30 @@ async function renderItaly(el) {
     <div class="grid cols-2 mt">
       ${ranked.map((l) => `<div class="card" ${l.verdict.startsWith("★") ? 'style="border-left:4px solid #3ecf8e"' : ""}>
         <h3 style="margin-top:0">${l.name} <span class="muted" style="font-weight:normal;font-size:.7em">${l.region}</span></h3>
-        <div style="font-size:.92em"><b>🌊 Morze:</b> ${l.water}</div>
-        ${l.house ? `<div class="mt" style="font-size:.92em"><b>🏡 Dom+działka:</b> ${l.house}</div>` : ""}
-        ${l.solar ? `<div class="mt" style="font-size:.92em"><b>☀️ Słońce/PV:</b> ${l.solar}</div>` : ""}
-        <div class="mt" style="font-size:.92em"><b>📅 Wynajem:</b> ${l.rental}</div>
-        <div class="mt" style="font-size:.92em"><b>💶 Wejście:</b> ${l.entry}</div>
+        <div style="font-size:.92em"><b>🌊 Sea:</b> ${l.water}</div>
+        ${l.house ? `<div class="mt" style="font-size:.92em"><b>🏡 House+plot:</b> ${l.house}</div>` : ""}
+        ${l.solar ? `<div class="mt" style="font-size:.92em"><b>☀️ Sun/PV:</b> ${l.solar}</div>` : ""}
+        <div class="mt" style="font-size:.92em"><b>📅 Rental:</b> ${l.rental}</div>
+        <div class="mt" style="font-size:.92em"><b>💶 Entry:</b> ${l.entry}</div>
         <div class="mt" style="font-size:.9em;padding:6px 10px;background:#00000022;border-radius:6px">
           <b>${l.verdict}</b></div>
       </div>`).join("")}
     </div>
 
     ${a.house_vs_apartment ? `<div class="card mt" style="border-left:4px solid #3ecf8e">
-      <h3 style="margin-top:0">🏡 Dom z działką vs mieszkanie</h3>
+      <h3 style="margin-top:0">🏡 House with a plot vs apartment</h3>
       <div style="font-size:1.0em"><b>${a.house_vs_apartment.headline}</b></div>
       <ul style="padding-left:18px">${a.house_vs_apartment.points.map((p) => `<li class="mt" style="font-size:.92em">${p}</li>`).join("")}</ul>
     </div>` : ""}
 
     ${a.energy_pv ? `<div class="card mt" style="border-left:4px solid #ffd166">
-      <h3 style="margin-top:0">☀️ Fotowoltaika, bateria, wallbox — energetyczna niezależność</h3>
+      <h3 style="margin-top:0">☀️ Solar, battery, wallbox — energy independence</h3>
       <div style="font-size:1.0em"><b>${a.energy_pv.headline}</b></div>
       <ul style="padding-left:18px">${a.energy_pv.points.map((p) => `<li class="mt" style="font-size:.92em">${p}</li>`).join("")}</ul>
     </div>` : ""}
 
     ${a.budget_realism ? `<div class="card mt" style="border-left:4px solid #4c8dff">
-      <h3 style="margin-top:0">💶 Czy 400 000 € to realny budżet?</h3>
+      <h3 style="margin-top:0">💶 Is €400,000 a realistic budget?</h3>
       <div style="font-size:1.02em"><b>${a.budget_realism.headline}</b></div>
       <ul style="padding-left:18px">${a.budget_realism.points.map((p) => `<li class="mt" style="font-size:.92em">${p}</li>`).join("")}</ul>
       <div class="mt" style="font-size:.9em;padding:8px 12px;background:#00000022;border-radius:6px">
@@ -121,47 +121,47 @@ async function renderItaly(el) {
     </div>` : ""}
 
     <div class="card mt" style="border-left:4px solid #ffd166">
-      <h3 style="margin-top:0">✅ Rekomendacja: ${a.recommendation.pick}</h3>
+      <h3 style="margin-top:0">✅ Recommendation: ${a.recommendation.pick}</h3>
       <ul style="padding-left:18px">${a.recommendation.why.map((w) => `<li class="mt">${w}</li>`).join("")}</ul>
-      <div class="mt muted"><b>Alternatywa:</b> ${a.recommendation.runner_up}</div>
+      <div class="mt muted"><b>Runner-up:</b> ${a.recommendation.runner_up}</div>
     </div>
 
     <div class="grid cols-2 mt">
       <div class="card">
-        <h3>💶 Finansowanie — plan dla ${fmt.eur ? fmt.eur(a.budget_eur) : "€" + fmt.grouped(a.budget_eur)}</h3>
+        <h3>💶 Financing — plan for ${fmt.eur ? fmt.eur(a.budget_eur) : "€" + fmt.grouped(a.budget_eur)}</h3>
         <table>${Object.entries({
-          "Cena": a.financing.plan_400k.cena,
-          "Wkład 50%": a.financing.plan_400k.wklad_50pct,
-          "Kredyt EUR": a.financing.plan_400k.kredyt_eur,
-          "Rata": a.financing.plan_400k.rata_ok,
-          "Koszty dodatkowe": a.financing.plan_400k.koszty_dod,
+          "Price": a.financing.plan_400k.cena,
+          "Down payment 50%": a.financing.plan_400k.wklad_50pct,
+          "EUR loan": a.financing.plan_400k.kredyt_eur,
+          "Installment": a.financing.plan_400k.rata_ok,
+          "Additional costs": a.financing.plan_400k.koszty_dod,
         }).map(([k, v]) => `<tr><td>${k}</td><td><b>${v}</b></td></tr>`).join("")}</table>
         <div class="muted mt" style="font-size:.82em">${a.financing.note}</div>
         ${a.financing.cash_vs_equity_capacity ? `<div class="mt" style="font-size:.86em;padding:8px 12px;background:#00000022;border-radius:6px">
-          <b>💡 Zdolność kredytowa a 50% cash:</b> ${a.financing.cash_vs_equity_capacity}</div>` : ""}
+          <b>💡 Borrowing capacity vs 50% cash:</b> ${a.financing.cash_vs_equity_capacity}</div>` : ""}
       </div>
       <div class="card">
-        <h3>🧭 Kolejne kroki</h3>
+        <h3>🧭 Next steps</h3>
         <ol style="padding-left:18px">${a.next_steps.map((s) => `<li class="mt" style="font-size:.92em">${s}</li>`).join("")}</ol>
       </div>
     </div>
 
     <div class="card mt muted" style="font-size:.8em">
-      Analiza z researchu rynkowego (ceny, yieldy, warunki kredytu, mariny) — snapshot, nie liczy się automatycznie.
-      Odświeżenie: poproś Claude „odśwież analizę Włoch".
-      Źródła: ${a.sources.map((u, i) => `<a href="${u}" target="_blank">[${i + 1}]</a>`).join(" ")}
+      Analysis from market research (prices, yields, loan terms, marinas) — a snapshot, not computed automatically.
+      To refresh: ask Claude to "refresh the Italy analysis".
+      Sources: ${a.sources.map((u, i) => `<a href="${u}" target="_blank">[${i + 1}]</a>`).join(" ")}
     </div>`;
 
-  // ---- kalkulator zakupu ----
+  // ---- purchase calculator ----
   const FIELDS = [
-    ["price", "Cena domu (€)", 400000], ["down", "Wkład (%)", 50],
-    ["rate", "Oprocent. EUR (%)", 3.4], ["years", "Okres (lata)", 20],
-    ["rentGross", "Najem brutto (€/rok)", 8000], ["rentTax", "Podatek najmu (%)", 21],
-    ["he", "HomeExchange (€/rok)", 2500], ["energy", "Oszczędn. PV (€/rok)", 1500],
-    ["costs", "Koszty roczne (€)", 6000], ["pv", "Instalacja PV+bateria (€)", 20000],
-    ["trans", "Koszty transakcyjne (%)", 11], ["mgmt", "Zarządzanie najmem (%)", 15],
+    ["price", "House price (€)", 400000], ["down", "Down payment (%)", 50],
+    ["rate", "EUR interest (%)", 3.4], ["years", "Term (years)", 20],
+    ["rentGross", "Gross rent (€/yr)", 8000], ["rentTax", "Rental tax (%)", 21],
+    ["he", "HomeExchange (€/yr)", 2500], ["energy", "PV savings (€/yr)", 1500],
+    ["costs", "Annual costs (€)", 6000], ["pv", "PV+battery install (€)", 20000],
+    ["trans", "Transaction costs (%)", 11], ["mgmt", "Rental management (%)", 15],
   ];
-  // country presets — koszty transakcyjne, podatek najmu, oprocentowanie, wkład, koszty utrzymania
+  // country presets — transaction costs, rental tax, interest rate, down payment, upkeep costs
   const PRESETS = {
     italy: { trans: 11, rentTax: 21, rate: 3.4, down: 50, costs: 6000 },
     spain: { trans: 11, rentTax: 19, rate: 3.1, down: 35, costs: 5000 },
@@ -209,37 +209,37 @@ async function renderItaly(el) {
     document.getElementById("icOut").innerHTML = `
       <div class="grid cols-2">
         <div class="card" style="margin:0">
-          <h4 style="margin:0 0 6px">Kredyt i gotówka na start</h4>
+          <h4 style="margin:0 0 6px">Loan and cash at the start</h4>
           <table>
-            ${line("Kredyt EUR", "€" + fmt.grouped(Math.round(loan)) + " · " + pln(loan))}
-            ${line("Rata miesięczna", "€" + fmt.grouped(Math.round(rata)) + " · " + pln(rata))}
-            ${line("Koszty transakcyjne", "€" + fmt.grouped(Math.round(transaction)))}
-            ${line("Gotówka na start (wkład+koszty+PV)", "€" + fmt.grouped(Math.round(cashStart)) + " · " + fmt.pln(cashStartPln), "neg")}
+            ${line("EUR loan", "€" + fmt.grouped(Math.round(loan)) + " · " + pln(loan))}
+            ${line("Monthly installment", "€" + fmt.grouped(Math.round(rata)) + " · " + pln(rata))}
+            ${line("Transaction costs", "€" + fmt.grouped(Math.round(transaction)))}
+            ${line("Cash at the start (down payment+costs+PV)", "€" + fmt.grouped(Math.round(cashStart)) + " · " + fmt.pln(cashStartPln), "neg")}
           </table>
-          <div class="muted mt" style="font-size:.82em">Cel wkładu w app: ${fmt.pln(goalTarget)} (pokrywa sam wkład 50%).
-            Realnie na start potrzeba ${fmt.pln(cashStartPln)} — różnica ${fmt.pln(cashStartPln - goalTarget)} to koszty transakcyjne + PV.</div>
+          <div class="muted mt" style="font-size:.82em">Down-payment goal in the app: ${fmt.pln(goalTarget)} (covers the 50% down payment only).
+            Realistically you need ${fmt.pln(cashStartPln)} at the start — the ${fmt.pln(cashStartPln - goalTarget)} difference is transaction costs + PV.</div>
         </div>
         <div class="card" style="margin:0">
-          <h4 style="margin:0 0 6px">Bilans roczny (po wszystkich przychodach)</h4>
+          <h4 style="margin:0 0 6px">Annual balance (after all income)</h4>
           <table>
-            ${line("Najem netto (po podatku i zarządzaniu)", "€" + fmt.grouped(Math.round(rentNet)), "pos")}
-            ${line("+ HomeExchange (uniknięte noclegi)", "€" + fmt.grouped(Math.round(v.he)), "pos")}
-            ${line("+ Oszczędność energii (PV)", "€" + fmt.grouped(Math.round(v.energy)), "pos")}
-            ${line("− Rata roczna", "€" + fmt.grouped(Math.round(rata * 12)), "neg")}
-            ${line("− Koszty utrzymania", "€" + fmt.grouped(Math.round(v.costs)), "neg")}
-            ${line(net >= 0 ? "= Dom ZARABIA rocznie" : "= Dom KOSZTUJE rocznie",
+            ${line("Net rent (after tax and management)", "€" + fmt.grouped(Math.round(rentNet)), "pos")}
+            ${line("+ HomeExchange (avoided lodging)", "€" + fmt.grouped(Math.round(v.he)), "pos")}
+            ${line("+ Energy savings (PV)", "€" + fmt.grouped(Math.round(v.energy)), "pos")}
+            ${line("− Annual installments", "€" + fmt.grouped(Math.round(rata * 12)), "neg")}
+            ${line("− Upkeep costs", "€" + fmt.grouped(Math.round(v.costs)), "neg")}
+            ${line(net >= 0 ? "= The house EARNS per year" : "= The house COSTS per year",
               "€" + fmt.grouped(Math.abs(Math.round(net))) + " · " + pln(Math.abs(net)), net >= 0 ? "pos" : "neg")}
           </table>
           <div class="muted mt" style="font-size:.82em">
-            ${net >= 0 ? "Dom spina się na plus — sam się utrzymuje." :
-              "Realny koszt posiadania: " + pln(Math.abs(net) / 12) + "/mies. (po najmie, HE i PV)."}
-            Yield brutto ${fmt.num(yieldBrutto, 1)}% · netto ${fmt.num(yieldNetto, 1)}%.
+            ${net >= 0 ? "The house nets out positive — it pays for itself." :
+              "Real cost of ownership: " + pln(Math.abs(net) / 12) + "/mo (after rent, HE and PV)."}
+            Gross yield ${fmt.num(yieldBrutto, 1)}% · net ${fmt.num(yieldNetto, 1)}%.
           </div>
         </div>
       </div>
       <div class="muted mt" style="font-size:.82em">${document.getElementById("icCountry").value === "spain"
-        ? "🇪🇸 Andaluzja: podatek najmu 19% (UE, z odliczeniami), wkład 35% (LTV do 65%), oprocent. ~3,1%, tańsze utrzymanie (~16% niż Włochy). ITP 7% zawarty w kosztach transakcyjnych."
-        : "🇮🇹 Włochy: podatek najmu 21% (cedolare), wkład 50% (LTV 50–60%), oprocent. ~3,4%, podatek od zakupu ~9% w kosztach transakcyjnych."}</div>`;
+        ? "🇪🇸 Andalusia: 19% rental tax (EU, with deductions), 35% down payment (LTV up to 65%), rate ~3.1%, cheaper upkeep (~16% less than Italy). 7% ITP included in transaction costs."
+        : "🇮🇹 Italy: 21% rental tax (cedolare), 50% down payment (LTV 50–60%), rate ~3.4%, ~9% purchase tax in transaction costs."}</div>`;
   }
   inputsEl.querySelectorAll("[data-ic]").forEach((i) => i.addEventListener("input", compute));
   compute();

@@ -96,7 +96,7 @@ def short_term_bands(closes, horizons=(5, 21, 63)):
             "p10": round(last * math.exp(merged[0.10]), 4),
             "p50": round(last * math.exp(merged[0.50]), 4),
             "p90": round(last * math.exp(merged[0.90]), 4),
-            "source": "ewma" if para_only else "ewma+empiryczne(kwantyle szersze)",
+            "source": "ewma" if para_only else "ewma+empirical(wider quantiles)",
         })
     return out
 
@@ -202,6 +202,6 @@ def short_term_bands_calibrated(closes, residuals_by_h=None, horizons=(5, 21, 63
             s_n = sig * math.sqrt(h["days"])
             h["p10"] = round(last * math.exp(cq["z10"] * s_n), 4)
             h["p90"] = round(last * math.exp(cq["z90"] * s_n), 4)
-            h["source"] = f"samo-kalibrowane ({cq['n']} własnych rozliczonych prognoz)"
+            h["source"] = f"self-calibrated ({cq['n']} scored own forecasts)"
             h["calibrated"] = True
     return base

@@ -4,6 +4,7 @@ async function renderRecs(el) {
     api.get("/api/recommendation/xtb"),
     api.get("/api/actions")]);
 
+  const STATUS_LABELS = { backlog: "backlog", "w trakcie": "in progress", zrobione: "done", odrzucone: "rejected" };
   const engineItems = [...rec.items, ...(xtb.items || []).map((i) => ({ ...i, area: "XTB: " + i.area }))];
 
   const byStatus = { "w trakcie": [], backlog: [], zrobione: [], odrzucone: [] };
@@ -13,25 +14,25 @@ async function renderRecs(el) {
     <div class="acard" data-act="${a.id}">
       <div class="row" style="justify-content:space-between;align-items:flex-start;gap:6px">
         <b style="font-size:.92em">${a.title}</b>
-        <button class="danger" data-adel="${a.id}" title="usuń">✕</button>
+        <button class="danger" data-adel="${a.id}" title="delete">✕</button>
       </div>
       <div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap">
         ${a.area ? `<span class="badge">${a.area}</span>` : ""}
         <select data-ast="${a.id}" style="font-size:.85em">
           ${["backlog", "w trakcie", "zrobione", "odrzucone"].map((s) =>
-            `<option ${a.status === s ? "selected" : ""}>${s}</option>`).join("")}
+            `<option value="${s}" ${a.status === s ? "selected" : ""}>${STATUS_LABELS[s]}</option>`).join("")}
         </select>
       </div>
-      ${a.expected_impact ? `<div class="muted" style="margin-top:6px;font-size:.85em">Cel: <b>${a.expected_impact}</b></div>` : ""}
-      ${a.detail ? `<details style="margin-top:4px"><summary class="muted" style="font-size:.85em">szczegóły / instrukcja</summary>
+      ${a.expected_impact ? `<div class="muted" style="margin-top:6px;font-size:.85em">Target: <b>${a.expected_impact}</b></div>` : ""}
+      ${a.detail ? `<details style="margin-top:4px"><summary class="muted" style="font-size:.85em">details / instructions</summary>
         <pre style="white-space:pre-wrap;font-family:inherit;margin:6px 0 0;font-size:.85em">${a.detail}</pre></details>` : ""}
       ${a.status === "zrobione" ? `<div style="margin-top:6px">
         <div class="row" style="gap:4px">
-          <input data-num data-aimp="${a.id}" placeholder="realny PLN/rok" value="${fmt.grouped(a.actual_impact_pln)}" style="width:120px;font-size:.85em">
-          <button data-asave="${a.id}" style="font-size:.85em">Zapisz</button>
+          <input data-num data-aimp="${a.id}" placeholder="actual PLN/yr" value="${fmt.grouped(a.actual_impact_pln)}" style="width:120px;font-size:.85em">
+          <button data-asave="${a.id}" style="font-size:.85em">Save</button>
           ${a.done_at ? `<span class="muted" style="font-size:.8em">✓ ${a.done_at.slice(0, 10)}</span>` : ""}
         </div>
-        <input data-anote="${a.id}" placeholder="co dało / wniosek" value="${a.actual_note || ""}" style="width:100%;margin-top:4px;font-size:.85em">
+        <input data-anote="${a.id}" placeholder="what it delivered / takeaway" value="${a.actual_note || ""}" style="width:100%;margin-top:4px;font-size:.85em">
       </div>` : ""}
     </div>`;
 
@@ -42,27 +43,27 @@ async function renderRecs(el) {
     </div>` : "";
 
   el.innerHTML = `
-    <h2>Rekomendacje — plan działań</h2>
+    <h2>Recommendations — action plan</h2>
     <div class="card" style="padding:10px 16px">
       <div class="row" style="gap:20px;flex-wrap:wrap">
-        <span>🔥 W trakcie: <b>${byStatus["w trakcie"].length}</b></span>
+        <span>🔥 In progress: <b>${byStatus["w trakcie"].length}</b></span>
         <span>📋 Backlog: <b>${byStatus.backlog.length}</b></span>
-        <span>✅ Zrobione: <b>${acts.done_count}</b></span>
-        <span>💰 Zmierzony efekt: <b class="pos">${fmt.pln(acts.total_actual_impact)}/rok</b></span>
+        <span>✅ Done: <b>${acts.done_count}</b></span>
+        <span>💰 Measured impact: <b class="pos">${fmt.pln(acts.total_actual_impact)}/yr</b></span>
       </div>
     </div>
 
     <div class="card mt">
-      <h3>Silnik rekomendacji (na żywo)</h3>
-      <div class="muted" style="margin-bottom:8px">Przeliczane przy każdym otwarciu zakładki
-        z bieżących danych (salda, kursy, portfel).</div>
+      <h3>Recommendation engine (live)</h3>
+      <div class="muted" style="margin-bottom:8px">Recomputed every time the tab is opened,
+        from current data (balances, rates, portfolio).</div>
       <table>
-        <thead><tr><th style="width:140px">Kategoria</th><th>Rekomendacja</th><th style="width:110px"></th></tr></thead>
+        <thead><tr><th style="width:140px">Category</th><th>Recommendation</th><th style="width:110px"></th></tr></thead>
         <tbody>
         ${engineItems.map((r, i) => `<tr>
           <td><span class="badge">${r.area}</span></td>
           <td style="font-size:.92em">${r.text.length > 160
-            ? `${r.text.slice(0, 160)}… <details style="display:inline"><summary class="muted" style="display:inline;cursor:pointer">więcej</summary><div class="mt">${r.text}</div></details>`
+            ? `${r.text.slice(0, 160)}… <details style="display:inline"><summary class="muted" style="display:inline;cursor:pointer">more</summary><div class="mt">${r.text}</div></details>`
             : r.text}</td>
           <td><button data-eadd="${i}">→ backlog</button></td>
         </tr>`).join("")}
@@ -71,21 +72,21 @@ async function renderRecs(el) {
     </div>
 
     <div class="card mt">
-      <h3>Dodaj akcję ręcznie</h3>
+      <h3>Add an action manually</h3>
       <div class="row">
-        <input id="aTitle" placeholder="tytuł akcji" style="flex:1">
-        <input id="aArea" placeholder="obszar" style="width:130px">
-        <input id="aExp" placeholder="oczekiwany efekt (np. 16k/rok)" style="width:200px">
-        <button class="primary" id="aAdd">Dodaj</button>
+        <input id="aTitle" placeholder="action title" style="flex:1">
+        <input id="aArea" placeholder="area" style="width:130px">
+        <input id="aExp" placeholder="expected impact (e.g. 16k/yr)" style="width:200px">
+        <button class="primary" id="aAdd">Add</button>
       </div>
-      <textarea id="aDetail" placeholder="szczegóły / instrukcja / treść maila…" rows="3" class="mt" style="width:100%"></textarea>
+      <textarea id="aDetail" placeholder="details / instructions / e-mail body…" rows="3" class="mt" style="width:100%"></textarea>
     </div>
 
     <div class="acols mt">
-      ${column("🔥 W trakcie", byStatus["w trakcie"])}
+      ${column("🔥 In progress", byStatus["w trakcie"])}
       ${column("📋 Backlog", byStatus.backlog)}
-      ${column("✅ Zrobione — wnioski", byStatus.zrobione)}
-      ${byStatus.odrzucone.length ? column("🚫 Odrzucone", byStatus.odrzucone) : ""}
+      ${column("✅ Done — takeaways", byStatus.zrobione)}
+      ${byStatus.odrzucone.length ? column("🚫 Rejected", byStatus.odrzucone) : ""}
     </div>`;
 
   el.querySelectorAll("[data-eadd]").forEach((b) =>
@@ -96,7 +97,7 @@ async function renderRecs(el) {
     }));
   document.getElementById("aAdd").addEventListener("click", async () => {
     const title = document.getElementById("aTitle").value.trim();
-    if (!title) { alert("Podaj tytuł"); return; }
+    if (!title) { alert("Enter a title"); return; }
     await api.post("/api/actions", {
       title, area: document.getElementById("aArea").value,
       expected_impact: document.getElementById("aExp").value,
@@ -120,7 +121,7 @@ async function renderRecs(el) {
     }));
   el.querySelectorAll("[data-adel]").forEach((b) =>
     b.addEventListener("click", async () => {
-      if (!confirm("Usunąć akcję?")) return;
+      if (!confirm("Delete this action?")) return;
       await api.del("/api/actions/" + b.dataset.adel);
       route();
     }));

@@ -1,7 +1,7 @@
 function marketBriefHtml(b) {
   if (!b || !b.headline) {
-    return `<div class="card"><h3 style="margin-top:0">🧭 Brief rynkowy</h3>
-      <div class="muted">Brak zapisanego briefu. Authored offline (Claude/own notes) and stored under the
+    return `<div class="card"><h3 style="margin-top:0">🧭 Market brief</h3>
+      <div class="muted">No saved brief. Authored offline (Claude/own notes) and stored under the
         <code>analysis_market_brief</code> setting — key moves, macro context, and a per-position stance.</div></div>`;
   }
   const hi = (b.highlights || []).map((h) => `<div class="card" style="margin:0">
@@ -20,16 +20,16 @@ function marketBriefHtml(b) {
   return `
     <div class="card" style="border-left:4px solid #4c8dff">
       <div class="row" style="justify-content:space-between;align-items:baseline">
-        <h3 style="margin:0">🧭 Brief rynkowy</h3>
-        <span class="muted" style="font-size:.82em">stan na ${b.as_of || "—"}</span>
+        <h3 style="margin:0">🧭 Market brief</h3>
+        <span class="muted" style="font-size:.82em">as of ${b.as_of || "—"}</span>
       </div>
       ${b.regime ? `<div class="mt" style="font-weight:600;color:#ffd166">${b.regime}</div>` : ""}
       <div class="mt">${b.headline}</div>
     </div>
     ${hi ? `<div class="grid cols-4 mt">${hi}</div>` : ""}
-    ${geo ? `<div class="card mt"><h3 style="margin-top:0">🌍 Kontekst — co napędza ruchy</h3>${geo}</div>` : ""}
-    ${pos ? `<div class="card mt"><h3 style="margin-top:0">🎯 Co z tym zrobić — per pozycja</h3>
-      <table><thead><tr><th>Ticker</th><th>Nastawienie</th><th>Uzasadnienie</th></tr></thead>
+    ${geo ? `<div class="card mt"><h3 style="margin-top:0">🌍 Context — what drives the moves</h3>${geo}</div>` : ""}
+    ${pos ? `<div class="card mt"><h3 style="margin-top:0">🎯 What to do about it — per position</h3>
+      <table><thead><tr><th>Ticker</th><th>Stance</th><th>Rationale</th></tr></thead>
       <tbody>${pos}</tbody></table>
       ${b.fx_note ? `<div class="muted mt" style="border-left:3px solid #e0a458;padding-left:8px">💱 ${b.fx_note}</div>` : ""}</div>` : ""}
     ${b.method_note ? `<div class="muted mt" style="font-size:.8em">${b.method_note}</div>` : ""}`;
@@ -41,64 +41,64 @@ async function renderMarket(el) {
     api.get("/api/analysis/market_brief").catch(() => ({})),
   ]);
   el.innerHTML = `
-    <h2>Rynek</h2>
+    <h2>Market</h2>
     ${marketBriefHtml(brief)}
-    <h3 class="mt">Watchlista</h3>
+    <h3 class="mt">Watchlist</h3>
     <div class="card">
       <div class="row">
-        <input id="wlTicker" placeholder="ticker np. AAPL" style="width:140px">
-        <button class="primary" id="wlAdd">Dodaj</button>
-        <button id="wlRefresh">Odśwież z chmury</button>
-        <span class="muted">ostatnia synchronizacja: ${wl.last_sync || "nigdy"}</span>
+        <input id="wlTicker" placeholder="ticker e.g. AAPL" style="width:140px">
+        <button class="primary" id="wlAdd">Add</button>
+        <button id="wlRefresh">Refresh from cloud</button>
+        <span class="muted">last sync: ${wl.last_sync || "never"}</span>
       </div>
     </div>
-    <div class="card mt"><div id="wlTable"><div class="empty">Ładowanie…</div></div></div>
-    <div class="card mt"><h3 id="chartTitle">Wybierz ticker z tabeli</h3><canvas id="priceChart"></canvas></div>
+    <div class="card mt"><div id="wlTable"><div class="empty">Loading…</div></div></div>
+    <div class="card mt"><h3 id="chartTitle">Pick a ticker from the table</h3><canvas id="priceChart"></canvas></div>
     `;
 
   const TICKER_NAMES = {
-    "TEAM": "RSU stock (ustaw ticker w RSU)",
-    "GOOGL": "Alphabet Inc. (Google) — akcje z XTB",
-    "AMZN": "Amazon.com Inc. — akcje z XTB",
-    "NVDA": "NVIDIA Corporation — akcje z XTB",
-    "V": "Visa Inc. — operator kart płatniczych, akcje z XTB",
-    "IWDA.AS": "iShares Core MSCI World ETF (Amsterdam) — szeroki rynek świata",
+    "TEAM": "RSU stock (set the ticker in RSU)",
+    "GOOGL": "Alphabet Inc. (Google) — shares from XTB",
+    "AMZN": "Amazon.com Inc. — shares from XTB",
+    "NVDA": "NVIDIA Corporation — shares from XTB",
+    "V": "Visa Inc. — card payments operator, shares from XTB",
+    "IWDA.AS": "iShares Core MSCI World ETF (Amsterdam) — broad world market",
     "SXR8.DE": "iShares Core S&P 500 ETF (Xetra)",
-    "CNDX.L": "iShares NASDAQ 100 ETF (Londyn)",
-    "USDPLN=X": "Kurs dolara do złotego",
-    "EURPLN=X": "Kurs euro do złotego",
-    "EURUSD=X": "Kurs euro do dolara",
+    "CNDX.L": "iShares NASDAQ 100 ETF (London)",
+    "USDPLN=X": "US dollar to Polish zloty rate",
+    "EURPLN=X": "Euro to Polish zloty rate",
+    "EURUSD=X": "Euro to US dollar rate",
   };
 
   async function loadTable() {
     const tickers = (await api.get("/api/watchlist")).tickers;
     if (!tickers.length) {
       document.getElementById("wlTable").innerHTML =
-        '<div class="empty">Pusta watchlista — dodaj ticker powyżej</div>';
+        '<div class="empty">Empty watchlist — add a ticker above</div>';
       return;
     }
     const rows = await Promise.all(tickers.map((t) =>
       api.get("/api/market/analytics/" + encodeURIComponent(t.ticker)).catch(() => ({ ticker: t.ticker, error: "?" }))));
     const hint = (label, tip) => `<th><span class="hint" title="${tip}">${label}</span></th>`;
     document.getElementById("wlTable").innerHTML = `<table><thead><tr>
-      ${hint("Ticker", "Symbol giełdowy instrumentu — najedź na symbol w tabeli, żeby zobaczyć pełną nazwę")}
-      ${hint("Kurs", "Ostatnie zamknięcie dzienne (n8n pobiera codziennie ~22:30; apka dociąga rano)")}
-      ${hint("1D", "Zmiana kursu vs poprzednia sesja")}
-      ${hint("30D", "Zmiana kursu przez ostatnie 30 dni")}
-      ${hint("SMA50", "Średnia kursu z ostatnich 50 sesji (~2,5 mies.). NAD = kurs powyżej średniej → trend wzrostowy; POD = poniżej → spadkowy. Klasyczny filtr momentum. Liczba = wartość średniej.")}
-      ${hint("Od szczytu 52w", "Ile % kurs jest poniżej maksimum z ostatniego roku (drawdown). −5% = blisko szczytu; −40% = głęboka przecena.")}
-      ${hint("Target", "TWÓJ cel cenowy — wpisz ręcznie (np. konsensus analityków albo cena sprzedaży/dokupienia). Zapisuje się sam.")}
-      ${hint("Upside", "Ile % brakuje od kursu do Twojego targetu. Ujemny = kurs już powyżej celu → rewizja targetu albo realizacja zysku.")}
+      ${hint("Ticker", "Exchange symbol of the instrument — hover over the symbol in the table to see the full name")}
+      ${hint("Price", "Last daily close (n8n fetches daily ~22:30; the app pulls it in the morning)")}
+      ${hint("1D", "Price change vs the previous session")}
+      ${hint("30D", "Price change over the last 30 days")}
+      ${hint("SMA50", "Average price over the last 50 sessions (~2.5 mo). ABOVE = price above the average, uptrend; BELOW = downtrend. A classic momentum filter. Number = the average value.")}
+      ${hint("Off 52w high", "How many % the price is below the one-year maximum (drawdown). −5% = near the top; −40% = a deep sell-off.")}
+      ${hint("Target", "YOUR price target — enter it manually (e.g. analyst consensus or a sell/buy-more price). Saves automatically.")}
+      ${hint("Upside", "How many % from the price to your target. Negative = price already above the target — revise the target or take profit.")}
       <th></th>
     </tr></thead><tbody>` + rows.map((a) => a.error
-      ? `<tr><td>${a.ticker}</td><td colspan="7" class="muted">brak danych — odśwież z chmury</td>
+      ? `<tr><td>${a.ticker}</td><td colspan="7" class="muted">no data — refresh from cloud</td>
          <td><button class="danger" data-rm="${a.ticker}">✕</button></td></tr>`
       : `<tr data-t="${a.ticker}" style="cursor:pointer">
         <td><b><span class="hint" title="${TICKER_NAMES[a.ticker] || a.ticker}">${a.ticker}</span></b></td>
         <td>${fmt.num(a.last_close)} ${a.currency}</td>
         <td class="${a.change_1d_pct >= 0 ? "pos" : "neg"}">${fmt.pct(a.change_1d_pct)}</td>
         <td class="${a.change_30d_pct >= 0 ? "pos" : "neg"}">${fmt.pct(a.change_30d_pct)}</td>
-        <td><span class="badge ${a.last_close > a.sma50 ? "up" : "down"}">${a.last_close > a.sma50 ? "nad" : "pod"} ${fmt.num(a.sma50, 0)}</span></td>
+        <td><span class="badge ${a.last_close > a.sma50 ? "up" : "down"}">${a.last_close > a.sma50 ? "above" : "below"} ${fmt.num(a.sma50, 0)}</span></td>
         <td class="neg">${fmt.pct(a.drawdown_from_high_pct)}</td>
         <td><input type="number" value="${a.analyst_target || ""}" data-target="${a.ticker}" style="width:80px"></td>
         <td class="${a.target_upside_pct >= 0 ? "pos" : "neg"}">${fmt.pct(a.target_upside_pct)}</td>
@@ -122,7 +122,7 @@ async function renderMarket(el) {
   async function drawChart(ticker) {
     const hist = await api.get(`/api/market/prices/${ticker}?days=365`);
     if (!hist.length) return;
-    document.getElementById("chartTitle").textContent = ticker + " — 12 miesięcy";
+    document.getElementById("chartTitle").textContent = ticker + " — 12 months";
     const closes = hist.map((h) => h.close);
     const sma = (n) => closes.map((_, i) =>
       i + 1 >= n ? closes.slice(i + 1 - n, i + 1).reduce((a, b) => a + b, 0) / n : null);
@@ -150,7 +150,7 @@ async function renderMarket(el) {
   });
   document.getElementById("wlRefresh").addEventListener("click", async () => {
     const r = await api.post("/api/market/refresh");
-    alert(`Zsynchronizowano ${r.rows} notowań`);
+    alert(`Synced ${r.rows} quotes`);
     route();
   });
 

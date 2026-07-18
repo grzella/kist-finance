@@ -1,5 +1,5 @@
 async function renderForecasts(el) {
-  el.innerHTML = '<div class="empty">Liczenie scenariuszy…</div>';
+  el.innerHTML = '<div class="empty">Computing scenarios…</div>';
   const [debtsData, rsu, cfg, sum, fire] = await Promise.all([
     api.get("/api/debts"), api.get("/api/rsu"),
     api.get("/api/settings"), api.get("/api/dashboard/summary"),
@@ -35,92 +35,92 @@ async function renderForecasts(el) {
   const ym = (m) => {
     const mm = Math.round(m);
     const y = Math.floor(mm / 12), rest = mm % 12;
-    return y ? `${y} ${y === 1 ? "rok" : y < 5 ? "lata" : "lat"}${rest ? ` ${rest} mies.` : ""}` : `${rest} mies.`;
+    return y ? `${y} ${y === 1 ? "yr" : "yrs"}${rest ? ` ${rest} mo` : ""}` : `${rest} mo`;
   };
   const op = (r) => r ? [
-    ["Pozostanie do spłaty", `${ym(r.months_left_after)} (zamiast ${ym(r.months_left_now)})`, "pos"],
-    ["Odsetki zaoszczędzone", fmt.pln(r.interest_saved), "pos"],
-    ["Skrócenie", ym(r.months_saved)],
-  ] : [["—", "nadpłata pokrywa całe saldo — kredyt spłacony 🎉", "pos"]];
+    ["Left to pay off", `${ym(r.months_left_after)} (instead of ${ym(r.months_left_now)})`, "pos"],
+    ["Interest saved", fmt.pln(r.interest_saved), "pos"],
+    ["Shortened by", ym(r.months_saved)],
+  ] : [["—", "the overpayment covers the whole balance — loan paid off 🎉", "pos"]];
 
   el.innerHTML = `
-    <h2>Prognozy — Twoje scenariusze</h2>
-    <div class="muted" style="margin-bottom:12px">Liczone na żywych danych: salda kredytów,
-      kurs akcji RSU, tempo oszczędzania. Zgodne ze strategią: spłata kredytu + refinansowanie równolegle.</div>
+    <h2>Forecasts — your scenarios</h2>
+    <div class="muted" style="margin-bottom:12px">Computed on live data: loan balances,
+      the RSU stock price, savings pace. Aligned with the strategy: loan payoff + refinancing in parallel.</div>
     <div class="grid cols-2">
-      ${scenarioCard("Wrzesień: bonus ~80 000 zł → nadpłata kredytu", op(bonusLodz),
-        lodz ? `Saldo kredytu: ${fmt.pln(lodz.balance)} · rata ${fmt.pln(lodz.minimum_payment)}` : "")}
-      ${scenarioCard(`Sierpień: vest ${rsu.shares_next_vest} akcji (≈${fmt.pln(vestPln)}) → nadpłata kredytu`, op(vestLodz),
-        "Sprzedaż przy veście — Belka tylko od zysku po veście (≈0 przy sprzedaży od razu)")}
-      ${scenarioCard("Vest + bonus razem (≈" + fmt.pln(80000 + vestPln) + ") → kredyt", op(bothLodz),
-        bothLodz ? "" : "Ta kombinacja zamyka ponad połowę salda — z nadwyżkami kredyt znika ~I kw. 2027")}
-      ${scenarioCard(`Aneks ${tarch ? tarch.name : "kredytu"}: ${tarch ? fmt.pct(tarch.effective_rate, 2) : "?"} → ~5,9%`, [
-        ["Oszczędność rocznie", fmt.pln(aneksSavYr), "pos"],
-        ["Do końca stałej stopy (~18 mies.)", fmt.pln(aneksSavYr * 1.5), "pos"],
-        ["Zaangażowany kapitał", "0 zł"],
-      ], "Playbook ING: realne oferty → zaświadczenie → dział utrzymania klienta")}
-      ${scenarioCard("Po spłacie kredytu — co się uwalnia", [
-        ["Rata + ubezpieczenia", fmt.pln(lodzFreed) + "/mies.", "pos"],
-        ["Najem (zostaje jako czysty dochód)", fmt.pln(3450) + "/mies.", "pos"],
-        ["Nieruchomość nieobciążona", "tak — profil pod kredyt włoski"],
-      ], "Od tego momentu całość nadwyżek buduje wkład na cel")}
+      ${scenarioCard("September: ~80,000 PLN bonus → loan overpayment", op(bonusLodz),
+        lodz ? `Loan balance: ${fmt.pln(lodz.balance)} · installment ${fmt.pln(lodz.minimum_payment)}` : "")}
+      ${scenarioCard(`August: vest of ${rsu.shares_next_vest} shares (≈${fmt.pln(vestPln)}) → loan overpayment`, op(vestLodz),
+        "Sell at vest — capital gains tax only on the gain after vest (≈0 when selling right away)")}
+      ${scenarioCard("Vest + bonus combined (≈" + fmt.pln(80000 + vestPln) + ") → loan", op(bothLodz),
+        bothLodz ? "" : "This combination closes more than half the balance — with surpluses the loan is gone ~Q1 2027")}
+      ${scenarioCard(`Rate annex for ${tarch ? tarch.name : "the loan"}: ${tarch ? fmt.pct(tarch.effective_rate, 2) : "?"} → ~5.9%`, [
+        ["Savings per year", fmt.pln(aneksSavYr), "pos"],
+        ["Until the fixed rate ends (~18 mo)", fmt.pln(aneksSavYr * 1.5), "pos"],
+        ["Capital involved", "0 PLN"],
+      ], "ING playbook: real competing offers → certificate → customer retention department")}
+      ${scenarioCard("After the loan is paid off — what gets freed", [
+        ["Installment + insurance", fmt.pln(lodzFreed) + "/mo", "pos"],
+        ["Rent (stays as pure income)", fmt.pln(3450) + "/mo", "pos"],
+        ["Property unencumbered", "yes — profile ready for the Italian mortgage"],
+      ], "From this moment all surpluses build the goal contribution")}
     </div>
 
     ${fire ? `<div class="card mt" style="border-left:4px solid #3ecf8e">
-      <h3 style="margin-top:0">🏁 Droga do work-optional (3 mln płynnego portfela)</h3>
+      <h3 style="margin-top:0">🏁 Path to work-optional (3M liquid portfolio)</h3>
       <div class="muted" style="font-size:.88em;margin-bottom:8px">
-        Płynny portfel dziś ${fmt.pln(fire.start)} → cel ${fmt.pln(fire.target)}. Wpłata: ${fire.assumptions.contrib_note} zł/mies.
-        Trzy scenariusze zwrotu + linia celu. Kiedy linia przecina cel = jesteś work-optional.</div>
+        Liquid portfolio today ${fmt.pln(fire.start)} → target ${fmt.pln(fire.target)}. Contribution: ${fire.assumptions.contrib_note}.
+        Three return scenarios + the target line. When a line crosses the target = you are work-optional.</div>
       <div class="grid cols-4">
-        <div class="card kpi"><div class="label">Ostrożny (4%)</div><div class="value">${(fire.crossover["ostrożny (4%)"] || "—").slice(0, 7)}</div></div>
-        <div class="card kpi"><div class="label">Bazowy (6,5%)</div><div class="value pos">${(fire.crossover["bazowy (6,5%)"] || "—").slice(0, 7)}</div></div>
-        <div class="card kpi"><div class="label">Optymistyczny (9%)</div><div class="value">${(fire.crossover["optymistyczny (9%)"] || "—").slice(0, 7)}</div></div>
-        <div class="card kpi"><div class="label">Realnie (po inflacji 3%)</div><div class="value">${(fire.real_crossover || "—").slice(0, 7)}</div><div class="sub">siła nabywcza</div></div>
+        <div class="card kpi"><div class="label">Cautious (4%)</div><div class="value">${(fire.crossover["cautious (4%)"] || "—").slice(0, 7)}</div></div>
+        <div class="card kpi"><div class="label">Base (6.5%)</div><div class="value pos">${(fire.crossover["base (6.5%)"] || "—").slice(0, 7)}</div></div>
+        <div class="card kpi"><div class="label">Optimistic (9%)</div><div class="value">${(fire.crossover["optimistic (9%)"] || "—").slice(0, 7)}</div></div>
+        <div class="card kpi"><div class="label">Real (after 3% inflation)</div><div class="value">${(fire.real_crossover || "—").slice(0, 7)}</div><div class="sub">purchasing power</div></div>
       </div>
       <canvas id="fireChart" height="90" class="mt"></canvas>
-      <div class="mt"><b>Kamienie milowe (scenariusz bazowy):</b>
+      <div class="mt"><b>Milestones (base scenario):</b>
         <table><tbody>
-          <tr><td>Pierwszy milion płynny</td><td><b>${fire.milestones["1000000"] || "—"}</b></td></tr>
-          <tr><td>2 mln</td><td><b>${fire.milestones["2000000"] || "—"}</b></td></tr>
-          <tr><td>3 mln — work-optional 🏁</td><td class="pos"><b>${fire.milestones["3000000"] || "—"}</b></td></tr>
+          <tr><td>First liquid million</td><td><b>${fire.milestones["1000000"] || "—"}</b></td></tr>
+          <tr><td>2M</td><td><b>${fire.milestones["2000000"] || "—"}</b></td></tr>
+          <tr><td>3M — work-optional 🏁</td><td class="pos"><b>${fire.milestones["3000000"] || "—"}</b></td></tr>
         </tbody></table></div>
-      <div class="muted mt" style="font-size:.82em">To zastępuje Monte Carlo czytelnymi liniami. Najedź myszką na wykres, żeby zobaczyć wartość w danym miesiącu. „Realnie" liczy zwrot po inflacji (~3,5% realnie) — data w dzisiejszej sile nabywczej.</div>
+      <div class="muted mt" style="font-size:.82em">This replaces Monte Carlo with readable lines. Hover over the chart to see the value in a given month. "Real" uses the after-inflation return (~3.5% real) — the date in today's purchasing power.</div>
     </div>
 
     <div class="grid cols-2 mt">
       ${fire.italy ? `<div class="card" style="border-left:4px solid #e0a458">
-        <h3 style="margin-top:0">Wkład na cel (dom)</h3>
+        <h3 style="margin-top:0">Goal contribution (house)</h3>
         <table>
-          <tr><td>Cel wkładu (50%)</td><td><b>${fmt.pln(fire.italy.target)}</b></td></tr>
-          <tr><td>Uzbierane dziś</td><td>${fmt.pln(fire.italy.start)}</td></tr>
-          <tr><td>Wkład gotowy (start po spłacie kredytu)</td><td class="pos"><b>${fire.italy.crossover || "—"}</b></td></tr>
+          <tr><td>Down-payment target (50%)</td><td><b>${fmt.pln(fire.italy.target)}</b></td></tr>
+          <tr><td>Saved so far</td><td>${fmt.pln(fire.italy.start)}</td></tr>
+          <tr><td>Down payment ready (starts after loan payoff)</td><td class="pos"><b>${fire.italy.crossover || "—"}</b></td></tr>
         </table>
         <canvas id="italyChart" height="70" class="mt"></canvas>
         <div class="muted mt" style="font-size:.82em">${fire.italy.note}</div>
       </div>` : ""}
 
       ${fire.tracking ? `<div class="card" style="border-left:4px solid #4c8dff">
-        <h3 style="margin-top:0">📡 Postęp vs plan (uczę się co miesiąc)</h3>
+        <h3 style="margin-top:0">📡 Progress vs plan (learning every month)</h3>
         ${fire.tracking.status === "ok" ? `
           <div style="font-size:1.05em"><b class="${fire.tracking.cum_delta >= 0 ? "pos" : "neg"}">${fire.tracking.verdict}</b>
-            — łącznie ${fire.tracking.cum_delta >= 0 ? "+" : ""}${fmt.pln(fire.tracking.cum_delta)} vs plan</div>
-          <div class="muted" style="font-size:.85em;margin:6px 0">Płynny portfel: ${fmt.pln(fire.tracking.latest_liquid)} · śledzę ${fire.tracking.months_tracked} mies.</div>
-          <table><thead><tr><th>Mies.</th><th style="text-align:right">Realny wzrost</th><th style="text-align:right">Plan</th><th style="text-align:right">Δ</th></tr></thead>
+            — total ${fire.tracking.cum_delta >= 0 ? "+" : ""}${fmt.pln(fire.tracking.cum_delta)} vs plan</div>
+          <div class="muted" style="font-size:.85em;margin:6px 0">Liquid portfolio: ${fmt.pln(fire.tracking.latest_liquid)} · tracking for ${fire.tracking.months_tracked} mo</div>
+          <table><thead><tr><th>Mo</th><th style="text-align:right">Actual growth</th><th style="text-align:right">Plan</th><th style="text-align:right">Δ</th></tr></thead>
           <tbody>${fire.tracking.rows.map((r) => `<tr><td>${r.month}</td>
             <td style="text-align:right">${fmt.pln(r.actual_growth)}</td>
             <td style="text-align:right" class="muted">${fmt.pln(r.expected_growth)}</td>
             <td style="text-align:right" class="${r.delta >= 0 ? "pos" : "neg"}">${r.delta >= 0 ? "+" : ""}${fmt.pln(r.delta)}</td></tr>`).join("")}</tbody></table>`
-        : `<div class="muted">${fire.tracking.status === "zbieram dane" ? `Zbieram dane — pierwszy snapshot ${fire.tracking.first || "dziś"}. Za miesiąc pojawi się pierwsze porównanie realnego tempa z planem.` : "Brak danych."}</div>
-          <div class="muted mt" style="font-size:.85em">Co miesiąc zapisuję stan płynnego portfela i porównuję z oczekiwanym tempem (6,5% + wpłaty). Zobaczysz, czy idziesz szybciej czy wolniej niż plan.</div>`}
+        : `<div class="muted">${fire.tracking.status === "collecting data" ? `Collecting data — first snapshot ${fire.tracking.first || "today"}. In a month the first comparison of the actual pace vs the plan will appear.` : "No data."}</div>
+          <div class="muted mt" style="font-size:.85em">Every month the liquid portfolio balance is recorded and compared with the expected pace (6.5% + contributions). You will see whether you are ahead of or behind the plan.</div>`}
       </div>` : ""}
     </div>` : ""}
 
     <div class="card mt">
-      <h3>Kalkulator nadpłaty — dowolny wariant</h3>
+      <h3>Overpayment calculator — any variant</h3>
       <div class="row">
         <select id="mDebt">${debtsData.debts.map((d) => `<option value="${d.id}">${d.name}</option>`).join("")}</select>
-        <input data-num id="mOver" placeholder="kwota nadpłaty">
-        <button class="primary" id="mRun">Policz</button>
+        <input data-num id="mOver" placeholder="overpayment amount">
+        <button class="primary" id="mRun">Compute</button>
       </div>
       <div id="mOut" class="mt"></div>
     </div>`;
@@ -128,11 +128,11 @@ async function renderForecasts(el) {
   document.getElementById("mRun").addEventListener("click", async () => {
     const debt = debtsData.debts.find((d) => d.id === document.getElementById("mDebt").value);
     const amount = parseNum(document.getElementById("mOver"));
-    if (!debt || isNaN(amount)) { alert("Podaj kwotę"); return; }
+    if (!debt || isNaN(amount)) { alert("Enter an amount"); return; }
     const r = await overpay(debt, amount);
     document.getElementById("mOut").innerHTML = r
       ? `<table>${op(r).map(([k, v, c]) => `<tr><td>${k}</td><td class="${c || ""}"><b>${v}</b></td></tr>`).join("")}</table>`
-      : '<span class="pos"><b>Nadpłata pokrywa całe saldo — kredyt spłacony 🎉</b></span>';
+      : '<span class="pos"><b>The overpayment covers the whole balance — loan paid off 🎉</b></span>';
   });
 
   if (fire && document.getElementById("fireChart")) {
@@ -147,7 +147,7 @@ async function renderForecasts(el) {
             label: n, data: fire.series[n], borderColor: colors[i],
             backgroundColor: "transparent", borderWidth: i === 1 ? 3 : 2, pointRadius: 0, tension: 0.2,
           })),
-          { label: "cel 3 mln", data: fire.labels.map(() => fire.target),
+          { label: "3M target", data: fire.labels.map(() => fire.target),
             borderColor: "#888", borderDash: [6, 4], pointRadius: 0, borderWidth: 1 },
         ],
       },
@@ -157,7 +157,7 @@ async function renderForecasts(el) {
           title: (items) => items[0].label,
           label: (ctx) => `${ctx.dataset.label}: ${fmt.pln(ctx.parsed.y)}`,
         } } },
-        scales: { y: { ticks: { callback: (v) => (v / 1000000).toFixed(1) + " mln" } } },
+        scales: { y: { ticks: { callback: (v) => (v / 1000000).toFixed(1) + "M" } } },
       },
     }));
   }
@@ -168,9 +168,9 @@ async function renderForecasts(el) {
       data: {
         labels: yrs,
         datasets: [
-          { label: "Wkład uzbierany", data: fire.italy.series, borderColor: CHART_COLORS[4],
+          { label: "Saved so far", data: fire.italy.series, borderColor: CHART_COLORS[4],
             backgroundColor: "transparent", borderWidth: 3, pointRadius: 2, tension: 0.2 },
-          { label: "cel wkładu", data: yrs.map(() => fire.italy.target),
+          { label: "down-payment target", data: yrs.map(() => fire.italy.target),
             borderColor: "#888", borderDash: [6, 4], pointRadius: 0, borderWidth: 1 },
         ],
       },

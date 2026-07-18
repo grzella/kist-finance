@@ -75,7 +75,7 @@ def dashboard_summary():
             rest = sum(i["monthly"] for i in mine[8:])
             data["planned_categories"] = (
                 [{"category": i["name"], "total": i["monthly"]} for i in top]
-                + ([{"category": "pozostałe", "total": round(rest, 2)}] if rest else []))
+                + ([{"category": "other", "total": round(rest, 2)}] if rest else []))
         except ValueError:
             pass
     planner.ensure_monthly_snapshot()
@@ -160,7 +160,7 @@ def market_analytics(ticker):
 @app.post("/api/market/refresh")
 def market_refresh():
     out = market.refresh_cache()
-    try:  # samouczenie: po świeżych danych rozlicz i zapisz prognozy
+    try:  # self-learning: after fresh data, score and record forecasts
         out["forecast_cycle"] = market.record_and_score_forecasts()
     except Exception as e:
         out["forecast_cycle"] = {"error": str(e)[:80]}

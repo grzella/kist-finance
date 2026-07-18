@@ -352,7 +352,7 @@ def rsu_backtest(grant, horizons=(21, 63)):
     closes = [r["close"] for r in hist]
     n = len(closes)
     if n < 160:
-        return {"status": "za mało historii do backtestu"}
+        return {"status": "not enough history for a backtest"}
     mu = float(grant.get("mc_drift_annual", 0.08))
     out = {}
     for H in horizons:
@@ -522,7 +522,7 @@ def rsu_advanced():
     ticker = grant["ticker"]
     hist = prices(ticker, days=400)
     if not hist:
-        return {"error": "brak danych kursu RSU — odśwież cache rynkowy"}
+        return {"error": "no RSU price data — refresh the market cache"}
     closes = [r["close"] for r in hist]
     last = closes[-1]
     usdpln_hist = prices("USDPLN=X", days=10)
@@ -633,8 +633,8 @@ def rsu_advanced():
         "pos_in_52w_pct": round(100 * (last - lo_52w) / (hi_52w - lo_52w)) if hi_52w > lo_52w else None,
         "sma50": sma50,
         "sma200": sma200,
-        "trend": ("nad SMA50 i SMA200" if (sma50 and sma200 and last > sma50 > sma200)
-                  else "pod SMA50" if (sma50 and last < sma50) else "mieszany"),
+        "trend": ("above SMA50 and SMA200" if (sma50 and sma200 and last > sma50 > sma200)
+                  else "below SMA50" if (sma50 and last < sma50) else "mixed"),
         "drift_annual_pct": round(drift * 100, 1),
         "sims": sims,
         "prob_above_current_1y_pct": prob_above_current,
@@ -651,19 +651,19 @@ def rsu_advanced():
 # ---------- deep FX analysis (trend + momentum + backtest) ----------
 
 _FX_PAIRS = [
-    {"pair": "USDPLN=X", "title": "USD/PLN", "conv": "USD → PLN (vest → nadpłata/wydatki)",
-     "favorable": "high", "why_fav": "sprzedajesz USD, więc im wyżej tym lepiej"},
-    {"pair": "EURUSD=X", "title": "EUR/USD", "conv": "USD → EUR (vest → wkład na dom)",
-     "favorable": "low", "why_fav": "kupujesz EUR za USD, więc im niżej EUR/USD tym więcej EUR"},
-    {"pair": "EURPLN=X", "title": "EUR/PLN", "conv": "PLN → EUR (wkład na dom za złotówki)",
-     "favorable": "low", "why_fav": "kupujesz EUR za PLN, więc im niżej tym lepiej"},
+    {"pair": "USDPLN=X", "title": "USD/PLN", "conv": "USD → PLN (vest → overpayment/spending)",
+     "favorable": "high", "why_fav": "you are selling USD, so the higher the better"},
+    {"pair": "EURUSD=X", "title": "EUR/USD", "conv": "USD → EUR (vest → house down payment)",
+     "favorable": "low", "why_fav": "you are buying EUR with USD, so the lower EUR/USD the more EUR"},
+    {"pair": "EURPLN=X", "title": "EUR/PLN", "conv": "PLN → EUR (house down payment from zloty)",
+     "favorable": "low", "why_fav": "you are buying EUR with PLN, so the lower the better"},
 ]
 
 
 def _fx_one(cfg):
     hist = prices(cfg["pair"], days=400)
     if len(hist) < 60:
-        return {"pair": cfg["pair"], "title": cfg["title"], "error": "za mało danych"}
+        return {"pair": cfg["pair"], "title": cfg["title"], "error": "not enough data"}
     closes = [r["close"] for r in hist]
     last = closes[-1]
     fav_high = cfg["favorable"] == "high"
@@ -676,47 +676,47 @@ def _fx_one(cfg):
     # trend
     if sma50 and sma200:
         if last > sma50 > sma200:
-            trend = "wzrostowy"
+            trend = "up"
         elif last < sma50 < sma200:
-            trend = "spadkowy"
+            trend = "down"
         else:
-            trend = "boczny/mieszany"
+            trend = "sideways/mixed"
     else:
         trend = "?"
     # „favorable position": jak blisko korzystnego skraju (0-100, 100 = idealny moment poziomowo)
     fav_pos = pos if fav_high else (100 - pos)
     # czy trend/momentum pcha DALEJ w korzystną stronę (czyli warto poczekać)?
     # dla fav_high: korzystnie=wyżej; jeśli momentum dodatnie i trend wzrostowy -> może iść wyżej -> poczekaj
-    pushing_further = ((mom30 > 0.5 and trend == "wzrostowy") if fav_high
-                       else (mom30 < -0.5 and trend == "spadkowy"))
+    pushing_further = ((mom30 > 0.5 and trend == "up") if fav_high
+                       else (mom30 < -0.5 and trend == "down"))
     # przewartościowanie względem SMA50 (mean-reversion): korzystny skraj + wychylenie = teraz
     overshoot = (dist50 > 1.5) if fav_high else (dist50 < -1.5)
 
     reasons = []
     score = 0
     if fav_pos >= 70:
-        score += 2; reasons.append(f"Poziom korzystny: {fav_pos}/100 w zakresie 52 tyg. (kurs {'wysoko' if fav_high else 'nisko'}).")
+        score += 2; reasons.append(f"Favorable level: {fav_pos}/100 in the 52-week range (price {'high' if fav_high else 'low'}).")
     elif fav_pos <= 35:
-        score -= 2; reasons.append(f"Poziom NIEkorzystny: {fav_pos}/100 — kurs po złej stronie zakresu.")
+        score -= 2; reasons.append(f"UNfavorable level: {fav_pos}/100 — price on the wrong side of the range.")
     else:
-        reasons.append(f"Poziom neutralny: {fav_pos}/100 w zakresie 52 tyg.")
+        reasons.append(f"Neutral level: {fav_pos}/100 in the 52-week range.")
     if pushing_further:
         score -= 1
-        reasons.append(f"⚠️ Trend {trend} + momentum 30d {mom30:+}% pcha kurs DALEJ w Twoją stronę — może być jeszcze lepiej, ryzyko sprzedaży na fałszywym szczycie. Rozważ podział transzy.")
+        reasons.append(f"⚠️ Trend {trend} + 30d momentum {mom30:+}% is pushing the rate FURTHER in your favor — it may get even better; risk of selling at a false top. Consider splitting the tranche.")
     else:
-        reasons.append(f"Trend {trend}, momentum 30d {mom30:+}% / 90d {mom90:+}% — brak silnego ruchu dalej, poziom bardziej wiarygodny.")
+        reasons.append(f"Trend {trend}, momentum 30d {mom30:+}% / 90d {mom90:+}% — no strong further move, the level is more reliable.")
     if overshoot:
         score += 1
-        reasons.append(f"Wychylenie {dist50:+}% od SMA50 — kurs rozciągnięty, sprzyja odwróceniu (mean-reversion) = działaj teraz.")
+        reasons.append(f"Deviation {dist50:+}% from SMA50 — the rate is stretched, favors a reversal (mean-reversion) = act now.")
 
     if score >= 3:
-        verdict = "Dobry moment — działaj (rozważ całość)"; vcls = "pos"
+        verdict = "Good moment — act (consider the full amount)"; vcls = "pos"
     elif score >= 1:
-        verdict = "Umiarkowanie korzystnie — rozważ część transzy teraz"; vcls = ""
+        verdict = "Moderately favorable — consider part of the tranche now"; vcls = ""
     elif score <= -2:
-        verdict = "Niekorzystnie — poczekaj"; vcls = "neg"
+        verdict = "Unfavorable — wait"; vcls = "neg"
     else:
-        verdict = "Neutralnie — bez pośpiechu / podziel"; vcls = "muted"
+        verdict = "Neutral — no rush / split it"; vcls = "muted"
 
     bt = _fx_backtest(closes, fav_high)
     return {
@@ -751,7 +751,7 @@ def _fx_backtest(closes, fav_high, horizon=21):
                 hits += 1  # kurs się cofnął = dobrze, złapałeś dobry moment
             fwd_sum += (fwd if fav_high else -fwd)
     if total < 5:
-        return {"status": "za mało sygnałów w historii", "n": total}
+        return {"status": "not enough signals in history", "n": total}
     return {"status": "ok", "n": total,
             "hit_rate": round(100 * hits / total),
             "avg_fwd_move": round(fwd_sum / total, 2)}
@@ -844,7 +844,7 @@ def forecast_selfscore():
         cov = round(r["k"] / r["n"] * 100, 1) if r["n"] else None
         out["horizons"].append({"days": r["h"], "scored": r["n"], "coverage_pct": cov,
                                 "target_pct": 80,
-                                "verdict": "ok" if cov and 70 <= cov <= 92 else "kalibruje się"})
+                                "verdict": "ok" if cov and 70 <= cov <= 92 else "calibrating"})
         out["total_scored"] += r["n"]
     pend = _ft_rows("select count(*) c from forecast_track where inside is null")
     out["pending"] = pend[0]["c"] if pend else 0
@@ -857,7 +857,7 @@ def ticker_bands(ticker):
     hist = prices(ticker, days=600)
     closes = [h["close"] for h in hist]
     if len(closes) < 60:
-        return {"error": "za mało historii"}
+        return {"error": "not enough history"}
     out = fm.short_term_bands_calibrated(closes, forecast_residuals(ticker))
     out["coverage"] = fm.short_term_coverage_backtest(closes, 21)
     return out

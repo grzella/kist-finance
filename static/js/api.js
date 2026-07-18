@@ -45,7 +45,7 @@ document.addEventListener("blur", (e) => {
   }
 }, true);
 
-// ---------- TRYB DEMO — maskuje kwoty wzorem 0-1 (do screenshotów) ----------
+// ---------- DEMO MODE — masks amounts with a 0-1 pattern (for screenshots) ----------
 function demoOn() {
   if (/[?&#](demo|test)\b/.test(location.search + location.hash)) return true;
   return localStorage.getItem("demoMode") === "1";
@@ -55,14 +55,14 @@ function toggleDemo(on) {
   location.reload();
 }
 
-// ---------- JĘZYK / LANGUAGE (pl default, en via toggle) ----------
+// ---------- LANGUAGE (en default, pl via toggle) ----------
 function langGet() {
   const q = /[?&#]lang=(pl|en)\b/.exec(location.search + location.hash);
   if (q) return q[1];
-  return localStorage.getItem("lang") === "en" ? "en" : "pl";
+  return localStorage.getItem("lang") === "pl" ? "pl" : "en";
 }
 function langSet(l) {
-  localStorage.setItem("lang", l === "en" ? "en" : "pl");
+  localStorage.setItem("lang", l === "pl" ? "pl" : "en");
   location.reload();
 }
 function _maskInt(v) {

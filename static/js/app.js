@@ -29,7 +29,7 @@ function destroyCharts() {
 }
 function trackChart(c) {
   activeCharts.push(c);
-  // TRYB DEMO: maskuj osie wartości (nie kategorie/daty) i wyłącz tooltipy
+  // DEMO MODE: mask value axes (not categories/dates) and disable tooltips
   try {
     if (typeof demoOn === "function" && demoOn() && c && c.config) {
       // Mutate the RAW c.config.options — writing to the c.options resolver
@@ -65,7 +65,7 @@ function trackChart(c) {
   return c;
 }
 
-// TRYB DEMO: maskuj wrażliwe słowa (lokalizacje, nazwisko) w wyrenderowanym DOM
+// DEMO MODE: mask sensitive words (locations, surname) in the rendered DOM
 const _DEMO_WORDS = [
   // Add your own sensitive words to mask in demo mode, e.g. [/CityName/g, "City-A"]
 ];
@@ -81,7 +81,7 @@ function maskSensitiveText(root) {
   nodes.forEach((n) => {
     let t = n.nodeValue;
     _DEMO_WORDS.forEach(([re, rep]) => { t = t.replace(re, rep); });
-    // maskuj liczby finansowe w wolnym tekście (liczba + jednostka), oszczędzając daty/liczniki
+    // mask financial figures in free text (number + unit), sparing dates/counters
     t = t.replace(/(\d[\d   .,]*\d|\d)[   ]?(zł|zl|PLN|EUR|USD|\$|€|k|tys\.?|mln|mld|%|szt\.?)(?=$|\b|\/|\s|,|\.|\))/g,
       (m, num, unit) => _mask01(num.replace(/[^\d]/g, "")) + (/^[a-zA-Zł]/.test(unit) ? " " + unit : unit));
     // mask amounts with the currency symbol BEFORE the number (e.g. $93.29, €120)
@@ -91,35 +91,35 @@ function maskSensitiveText(root) {
   });
 }
 
-// ---------- i18n: warstwa tłumaczenia DOM (PL→EN) ----------
+// ---------- i18n: DOM translation layer (EN→PL, for the optional "pl" mode) ----------
 const _I18N_EXACT = {
-  "💰 Budżet": "💰 Budget", "💧 Płynność": "💧 Cash-flow", "💡 Rekomendacje": "💡 Recommendations",
-  "🏦 Majątek": "🏦 Wealth", "🧩 Alokacja": "🧩 Allocation", "🎯 Cele": "🎯 Goals",
-  "💼 Kariera": "💼 Career", "🏠 Kredyty": "🏠 Loans", "🏛️ Podatki": "🏛️ Taxes",
-  "🚁 Firma": "🚁 Business", "📈 Rynek": "📈 Market", "💱 Waluty": "💱 FX",
-  "🔮 Prognozy": "🔮 Forecasts", "🛠️ Control": "🛠️ Control",
-  "🛠️ Control Center": "🛠️ Control Center", "🛠️ Automatyzacje & health": "🛠️ Automation & health",
-  "🔔 Przypomnienia": "🔔 Reminders", "📊 Dane w aplikacji": "📊 Data in the app",
-  "Zadania OK": "Tasks OK", "Ostrzeżenia": "Warnings", "Błędy": "Errors", "Odśwież": "Refresh",
-  "Sprawdź teraz": "Check now", "🔬 Tryb demo": "🔬 Demo mode",
-  "Włącz tryb demo": "Enable demo mode", "Wyłącz tryb demo": "Disable demo mode",
-  "🔐 Bezpieczeństwo & testy": "🔐 Security & tests",
-  "🔐 Uruchom security & testy": "🔐 Run security & tests",
-  "Zadanie": "Task", "Częstotliwość": "Frequency", "Ostatni update": "Last update",
-  "Status": "Status", "Szczegóły": "Details",
-  "Źródła bez pracy": "Zero-effort sources", "Utrzymuje Claude": "Maintained offline",
-  "Ręczne punkty / mies.": "Manual points / mo.", "Czas ręczny / mies.": "Manual time / mo.",
-  "Dane": "Data", "Tryb": "Mode", "Źródło": "Source", "Ostatnia akt.": "Last upd.",
-  "Wartość netto": "Net worth", "Dochody / mies.": "Income / mo.", "Koszty / mies.": "Costs / mo.",
-  "Nadwyżka / mies.": "Surplus / mo.", "Posiadane akcje": "Shares held",
-  "Dodaj": "Add", "Zapisz": "Save", "Usuń": "Delete", "Filtruj": "Filter", "Nadpłać": "Overpay",
-  "wszystkie kategorie": "all categories", "Ładowanie…": "Loading…",
+  "💰 Budget": "💰 Budżet", "💧 Cash-flow": "💧 Płynność", "💡 Recommendations": "💡 Rekomendacje",
+  "🏦 Wealth": "🏦 Majątek", "🧩 Allocation": "🧩 Alokacja", "🎯 Goals": "🎯 Cele",
+  "💼 Career": "💼 Kariera", "🏠 Loans": "🏠 Kredyty", "🏛️ Taxes": "🏛️ Podatki",
+  "🚁 Business": "🚁 Firma", "📈 Market": "📈 Rynek", "💱 FX": "💱 Waluty",
+  "🔮 Forecasts": "🔮 Prognozy", "🛠️ Control": "🛠️ Control",
+  "🛠️ Control Center": "🛠️ Control Center", "🛠️ Automation & health": "🛠️ Automatyzacje & health",
+  "🔔 Reminders": "🔔 Przypomnienia", "📊 Data in the app": "📊 Dane w aplikacji",
+  "Tasks OK": "Zadania OK", "Warnings": "Ostrzeżenia", "Errors": "Błędy", "Refresh": "Odśwież",
+  "Check now": "Sprawdź teraz", "🔬 Demo mode": "🔬 Tryb demo",
+  "Enable demo mode": "Włącz tryb demo", "Disable demo mode": "Wyłącz tryb demo",
+  "🔐 Security & tests": "🔐 Bezpieczeństwo & testy",
+  "🔐 Run security & tests": "🔐 Uruchom security & testy",
+  "Task": "Zadanie", "Frequency": "Częstotliwość", "Last update": "Ostatni update",
+  "Status": "Status", "Details": "Szczegóły",
+  "Zero-effort sources": "Źródła bez pracy", "Maintained by Claude": "Utrzymuje Claude",
+  "Manual touchpoints / mo": "Ręczne punkty / mies.", "Manual time / mo": "Czas ręczny / mies.",
+  "Data": "Dane", "Mode": "Tryb", "Source": "Źródło", "Last upd.": "Ostatnia akt.",
+  "Net worth": "Wartość netto", "Income / mo": "Dochody / mies.", "Costs / mo": "Koszty / mies.",
+  "Surplus / mo": "Nadwyżka / mies.", "Shares held": "Posiadane akcje",
+  "Add": "Dodaj", "Save": "Zapisz", "Delete": "Usuń", "Filter": "Filtruj", "Overpay": "Nadpłać",
+  "all categories": "wszystkie kategorie", "Loading…": "Ładowanie…",
 };
 const _I18N_PHRASES = [
-  [/\bmiesięcznie\b/g, "monthly"], [/\bcodziennie\b/g, "daily"], [/\btygodniowo\b/g, "weekly"],
-  [/\bokazjonalnie\b/g, "occasionally"], [/\bna żądanie\b/g, "on demand"], [/\brzadko\b/g, "rarely"],
-  [/\bręcznie\b/g, "manual"], [/\bliczone\b/g, "derived"], [/\bzero pracy\b/g, "zero effort"],
-  [/ostatni run:/g, "last run:"], [/stan na/g, "as of"],
+  [/\bmonthly\b/g, "miesięcznie"], [/\bdaily\b/g, "codziennie"], [/\bweekly\b/g, "tygodniowo"],
+  [/\boccasionally\b/g, "okazjonalnie"], [/\bon demand\b/g, "na żądanie"], [/\brarely\b/g, "rzadko"],
+  [/\bzero effort\b/g, "zero pracy"],
+  [/last run:/g, "ostatni run:"], [/\bas of\b/g, "stan na"],
 ];
 function translateDom(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -139,8 +139,8 @@ function translateDom(root) {
   });
 }
 function applyLang() {
-  if (langGet() !== "en") return;
-  document.documentElement.lang = "en";
+  if (langGet() !== "pl") return;
+  document.documentElement.lang = "pl";
   try { translateDom(document.getElementById("nav")); } catch (e) { /* noop */ }
 }
 
@@ -175,13 +175,13 @@ async function route() {
   const banner = document.getElementById("demoBanner");
   if (banner) banner.style.display = demoOn() ? "block" : "none";
   const el = document.getElementById("view");
-  el.innerHTML = '<div class="empty">Ładowanie…</div>';
+  el.innerHTML = '<div class="empty">Loading…</div>';
   try {
     await fn(el);
     if (demoOn()) { try { maskSensitiveText(el); } catch (e) { console.error("mask", e); } }
-    if (langGet() === "en") { try { translateDom(el); } catch (e) { console.error("i18n", e); } }
+    if (langGet() === "pl") { try { translateDom(el); } catch (e) { console.error("i18n", e); } }
   } catch (e) {
-    el.innerHTML = `<div class="card"><b>Błąd:</b> <span class="muted">${e.message}</span></div>`;
+    el.innerHTML = `<div class="card"><b>Error:</b> <span class="muted">${e.message}</span></div>`;
   }
 }
 

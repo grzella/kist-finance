@@ -664,7 +664,7 @@ def add_debt(data):
         "insert into debt_values (id, debt_id, month, balance, note, created_at) "
         "values (?,?,?,?,?,?)",
         (str(uuid.uuid4()), debt_id, _month_key(), float(data["balance"]),
-         "stan początkowy", _now()))
+         "initial balance", _now()))
     _save_debt_meta(debt_id, data)
     _audit("debt", debt_id, "add", data)
     return debt_id
@@ -686,7 +686,7 @@ def update_debt(debt_id, data):
             "insert into debt_values (id, debt_id, month, balance, note, created_at) "
             "values (?,?,?,?,?,?)",
             (str(uuid.uuid4()), debt_id, _month_key(), float(data["balance"]),
-             "korekta ręczna", _now()))
+             "manual correction", _now()))
 
 
 def overpay_debt(debt_id, data):
@@ -701,7 +701,7 @@ def overpay_debt(debt_id, data):
         "insert into debt_values (id, debt_id, month, balance, principal_paid, "
         "note, created_at) values (?,?,?,?,?,?,?)",
         (str(uuid.uuid4()), debt_id, _month_key(), new_balance, amount,
-         "nadpłata", _now()))
+         "overpayment", _now()))
     eb._exec("update debts set balance = ?, updated_at = ? where id = ?",
              (new_balance, _now(), debt_id))
     _audit("debt", debt_id, "overpay", {"amount": amount, "new_balance": new_balance})
@@ -724,7 +724,7 @@ EXPECTED_MARKET_RETURN = 6.5  # % nominal, conservative after-cost assumption
 
 
 def _zl(v):
-    return f"{v:,.0f}".replace(",", " ") + " zł"
+    return f"{v:,.0f}".replace(",", " ") + " PLN"
 
 
 def recommendation():
@@ -762,7 +762,7 @@ def recommendation():
     # 0. user-chosen strategy overrides generic debt heuristics
     strategy = get_setting("debt_strategy")
     if strategy:
-        recs.append({"area": "strategia (Twoja decyzja)", "priority": 0,
+        recs.append({"area": "strategy (your decision)", "priority": 0,
                      "text": strategy})
 
     # 1. emergency fund
@@ -770,11 +770,11 @@ def recommendation():
     if essential_monthly > 0 and cushion < target:
         gap = target - cushion
         recs.append({
-            "area": "poduszka", "priority": 1,
-            "text": (f"Zbuduj poduszkę bezpieczeństwa: masz {_zl(cushion)} "
-                     f"(gotówka + XTB + PPK), "
-                     f"cel to ~{_zl(target)} (6 mies. kosztów stałych ~{_zl(essential_monthly)}/mies.); "
-                     f"brakuje {_zl(gap)} — to priorytet przed nadpłatami i inwestycjami.")})
+            "area": "emergency fund", "priority": 1,
+            "text": (f"Build the emergency cushion: you have {_zl(cushion)} "
+                     f"(cash + XTB + employer pension), "
+                     f"the target is ~{_zl(target)} (6 months of fixed costs ~{_zl(essential_monthly)}/mo); "
+                     f"{_zl(gap)} is missing — this is the priority before overpayments and investing.")})
 
     # 2. debt avalanche vs investing
     for debt in sorted(d["debts"], key=lambda x: -(x["effective_rate"] or 0)):
@@ -783,16 +783,16 @@ def recommendation():
             continue
         if rate > EXPECTED_MARKET_RETURN:
             recs.append({
-                "area": "długi", "priority": 6 if strategy else 2,
-                "text": (f"Nadpłacaj {debt['name']}: efektywne {rate:.2f}% przewyższa "
-                         f"oczekiwany zwrot z rynku (~{EXPECTED_MARKET_RETURN}%) — nadpłata to "
-                         f"gwarantowany, nieopodatkowany zwrot {rate:.1f}%. "
-                         f"Odsetki do końca przy obecnej racie: {_zl(debt['schedule']['total_interest'] or 0)}.")})
+                "area": "debts", "priority": 6 if strategy else 2,
+                "text": (f"Overpay {debt['name']}: the effective {rate:.2f}% beats "
+                         f"the expected market return (~{EXPECTED_MARKET_RETURN}%) — an overpayment is "
+                         f"a guaranteed, untaxed {rate:.1f}% return. "
+                         f"Interest to maturity at the current installment: {_zl(debt['schedule']['total_interest'] or 0)}.")})
         else:
             recs.append({
-                "area": "długi", "priority": 4,
-                "text": (f"{debt['name']} ({rate:.2f}% efektywnie) nie nadpłacaj agresywnie — "
-                         f"tani dług; kapitał lepiej pracuje gdzie indziej.")})
+                "area": "debts", "priority": 4,
+                "text": (f"{debt['name']} ({rate:.2f}% effective) — do not overpay aggressively; "
+                         f"cheap debt, the capital works better elsewhere.")})
         break  # avalanche: only the top-rate debt gets the action
 
     # 2b. refinancing: fixed rate far above current market
@@ -806,55 +806,55 @@ def recommendation():
                 yearly = debt["balance"] * gap / 100
                 extra = ""
                 if debt.get("fixed_until"):
-                    extra = (f" Stała stopa kończy się {debt['fixed_until']} — rata "
-                             f"spadnie wtedy sama, ale do tego czasu nadpłacasz rynek o "
-                             f"~{_zl(yearly)}/rok. Sprawdź: aneks/negocjacja marży w swoim "
-                             f"banku albo refinansowanie (uwaga na rekompensatę za "
-                             f"wcześniejszą spłatę przy stałej stopie).")
+                    extra = (f" The fixed rate ends {debt['fixed_until']} — the installment "
+                             f"will then drop by itself, but until then you overpay the market by "
+                             f"~{_zl(yearly)}/yr. Check: an annex/margin negotiation at your "
+                             f"bank or refinancing (mind the early-repayment "
+                             f"compensation on a fixed rate).")
                 recs.append({
-                    "area": "refinansowanie", "priority": 2,
-                    "text": (f"{debt['name']}: płacisz {debt['effective_rate']:.2f}% przy "
-                             f"rynku ~{market_rate:.2f}% (WIBOR {rates['wibor3m']}% + marża "
-                             f"{margin}%) — luka {gap:.1f} p.p. ≈ {_zl(yearly)}/rok "
-                             f"nadpłacanych odsetek.{extra}")})
+                    "area": "refinancing", "priority": 2,
+                    "text": (f"{debt['name']}: you pay {debt['effective_rate']:.2f}% against "
+                             f"a market of ~{market_rate:.2f}% (WIBOR {rates['wibor3m']}% + margin "
+                             f"{margin}%) — a {gap:.1f} pp gap ≈ {_zl(yearly)}/yr "
+                             f"of overpaid interest.{extra}")})
                 recs.append({
-                    "area": "negocjacje z bankiem", "priority": 2,
-                    "text": (f"Playbook na {debt['name']}: (1) złóż wnioski o refinansowanie "
-                             f"w 2–3 bankach (darmowe, ~tydzień) — realna oferta bije blef; "
-                             f"(2) w swoim banku poproś o zaświadczenie o saldzie i historii "
-                             f"kredytu 'do refinansowania' — ten wniosek trafia do systemu "
-                             f"jako sygnał odejścia i często sam uruchamia dział utrzymania "
-                             f"klienta; (3) zadzwoń/napisz do banku: 'mam ofertę X%, "
-                             f"rozważam przeniesienie — co możecie zaproponować?'; "
-                             f"(4) licz się z kontrofertą aneksu w 2–4 tyg.; jeśli brak — "
-                             f"refinansuj naprawdę, po sprawdzeniu rekompensaty za "
-                             f"wcześniejszą spłatę w umowie (stała stopa!).")})
+                    "area": "bank negotiations", "priority": 2,
+                    "text": (f"Playbook for {debt['name']}: (1) file refinancing applications "
+                             f"at 2–3 banks (free, ~a week) — a real offer beats a bluff; "
+                             f"(2) at your own bank request a balance-and-history certificate "
+                             f"'for refinancing' — that request lands in the system "
+                             f"as a leaving signal and often triggers the retention "
+                             f"department by itself; (3) call/write to the bank: 'I have an offer at X%, "
+                             f"I am considering moving — what can you propose?'; "
+                             f"(4) expect an annex counter-offer within 2–4 weeks; if none — "
+                             f"actually refinance, after checking the early-repayment "
+                             f"compensation in the contract (fixed rate!).")})
 
     # 3. concentration / diversification
     if assets > 0 and real_estate / assets > 0.7:
         pct = real_estate / assets * 100
         recs.append({
-            "area": "dywersyfikacja", "priority": 3,
-            "text": (f"Nieruchomości to {pct:.0f}% majątku — wysoka koncentracja w jednej "
-                     f"klasie aktywów i jednym kraju. Nowe oszczędności kieruj do płynnych "
-                     f"instrumentów: najpierw limity IKZE/PPE (korzyść podatkowa od ręki), "
-                     f"potem szeroki ETF.")})
+            "area": "diversification", "priority": 3,
+            "text": (f"Real estate is {pct:.0f}% of wealth — high concentration in one "
+                     f"asset class and one country. Direct new savings into liquid "
+                     f"instruments: retirement-account limits first (an instant tax benefit), "
+                     f"then a broad ETF.")})
 
     # 4. goals
     if not goals:
         recs.append({
-            "area": "cele", "priority": 5,
-            "text": "Nie masz aktywnego celu — dodaj go w zakładce Cele (np. mieszkanie "
-                    "we Włoszech), a oferty pracy i tempo oszczędzania zaczną się do niego liczyć."})
+            "area": "goals", "priority": 5,
+            "text": "You have no active goal — add one in the Goals tab (e.g. an apartment "
+                    "in Italy), and job offers and the savings pace will start counting toward it."})
     if cfg.get("monthly_savings") in (None, 0):
         recs.append({
-            "area": "cele", "priority": 5,
-            "text": "Ustaw realne miesięczne tempo oszczędzania w zakładce Cele — bez tego "
-                    "projekcje celów i porównania ofert pracy nie działają."})
+            "area": "goals", "priority": 5,
+            "text": "Set a realistic monthly savings pace in the Goals tab — without it "
+                    "goal projections and job-offer comparisons do not work."})
 
     recs.sort(key=lambda r: r["priority"])
     return {
-        "headline": recs[0]["text"] if recs else "Dane wyglądają zdrowo — brak pilnych działań.",
+        "headline": recs[0]["text"] if recs else "The data looks healthy — no urgent actions.",
         "items": recs,
         "facts": {
             "cushion": cushion, "cushion_target": target,
@@ -896,12 +896,12 @@ def xtb_recommendation():
     for name, hits in by_name.items():
         if len(hits) > 1:
             v = sum(h["value"] for h in hits)
-            where = " i ".join(h["container"] for h in hits)
+            where = " and ".join(h["container"] for h in hits)
             recs.append({
-                "area": "duplikaty", "priority": 1,
-                "text": (f"{name} masz w {where} jednocześnie (łącznie {_zl(v)}) — "
-                         f"to ten sam instrument w dwóch miejscach: podwójne opłaty za "
-                         f"nakładkę bez żadnej dywersyfikacji. Skonsoliduj do jednego worka.")})
+                "area": "duplicates", "priority": 1,
+                "text": (f"You hold {name} in {where} at the same time (total {_zl(v)}) — "
+                         f"the same instrument in two places: double wrapper fees "
+                         f"with zero diversification. Consolidate into one bucket.")})
 
     # 2. theme concentration
     by_theme = {}
@@ -911,11 +911,11 @@ def xtb_recommendation():
         share = v / total * 100
         if share > THEME_CAP:
             recs.append({
-                "area": "koncentracja", "priority": 2,
-                "text": (f"Motyw '{theme}' to {share:.0f}% portfela XTB ({_zl(v)}) — "
-                         f"NASDAQ 100, MSCI IT, Semiconductor, Nvidia, Alphabet i Amazon "
-                         f"to w dużej mierze te same spółki kupione kilka razy. Realna "
-                         f"dywersyfikacja jest dużo mniejsza, niż sugeruje liczba pozycji.")})
+                "area": "concentration", "priority": 2,
+                "text": (f"The '{theme}' theme is {share:.0f}% of the XTB portfolio ({_zl(v)}) — "
+                         f"NASDAQ 100, MSCI IT, Semiconductor, Nvidia, Alphabet and Amazon "
+                         f"are largely the same companies bought several times. Real "
+                         f"diversification is much smaller than the number of positions suggests.")})
             break
 
     # 3. single-stock cap
@@ -924,28 +924,28 @@ def xtb_recommendation():
             share = p["value"] / total * 100
             if share > SINGLE_POSITION_CAP:
                 recs.append({
-                    "area": "pojedyncze spółki", "priority": 3,
-                    "text": (f"{p['name']} = {share:.0f}% portfela XTB — powyżej "
-                             f"rozsądnego limitu {SINGLE_POSITION_CAP:.0f}% na pojedynczą "
-                             f"spółkę. Rozważ przycięcie przy okazji rebalansu "
-                             f"(pamiętaj o 19% Belki od zysku).")})
+                    "area": "single stocks", "priority": 3,
+                    "text": (f"{p['name']} = {share:.0f}% of the XTB portfolio — above "
+                             f"the reasonable {SINGLE_POSITION_CAP:.0f}% cap per single "
+                             f"stock. Consider trimming at the next rebalance "
+                             f"(mind the 19% capital gains tax on the profit).")})
 
     # 4. contribution steering: broad-world sleeve underweight
     world = by_theme.get("world", 0)
     world_share = world / total * 100
     if world_share < 20:
         recs.append({
-            "area": "wpłaty", "priority": 4,
-            "text": (f"Szeroki rynek to tylko {world_share:.0f}% portfela. Plan naprawy "
-                     f"(bez podatku): zamroź wpłaty do Planów 1 i 2 (nie sprzedawaj — "
-                     f"przenoszenie = Belka), załóż Plan 3 z VWCE (Vanguard FTSE "
-                     f"All-World, 100%) i kieruj tam całe 2 000 zł/mies. Za rok world "
-                     f"~25%, za dwa ~40%, tech spada z {by_theme.get('tech', 0) / total * 100:.0f}% "
-                     f"do ~50%. Pełna instrukcja w backlogu (zakładka Rekomendacje).")})
+            "area": "contributions", "priority": 4,
+            "text": (f"The broad market is only {world_share:.0f}% of the portfolio. The fix "
+                     f"(tax-free): freeze contributions to Plans 1 and 2 (do not sell — "
+                     f"moving = capital gains tax), open Plan 3 with VWCE (Vanguard FTSE "
+                     f"All-World, 100%) and direct the full 2,000 PLN/mo there. In a year world "
+                     f"~25%, in two ~40%, tech drops from {by_theme.get('tech', 0) / total * 100:.0f}% "
+                     f"to ~50%. Full instructions in the backlog (Recommendations tab).")})
 
     recs.sort(key=lambda r: r["priority"])
     return {
-        "headline": recs[0]["text"] if recs else "Portfel XTB wygląda zdrowo.",
+        "headline": recs[0]["text"] if recs else "The XTB portfolio looks healthy.",
         "items": recs,
         "facts": {
             "total": round(total, 2),
@@ -1029,7 +1029,7 @@ def goal_scenarios():
     if target <= 0 or savings <= 0:
         return None
     d = list_debts()["debts"]
-    scenarios = [{"key": "baseline", "label": "Bez nadpłat — wszystko na cel",
+    scenarios = [{"key": "baseline", "label": "No overpayments — everything toward the goal",
                   **_simulate_path(target, savings, d)}]
     for debt in d:
         base_interest = debt["schedule"]["total_interest"]
@@ -1037,7 +1037,7 @@ def goal_scenarios():
         saved_interest = (round(base_interest - sim["interest_paid_on_target_debt"], 2)
                          if base_interest is not None else None)
         scenarios.append({
-            "key": debt["id"], "label": f"Najpierw nadpłać: {debt['name']}",
+            "key": debt["id"], "label": f"Overpay first: {debt['name']}",
             **sim, "interest_saved": saved_interest})
     for sc in scenarios:
         if sc["months"]:
@@ -1236,7 +1236,7 @@ def firma_marketing():
         spend_rows = market._supabase_get(
             "ad_snapshots?select=date,spend,clicks,impressions&order=date.desc&limit=60")
     except Exception as e:
-        return {"error": f"offline / brak połączenia z Supabase: {e}"}
+        return {"error": f"offline / no connection to Supabase: {e}"}
 
     weeks = []
     for r in reports:
@@ -1315,10 +1315,10 @@ def cashflow(months=15):
         yy = y + (m - 1 + i) // 12
         label = f"{yy:04d}-{mm:02d}"
         inflow = base_surplus
-        parts = [f"nadwyżka {_zl(base_surplus)}"]
+        parts = [f"surplus {_zl(base_surplus)}"]
         if mm in vest_months and vest_pln:
             inflow += vest_pln
-            parts.append(f"vest {shares_next} akcji {_zl(vest_pln)}")
+            parts.append(f"vest of {shares_next} shares {_zl(vest_pln)}")
         if mm == bonus_month and bonus:
             inflow += bonus
             parts.append(f"bonus {_zl(bonus)}")
@@ -1388,21 +1388,21 @@ def tax_summary():
     fpv_pit = round(fpv_profit * 0.12, 0)
 
     items = [
-        {"source": "Najem (ryczałt)", "rate": f"{rate}%",
-         "base": rental_annual, "tax": rental_tax, "cadence": "miesięcznie do 20.",
-         "managed": "Ty", "note": "ryczałt od przychodu — bez odliczeń"},
-        {"source": "działalności — ZUS/zdrowotna", "rate": "—", "base": None, "tax": zus_annual,
-         "cadence": "miesięcznie do 20.", "managed": "Ty (JDG)",
-         "note": "Masz UoP ≥ min. krajowa → zbieg tytułów: JDG zwykle ZWOLNIONA ze społecznego ZUS, płacisz tylko zdrowotną. To NIE jest preferencja czasowa dopóki trwa etat (potwierdź u księgowego, co pokrywa 431,54)"},
-        {"source": "działalności — PIT od zysku", "rate": "12–32% / 19%", "base": fpv_profit,
-         "tax": fpv_pit, "cadence": "zaliczka mies./kwart.", "managed": "Ty (JDG)",
-         "note": "obecnie strata → 0; strata rozlicza przyszłe zyski"},
-        {"source": "RSU / Belka", "rate": "19%", "base": 0, "tax": 0,
-         "cadence": "przy sprzedaży", "managed": "auto",
-         "note": "≈0 przy sprzedaży od razu po veście (zysk po veście minimalny)"},
-        {"source": "Pensja — PIT", "rate": "do 32%", "base": salary, "tax": None,
-         "cadence": "potrąca pracodawca", "managed": "pracodawca",
-         "note": "informacyjnie — nie zarządzasz sam (PIT-11)"},
+        {"source": "Rental (lump-sum)", "rate": f"{rate}%",
+         "base": rental_annual, "tax": rental_tax, "cadence": "monthly by the 20th",
+         "managed": "you", "note": "lump-sum tax on revenue — no deductions"},
+        {"source": "business — social security/health", "rate": "—", "base": None, "tax": zus_annual,
+         "cadence": "monthly by the 20th", "managed": "you (sole prop.)",
+         "note": "With an employment contract ≥ minimum wage → overlapping titles: the sole proprietorship is usually EXEMPT from social contributions, you pay only the health premium. This is NOT a time-limited preference while the job lasts (confirm with your accountant what the 431.54 covers)"},
+        {"source": "business — income tax on profit", "rate": "12–32% / 19%", "base": fpv_profit,
+         "tax": fpv_pit, "cadence": "monthly/quarterly advance", "managed": "you (sole prop.)",
+         "note": "currently a loss → 0; the loss offsets future profits"},
+        {"source": "RSU / capital gains", "rate": "19%", "base": 0, "tax": 0,
+         "cadence": "on sale", "managed": "auto",
+         "note": "≈0 when selling right after vest (minimal post-vest gain)"},
+        {"source": "Salary — income tax", "rate": "up to 32%", "base": salary, "tax": None,
+         "cadence": "withheld by the employer", "managed": "employer",
+         "note": "for reference — you do not manage it yourself (PIT-11)"},
     ]
     self_managed = rental_tax + zus_annual + fpv_pit
 
@@ -1412,17 +1412,17 @@ def tax_summary():
         while m > 12: m -= 12; y += 1
         return f"{y:04d}-{m:02d}-{day:02d}"
     calendar = [
-        {"date": nth(0 if today.day < 20 else 1, 20), "what": "Ryczałt najem + ZUS działalności",
+        {"date": nth(0 if today.day < 20 else 1, 20), "what": "Rental lump-sum tax + business social security",
          "amount": round(rental_tax / 12 + zus, 0)},
         {"date": f"{today.year + (1 if today.month > 4 else 0):04d}-04-30",
-         "what": "Roczne: PIT-28 (najem) + PIT-36L/JDG", "amount": None},
+         "what": "Annual: PIT-28 (rental) + PIT-36L/sole prop.", "amount": None},
     ]
     optimizations = [
-        "RSU: sprzedawaj od razu po veście — Belka liczy się tylko od zysku po dacie vestu (≈0). Trzymanie = ryzyko + brak korzyści podatkowej.",
-        "Cash vs equity: cash to PIT do 32%, sprzedane akcje to Belka 19% — ~13 pp różnicy. Wybieraj świadomie (cash podnosi zdolność kredytową).",
-        "Najem: ryczałt 8,5% jest zwykle korzystny przy niskich kosztach; gdyby doszły duże remonty/odsetki, przelicz skalę.",
-        "JDG: strata z lat startowych obniża przyszły PIT, gdy firma wyjdzie na plus — warto ją „zachować\" w rozliczeniu.",
-        "ZUS przy zbiegu tytułów: jeśli masz etat (UoP) ≥ min. krajowa, z JDG płacisz zwykle TYLKO składkę zdrowotną — społeczny ZUS jest zwolniony. Uwaga: po utracie etatu społeczny ZUS z JDG się włącza (a okno preferencyjne może już minąć).",
+        "RSU: sell right after vest — capital gains tax applies only to the gain after the vest date (≈0). Holding = risk + no tax benefit.",
+        "Cash vs equity: cash is income tax up to 32%, sold shares are 19% capital gains — a ~13 pp difference. Choose consciously (cash raises borrowing capacity).",
+        "Rental: the 8.5% lump sum is usually favorable at low costs; if big renovations/interest come in, recompute the progressive scale.",
+        "Sole proprietorship: the start-up years' loss lowers future income tax once the business turns a profit — worth 'keeping' it in the filing.",
+        "Social security with overlapping titles: with an employment contract ≥ minimum wage, the sole proprietorship usually pays ONLY the health premium — social contributions are exempt. Note: after losing the job, social contributions kick in (and the preferential window may have passed).",
     ]
     return {"items": items, "self_managed_annual": round(self_managed, 0),
             "calendar": calendar, "optimizations": optimizations,
@@ -1437,9 +1437,9 @@ ALLOC_TARGETS = {  # docelowe % netto (edytowalne)
     "gotowka": 8, "emerytalne": 5, "auto": 6,
 }
 ALLOC_LABELS = {
-    "nieruchomosci": "🏠 Nieruchomości (equity)", "etf": "🌍 Akcje/ETF (XTB)",
-    "team": "💎 Akcje RSU", "gotowka": "💵 Gotówka", "emerytalne": "🏦 Emerytalne (PPK/IKZE)",
-    "auto": "🚗 Auto (konsumpcyjne)",
+    "nieruchomosci": "🏠 Real estate (equity)", "etf": "🌍 Stocks/ETF (XTB)",
+    "team": "💎 RSU shares", "gotowka": "💵 Cash", "emerytalne": "🏦 Retirement (pension accounts)",
+    "auto": "🚗 Car (consumable)",
 }
 
 
@@ -1481,19 +1481,19 @@ def allocation():
         rows.append({
             "key": k, "label": ALLOC_LABELS[k], "value": round(classes[k], 0),
             "pct": pct, "target": target, "drift": drift,
-            "flag": "za dużo" if drift > 8 else ("dokładaj" if drift < -8 else "ok"),
+            "flag": "too much" if drift > 8 else ("add more" if drift < -8 else "ok"),
         })
     rows.sort(key=lambda r: -r["value"])
     hints = []
     re_row = next(r for r in rows if r["key"] == "nieruchomosci")
     if re_row["pct"] > 65:
-        hints.append(f"Nieruchomości {re_row['pct']}% majątku — silna koncentracja. Nadwyżki po spłacie kredytu kieruj w płynne aktywa (VWCE), nie w kolejny beton.")
+        hints.append(f"Real estate is {re_row['pct']}% of wealth — heavy concentration. After the loan is paid off, direct surpluses into liquid assets (VWCE), not more concrete.")
     etf_row = next(r for r in rows if r["key"] == "etf")
     if etf_row["pct"] < 15:
-        hints.append(f"Akcje/ETF tylko {etf_row['pct']}% — to główny kierunek dokładania (Plan Core VWCE) do dywersyfikacji z nieruchomości i pracodawcy.")
+        hints.append(f"Stocks/ETF only {etf_row['pct']}% — the main direction for new contributions (Core VWCE plan) to diversify away from real estate and the employer.")
     team_row = next(r for r in rows if r["key"] == "team")
     if team_row["pct"] > 4:
-        hints.append(f"Akcje RSU {team_row['pct']}% — plus przyszłe vesty. Sprzedawaj przy veście, nie kumuluj (ryzyko: pensja+bonus+akcje w jednej firmie).")
+        hints.append(f"RSU shares {team_row['pct']}% — plus future vests. Sell at vest, do not accumulate (risk: salary+bonus+shares in one company).")
     return {"rows": rows, "total": round(total, 0), "hints": hints}
 
 
@@ -1522,22 +1522,22 @@ def _auto_reminders():
         nvm = nvm or vm[0]
         vdate = f"{vy:04d}-{nvm:02d}-15"
         val = rsu.get("next_vest_value_pln")
-        out.append({"title": f"Vest RSU ({rsu.get('shares_next_vest')} akcji"
-                    + (f", ≈{_zl(val)}" if val else "") + ") — sprzedaj → nadpłata kredytu",
+        out.append({"title": f"RSU vest ({rsu.get('shares_next_vest')} shares"
+                    + (f", ≈{_zl(val)}" if val else "") + ") — sell → loan overpayment",
                     "due_date": vdate, "auto": True, "kind": "RSU"})
     except Exception:
         pass
     # bonus (September)
     by = today.year if today.month <= 9 else today.year + 1
-    out.append({"title": "Bonus roczny (~80k netto) — nadpłata kredytu",
-                "due_date": f"{by:04d}-09-30", "auto": True, "kind": "Dochód"})
+    out.append({"title": "Annual bonus (~80k net) — loan overpayment",
+                "due_date": f"{by:04d}-09-30", "auto": True, "kind": "Income"})
     # kredyt hipoteczny fixed-rate end → aneks
     try:
         for d in list_debts()["debts"]:
             fu = d.get("fixed_until")
             if fu and days_to(fu) is not None:
-                out.append({"title": f"{d['name']}: koniec stałej stopy — czas na aneks/refinansowanie",
-                            "due_date": fu, "auto": True, "kind": "Kredyt"})
+                out.append({"title": f"{d['name']}: fixed rate ends — time for an annex/refinancing",
+                            "due_date": fu, "auto": True, "kind": "Loan"})
     except Exception:
         pass
     # RSU stock near/above target
@@ -1546,34 +1546,34 @@ def _auto_reminders():
         an = _mkt.analytics(_tk)
         tgt = an.get("analyst_target"); last = an.get("last_close")
         if tgt and last and last >= tgt * 0.95:
-            out.append({"title": f"{_tk} ${last} blisko/ponad target ${tgt} — rozważ sprzedaż posiadanych",
-                        "due_date": today.isoformat(), "auto": True, "kind": "Rynek"})
+            out.append({"title": f"{_tk} ${last} near/above the ${tgt} target — consider selling held shares",
+                        "due_date": today.isoformat(), "auto": True, "kind": "Market"})
     except Exception:
         pass
     # weekly (Claude): security scan + README
     from datetime import timedelta as _td
     nextweek = (today + _td(days=7 - today.weekday() if today.weekday() < 7 else 7)).isoformat()
-    out.append({"title": "🔒 Claude: security scan repo (sekrety, wrażliwe pliki)",
+    out.append({"title": "🔒 Claude: security scan of the repo (secrets, sensitive files)",
                 "due_date": nextweek, "auto": True, "kind": "Security"})
-    out.append({"title": "📝 Claude: przegląd i aktualizacja README (personalapp)",
+    out.append({"title": "📝 Claude: review and update README (personalapp)",
                 "due_date": nextweek, "auto": True, "kind": "Docs"})
     # next month's 1st, reused for monthly tasks
     by, bm = (today.year, today.month + 1) if today.month < 12 else (today.year + 1, 1)
     # monthly market barometer update (Claude task)
-    out.append({"title": "📈 Claude: zaktualizuj barometr rynku (oferty EM/Head, Europa remote)",
-                "due_date": f"{by:04d}-{bm:02d}-05", "auto": True, "kind": "Barometr"})
+    out.append({"title": "📈 Claude: update the market barometer (EM/Head openings, Europe remote)",
+                "due_date": f"{by:04d}-{bm:02d}-05", "auto": True, "kind": "Barometer"})
     # monthly market brief refresh (Claude task) — zakładka Rynek
-    out.append({"title": "🧭 Claude: odśwież brief rynkowy (ruchy, kontekst makro, rekomendacje per pozycja)",
-                "due_date": f"{by:04d}-{bm:02d}-05", "auto": True, "kind": "Rynek"})
+    out.append({"title": "🧭 Claude: refresh the market brief (moves, macro context, per-position recommendations)",
+                "due_date": f"{by:04d}-{bm:02d}-05", "auto": True, "kind": "Market"})
     # monthly data backup
-    out.append({"title": "💾 Backup danych — uruchom apps/budget/backup.sh (baza szyfrowana → Google Drive)",
+    out.append({"title": "💾 Data backup — run apps/budget/backup.sh (encrypted database → Google Drive)",
                 "due_date": f"{by:04d}-{bm:02d}-01", "auto": True, "kind": "Backup"})
     # quarterly review
     q_month = ((today.month - 1) // 3 + 1) * 3 + 1
     qy = today.year + (1 if q_month > 12 else 0)
     q_month = q_month if q_month <= 12 else q_month - 12
-    out.append({"title": "Przegląd kwartalny portfela (alokacja, koncentracja, rebalancing)",
-                "due_date": f"{qy:04d}-{q_month:02d}-01", "auto": True, "kind": "Przegląd"})
+    out.append({"title": "Quarterly portfolio review (allocation, concentration, rebalancing)",
+                "due_date": f"{qy:04d}-{q_month:02d}-01", "auto": True, "kind": "Review"})
 
     for r in out:
         r["days"] = days_to(r["due_date"])
@@ -1639,7 +1639,7 @@ def add_barometer_point(data):
         "insert into market_barometer (id, month, em_openings, head_openings, "
         "region, note, created_at) values (?,?,?,?,?,?,?)",
         (bid, data["month"], _num(data.get("em_openings")), _num(data.get("head_openings")),
-         data.get("region", "Europa (remote)"), data.get("note", ""), _now()))
+         data.get("region", "Europe (remote)"), data.get("note", ""), _now()))
     _audit("barometer", bid, "add", data)
     return bid
 
@@ -1683,11 +1683,11 @@ def health():
         lastd = hist[-1]["date"] if hist else None
         d = _days_since(lastd) if lastd else None
         st = "ok" if (d is not None and d <= 4) else "warn"
-        task("Kursy rynkowe (akcje/FX)", "codziennie ~22:35",
+        task("Market rates (stocks/FX)", "daily ~22:35",
              (sync or lastd or "—"), st,
-             f"ostatnie notowanie {lastd} ({d} dni temu)" if lastd else "brak danych")
+             f"last quote {lastd} ({d} days ago)" if lastd else "no data")
     except Exception as e:
-        task("Kursy rynkowe (akcje/FX)", "codziennie ~22:35", "—", "error", str(e)[:80])
+        task("Market rates (stocks/FX)", "daily ~22:35", "—", "error", str(e)[:80])
 
     # 2. śledzenie predykcji RSU (dziennie przy otwarciu RSU)
     try:
@@ -1695,21 +1695,21 @@ def health():
         lastm = r[0]["m"] if r else None
         d = _days_since(lastm) if lastm else None
         st = "ok" if (d is not None and d <= 2) else ("warn" if lastm else "info")
-        task("Śledzenie predykcji RSU", "codziennie", lastm or "—", st,
-             f"{r[0]['c']} prognoz; ostatnia {d} dni temu" if lastm else "jeszcze brak")
+        task("RSU prediction tracking", "daily", lastm or "—", st,
+             f"{r[0]['c']} forecasts; last one {d} days ago" if lastm else "none yet")
     except Exception as e:
-        task("Śledzenie predykcji RSU", "codziennie", "—", "error", str(e)[:80])
+        task("RSU prediction tracking", "daily", "—", "error", str(e)[:80])
 
     # 2b. samouczący dziennik prognoz (pasma short-term, cała watchlista)
     try:
         ss = _mkt.forecast_selfscore()
         h21 = next((h for h in ss["horizons"] if h["days"] == 21), None)
         st = "ok" if (h21 and h21["coverage_pct"] and 70 <= h21["coverage_pct"] <= 92) else ("info" if ss["total_scored"] < 100 else "warn")
-        task("Samouczenie prognoz (pasma)", "codziennie po syncu",
-             f"{ss['total_scored']} rozliczonych", st,
-             f"pokrycie 1M: {h21['coverage_pct']}% (cel ~80%)" if h21 else "dziennik się buduje")
+        task("Forecast self-learning (bands)", "daily after sync",
+             f"{ss['total_scored']} scored", st,
+             f"1M coverage: {h21['coverage_pct']}% (target ~80%)" if h21 else "the journal is building up")
     except Exception as e:
-        task("Samouczenie prognoz (pasma)", "codziennie po syncu", "—", "warn", str(e)[:60])
+        task("Forecast self-learning (bands)", "daily after sync", "—", "warn", str(e)[:60])
 
     # 3. marketing (ads-analyst, tygodniowo pon ~07:00)
     try:
@@ -1717,11 +1717,11 @@ def health():
         we = rep[0]["week_end"] if rep else None
         d = _days_since(we) if we else None
         st = "ok" if (d is not None and d <= 9) else ("warn" if we else "info")
-        task("Marketing działalności (raporty ads)", "tygodniowo pon ~07:00", we or "—", st,
-             f"ostatni raport tydzień do {we} ({d} dni temu)" if we else "brak/offline")
+        task("Business marketing (ads reports)", "weekly Mon ~07:00", we or "—", st,
+             f"last report for the week ending {we} ({d} days ago)" if we else "none/offline")
     except Exception as e:
-        task("Marketing działalności (raporty ads)", "tygodniowo pon ~07:00", "—", "warn",
-             "offline/brak Supabase")
+        task("Business marketing (ads reports)", "weekly Mon ~07:00", "—", "warn",
+             "offline/no Supabase")
 
     # 4. barometr rynku (Claude, miesięcznie)
     try:
@@ -1729,11 +1729,11 @@ def health():
         lastm = (r[0]["m"] + "-15") if r and r[0]["m"] else None
         d = _days_since(lastm) if lastm else None
         st = "ok" if (d is not None and d <= 40) else ("warn" if lastm else "info")
-        task("Barometr rynku (oferty EM/Head)", "miesięcznie (Claude)",
+        task("Market barometer (EM/Head openings)", "monthly (Claude)",
              (r[0]["m"] if r and r[0]["m"] else "—"), st,
-             f"{r[0]['c']} punktów; ostatni {r[0]['m']}" if r and r[0]["m"] else "brak — do uzupełnienia")
+             f"{r[0]['c']} points; last {r[0]['m']}" if r and r[0]["m"] else "none — to fill in")
     except Exception as e:
-        task("Barometr rynku (oferty EM/Head)", "miesięcznie (Claude)", "—", "error", str(e)[:80])
+        task("Market barometer (EM/Head openings)", "monthly (Claude)", "—", "error", str(e)[:80])
 
     # 5. backup danych (miesięcznie)
     try:
@@ -1743,12 +1743,12 @@ def health():
             mt = datetime.fromtimestamp(enc[-1].stat().st_mtime)
             d = (datetime.now() - mt).days
             st = "ok" if d <= 35 else "warn"
-            task("Backup danych (szyfrowany)", "miesięcznie", mt.strftime("%Y-%m-%d %H:%M"), st,
-                 f"{len(enc)} kopii; ostatnia {d} dni temu")
+            task("Data backup (encrypted)", "monthly", mt.strftime("%Y-%m-%d %H:%M"), st,
+                 f"{len(enc)} copies; last one {d} days ago")
         else:
-            task("Backup danych (szyfrowany)", "miesięcznie", "—", "error", "brak kopii — uruchom backup.sh")
+            task("Data backup (encrypted)", "monthly", "—", "error", "no copies — run backup.sh")
     except Exception as e:
-        task("Backup danych (szyfrowany)", "miesięcznie", "—", "error", str(e)[:80])
+        task("Data backup (encrypted)", "monthly", "—", "error", str(e)[:80])
 
     # 6. audyt danych wrażliwych w gicie
     try:
@@ -1759,54 +1759,54 @@ def health():
                ("private/", ".finance/", "doc-raw/", "compensation", "finanse/", "psyche/", ".env"))
                and not f.endswith(".env.example")]
         if bad:
-            task("Audyt: dane wrażliwe w gicie", "przy każdym pushu / miesięcznie",
-                 now, "error", f"🚨 śledzone wrażliwe pliki: {', '.join(bad[:3])}")
+            task("Audit: sensitive data in git", "on every push / monthly",
+                 now, "error", f"🚨 tracked sensitive files: {', '.join(bad[:3])}")
         else:
-            task("Audyt: dane wrażliwe w gicie", "przy każdym pushu / miesięcznie",
-                 now, "ok", f"czysto — {len(tracked)} śledzonych plików, zero wrażliwych")
+            task("Audit: sensitive data in git", "on every push / monthly",
+                 now, "ok", f"clean — {len(tracked)} tracked files, zero sensitive")
     except Exception as e:
-        task("Audyt: dane wrażliwe w gicie", "przy każdym pushu", "—", "warn", "git niedostępny: " + str(e)[:60])
+        task("Audit: sensitive data in git", "on every push", "—", "warn", "git unavailable: " + str(e)[:60])
 
     # 7. baza danych — integralność
     try:
         chk = eb._rows("pragma integrity_check")
         okc = chk and (chk[0].get("integrity_check") == "ok" or list(chk[0].values())[0] == "ok")
         size = (repo / ".finance" / "finance.db").stat().st_size // 1024 if (repo / ".finance" / "finance.db").exists() else 0
-        task("Baza danych (SQLite)", "ciągle", now, "ok" if okc else "error",
-             f"integralność OK · {size} KB")
+        task("Database (SQLite)", "continuous", now, "ok" if okc else "error",
+             f"integrity OK · {size} KB")
     except Exception as e:
-        task("Baza danych (SQLite)", "ciągle", now, "warn", str(e)[:80])
+        task("Database (SQLite)", "continuous", now, "warn", str(e)[:80])
 
     # 8. synchronizacja z GitHub
     try:
         gs = git_status(do_fetch=True)
         detail = gs["summary"]
         if gs.get("remote", "").startswith("http"):
-            detail += f" · ostatni commit: {gs.get('last_commit_date', '')}"
-        task("Synchronizacja z GitHub", "po zmianach kodu (Claude)",
+            detail += f" · last commit: {gs.get('last_commit_date', '')}"
+        task("GitHub sync", "after code changes (Claude)",
              gs.get("last_commit_date") or "—", gs["status"], detail)
     except Exception as e:
-        task("Synchronizacja z GitHub", "po zmianach kodu", "—", "warn", str(e)[:80])
+        task("GitHub sync", "after code changes", "—", "warn", str(e)[:80])
 
     # 9b. security scan repo (co tydzień)
     try:
         sc = security_scan()
-        task("Security scan repo (sekrety)", "co tydzień", now, sc["status"], sc["summary"])
+        task("Repo security scan (secrets)", "weekly", now, sc["status"], sc["summary"])
     except Exception as e:
-        task("Security scan repo (sekrety)", "co tydzień", "—", "warn", str(e)[:70])
+        task("Repo security scan (secrets)", "weekly", "—", "warn", str(e)[:70])
 
     # 9. aktywność commitowa (cel: codziennie)
     try:
         ga = github_activity(days=30)
         if ga["today"] > 0:
-            st = "ok"; detail = f"dziś {ga['today']} commitów · seria {ga['streak']} dni 🔥 (rekord {ga['best_streak']})"
+            st = "ok"; detail = f"today {ga['today']} commits · streak {ga['streak']} days 🔥 (record {ga['best_streak']})"
         elif ga["streak"] > 0:
-            st = "warn"; detail = f"dziś jeszcze 0 · seria {ga['streak']} dni — mały commit ją podtrzyma"
+            st = "warn"; detail = f"still 0 today · streak {ga['streak']} days — a small commit will keep it alive"
         else:
-            st = "warn"; detail = f"dziś 0, seria przerwana · {ga['active_days']}/30 dni aktywnych ostatnio"
-        task("Aktywność commitowa (GitHub)", "codziennie (cel)", now, st, detail)
+            st = "warn"; detail = f"0 today, streak broken · {ga['active_days']}/30 days active recently"
+        task("Commit activity (GitHub)", "daily (goal)", now, st, detail)
     except Exception as e:
-        task("Aktywność commitowa (GitHub)", "codziennie", "—", "warn", str(e)[:60])
+        task("Commit activity (GitHub)", "daily", "—", "warn", str(e)[:60])
 
     errors = sum(1 for t in tasks if t["status"] == "error")
     warns = sum(1 for t in tasks if t["status"] == "warn")
@@ -1875,86 +1875,86 @@ def data_inventory():
                 "note": note, "suggest": suggest}
 
     groups = [
-        {"key": "auto", "title": "\U0001F7E2 W pelni automatyczne \u2014 zero pracy",
-         "note": "Pobierane przez n8n/Supabase/gita albo liczone przez aplikacje. Nic nie wpisujesz.",
+        {"key": "auto", "title": "\U0001F7E2 Fully automatic \u2014 zero effort",
+         "note": "Pulled by n8n/Supabase/git or computed by the app. You enter nothing.",
          "items": [
-            item("Kursy akcji + FX", "auto", "n8n \u2192 Supabase \u2192 cache",
-                 "codziennie", sync or px_last, px_c,
-                 note=f"{px_c} notowan w cache; ostatnie {px_last}"),
-            item("Raporty marketingu/ads", "auto", "n8n \u2192 Supabase (analysis_reports)",
-                 "tygodniowo", None, note="czytane z Supabase; offline gdy brak polaczenia"),
-            item("Aktywnosc commitow (GitHub)", "auto", "lokalne repo (git log)",
-                 "na zadanie / dziennie", None, note="liczone z gita, nic nie wpisujesz"),
-            item("Audyt danych wrazliwych", "auto", "git ls-files + skan sekretow",
-                 "przy pushu / tygodniowo", None, note="pilnuje, ze .finance/.env nie trafia do gita"),
+            item("Stock + FX rates", "auto", "n8n \u2192 Supabase \u2192 cache",
+                 "daily", sync or px_last, px_c,
+                 note=f"{px_c} quotes in cache; latest {px_last}"),
+            item("Marketing/ads reports", "auto", "n8n \u2192 Supabase (analysis_reports)",
+                 "weekly", None, note="read from Supabase; offline when there is no connection"),
+            item("Commit activity (GitHub)", "auto", "local repos (git log)",
+                 "on demand / daily", None, note="computed from git, you enter nothing"),
+            item("Sensitive-data audit", "auto", "git ls-files + secret scan",
+                 "on push / weekly", None, note="makes sure .finance/.env never lands in git"),
          ]},
-        {"key": "derived", "title": "\U0001F535 Liczone z innych danych \u2014 zero pracy",
-         "note": "Aplikacja wylicza je sama z tego, co juz masz. Tez nic nie wpisujesz.",
+        {"key": "derived", "title": "\U0001F535 Derived from other data \u2014 zero effort",
+         "note": "The app computes these itself from what you already have. Also nothing to enter.",
          "items": [
-            item("Snapshot majatku (miesieczny)", "derived", "auto z pozycji majatku",
-                 "1x/mies. (auto)", snap_last, snap_c, note="jeden punkt netto na miesiac do wykresu majatku"),
-            item("Snapshot FIRE (plan vs realnie)", "derived", "auto z plynnosci",
-                 "1x/mies. (auto)", fire_last, fire_c, note="karmi prognoze work-optional"),
-            item("Przypomnienia automatyczne", "derived", "z danych (vesty, koniec stalej stopy...)",
-                 "na biezaco", None, note="wyliczane z danych \u2014 nie trzymane recznie"),
-            item("Sledzenie trafnosci predykcji", "derived", "auto przy otwarciu RSU",
-                 "codziennie", pred_last, pred_c, note=f"{pred_c} prognoz do backtestu"),
-            item("Saldo kredytu (model)", "derived", "rata \u2212 odsetki co miesiac",
-                 "co miesiac (auto)", debt_last, debt_c,
-                 note="saldo spada samo; korekta wg banku tylko okazjonalnie (nizej)"),
+            item("Wealth snapshot (monthly)", "derived", "auto from wealth items",
+                 "1x/mo (auto)", snap_last, snap_c, note="one net point per month for the wealth chart"),
+            item("FIRE snapshot (plan vs actual)", "derived", "auto from liquidity",
+                 "1x/mo (auto)", fire_last, fire_c, note="feeds the work-optional projection"),
+            item("Automatic reminders", "derived", "from data (vests, fixed-rate end...)",
+                 "continuous", None, note="derived from data \u2014 not stored manually"),
+            item("Prediction-accuracy tracking", "derived", "auto when RSU opens",
+                 "daily", pred_last, pred_c, note=f"{pred_c} forecasts for the backtest"),
+            item("Loan balance (model)", "derived", "installment \u2212 interest each month",
+                 "monthly (auto)", debt_last, debt_c,
+                 note="the balance drops by itself; a per-bank correction only occasionally (below)"),
          ]},
-        {"key": "claude", "title": "\U0001F7E3 Utrzymywane offline (Claude/notatki) \u2014 miesiecznie/na zadanie",
-         "note": "Snapshoty researchu, autorowane poza runtime. Aplikacja tylko je czyta.",
+        {"key": "claude", "title": "\U0001F7E3 Maintained offline (Claude/notes) \u2014 monthly/on demand",
+         "note": "Research snapshots, authored outside the runtime. The app only reads them.",
          "items": [
-            item("Brief rynkowy", "claude", "app_settings: analysis_market_brief",
-                 "miesiecznie", brief_asof, note="ruchy + kontekst makro + rekomendacje per pozycja" if brief_has else "brak \u2014 do wygenerowania"),
-            item("Barometr rynku pracy", "claude", "market_barometer",
-                 "miesiecznie", bar_last, bar_c, note=f"{bar_c} punktow popytu na role"),
-            item("Analiza vestu (RSU)", "claude", "app_settings: rsu_vest_analysis",
-                 "co vest (~kwartalnie)", vest_asof, note="wyniki, guidance, targety" if vest_has else "brak"),
-            item("Analiza celu (np. nieruchomosc)", "claude", "app_settings: analysis_italy_location",
-                 "na zadanie / rzadko", prop_asof, note="gleboka analiza" if prop_has else "brak"),
+            item("Market brief", "claude", "app_settings: analysis_market_brief",
+                 "monthly", brief_asof, note="moves + macro context + per-position recommendations" if brief_has else "none \u2014 to generate"),
+            item("Job-market barometer", "claude", "market_barometer",
+                 "monthly", bar_last, bar_c, note=f"{bar_c} role-demand points"),
+            item("Vest analysis (RSU)", "claude", "app_settings: rsu_vest_analysis",
+                 "per vest (~quarterly)", vest_asof, note="earnings, guidance, targets" if vest_has else "none"),
+            item("Goal analysis (e.g. property)", "claude", "app_settings: analysis_italy_location",
+                 "on demand / rarely", prop_asof, note="deep analysis" if prop_has else "none"),
          ]},
-        {"key": "manual_reg", "title": "\U0001F7E1 Recznie \u2014 regularnie (to chcemy zredukowac)",
-         "note": "Jedyne, co realnie wpisujesz co miesiac. Cel: doprowadzic to do minimum.",
+        {"key": "manual_reg", "title": "\U0001F7E1 Manual \u2014 regular (what we want to reduce)",
+         "note": "The only things you actually enter each month. Goal: bring this down to the minimum.",
          "items": [
-            item("Salda kont / gotowka", "manual", "Ty (zakladka Majatek)",
-                 "miesiecznie", acc_last, acc_c, minutes=3,
-                 note="najbardziej reczny punkt \u2014 banki nie maja otwartego API bez integracji",
-                 suggest="n8n + GoCardless/Nordigen (darmowe PSD2 w UE) \u2192 dzienne saldo bez wpisywania"),
-            item("Wartosc portfela (broker/ETF)", "manual", "Ty (setting portfela + pozycje majatku)",
-                 "miesiecznie / przy transakcji", wv_last, wi_c, minutes=3,
-                 note="dzis wpisujesz WARTOSC recznie",
-                 suggest="trzymaj tylko LICZBE jednostek; wartosc policzy sie sama z kursow w cache \u2014 aktualizacja tylko przy zakupie"),
-            item("Stan celow (odlozone)", "manual", "Ty (zakladka Cele)",
-                 "miesiecznie", goal_last, goal_c, minutes=1,
-                 note="ile uzbierane",
-                 suggest="wyliczaj z plynnych aktywow (konta \u2212 bufor) zamiast wpisywac recznie"),
-            item("Przychody/koszty dzialalnosci", "manual", "Ty (zakladka Firma)",
-                 "miesiecznie", biz_last, biz_c, minutes=2,
-                 note="wynik dzialalnosci",
-                 suggest="jesli masz dane sprzedazy w Supabase \u2014 auto-zaciagaj przychod z pipeline'u"),
-            item("Korekta salda kredytu wg banku", "manual", "Ty (zakladka Kredyty)",
-                 "okazjonalnie (model liczy sam)", dv_last, dv_c, minutes=1,
-                 note="tylko gdy chcesz zgrac co do grosza z wyciagiem",
-                 suggest="import 1 liczby z wyciagu bankowego (PSD2) zamiast recznej korekty"),
+            item("Account balances / cash", "manual", "you (Wealth tab)",
+                 "monthly", acc_last, acc_c, minutes=3,
+                 note="the most manual point \u2014 banks have no open API without an integration",
+                 suggest="n8n + GoCardless/Nordigen (free EU PSD2) \u2192 daily balance with no typing"),
+            item("Portfolio value (broker/ETF)", "manual", "you (portfolio setting + wealth items)",
+                 "monthly / on trade", wv_last, wi_c, minutes=3,
+                 note="today you enter the VALUE by hand",
+                 suggest="store only the NUMBER of units; the value computes itself from cached rates \u2014 update only on purchase"),
+            item("Goal progress (saved)", "manual", "you (Goals tab)",
+                 "monthly", goal_last, goal_c, minutes=1,
+                 note="how much is saved",
+                 suggest="derive it from liquid assets (accounts \u2212 buffer) instead of typing it in"),
+            item("Business revenue/costs", "manual", "you (Business tab)",
+                 "monthly", biz_last, biz_c, minutes=2,
+                 note="business result",
+                 suggest="if sales data lives in Supabase \u2014 auto-pull revenue from the pipeline"),
+            item("Loan-balance correction per bank", "manual", "you (Loans tab)",
+                 "occasionally (the model computes itself)", dv_last, dv_c, minutes=1,
+                 note="only when you want to match the statement to the penny",
+                 suggest="import 1 number from the bank statement (PSD2) instead of a manual correction"),
          ]},
-        {"key": "manual_rare", "title": "\u26AA Recznie \u2014 rzadko / zdarzeniowo (setup)",
-         "note": "Wpisujesz raz albo tylko gdy cos sie realnie zmienia \u2014 nie obciaza miesiecznie.",
+        {"key": "manual_rare", "title": "\u26AA Manual \u2014 rare / event-driven (setup)",
+         "note": "Entered once or only when something actually changes \u2014 no monthly burden.",
          "items": [
-            item("Oferty pracy", "manual", "Ty (zakladka Oferty)",
-                 "gdy przyjda (zdarzeniowo)", off_last, off_c, minutes=0,
-                 note="nie cykliczne \u2014 dopisujesz, gdy rekruter napisze"),
-            item("Koszty stale / plan budzetu", "manual", "setting: fixed_costs",
-                 "rzadko (gdy sie zmienia)", None, minutes=0, note="raty, czynsz, subskrypcje \u2014 stabilne"),
-            item("Dane podatkowe", "manual", "settings: tax_*",
-                 "~rocznie", None, minutes=0, note="zmiana raz na jakis czas"),
-            item("Konfiguracja RSU (ticker, vesty, akcje)", "manual", "market_meta / RSU",
-                 "rzadko", None, minutes=0, note="aktualizacja przy grancie/vescie"),
-            item("Watchlista + targety cenowe", "manual", "Ty (zakladka Rynek)",
-                 "okazjonalnie", None, minutes=0, note="dodajesz ticker/target, gdy chcesz go sledzic"),
-            item("Ubezpieczenia", "manual", "insurance_policies",
-                 "rzadko", None, ins_c, minutes=0, note="polisy \u2014 zmiana przy odnowieniu"),
+            item("Job offers", "manual", "you (Offers tab)",
+                 "as they arrive (event-driven)", off_last, off_c, minutes=0,
+                 note="not recurring \u2014 you add one when a recruiter writes"),
+            item("Fixed costs / budget plan", "manual", "setting: fixed_costs",
+                 "rarely (when it changes)", None, minutes=0, note="installments, rent, subscriptions \u2014 stable"),
+            item("Tax data", "manual", "settings: tax_*",
+                 "~yearly", None, minutes=0, note="changes once in a while"),
+            item("RSU configuration (ticker, vests, shares)", "manual", "market_meta / RSU",
+                 "rarely", None, minutes=0, note="updated on grant/vest"),
+            item("Watchlist + price targets", "manual", "you (Market tab)",
+                 "occasionally", None, minutes=0, note="you add a ticker/target when you want to track it"),
+            item("Insurance", "manual", "insurance_policies",
+                 "rarely", None, ins_c, minutes=0, note="policies \u2014 change on renewal"),
          ]},
     ]
 
@@ -1963,30 +1963,30 @@ def data_inventory():
     counts = {g["key"]: len(g["items"]) for g in groups}
 
     roadmap = [
-        {"title": "Portfel: trzymaj liczbe jednostek, nie wartosc",
-         "impact": "wysoki", "effort": "niski",
-         "saves": "~3 min/mies + zawsze aktualne",
-         "how": "Masz juz kursy w cache. Zapisuj tylko ile masz jednostek; wartosc = jednostki x ostatni kurs. "
-                "Wpis tylko przy zakupie, nie co miesiac."},
-        {"title": "Stan celow liczony z plynnosci",
-         "impact": "sredni", "effort": "niski",
-         "saves": "~1 min/mies + spojnosc",
-         "how": "Uzbierane wylicz z (konta plynne \u2212 bufor bezpieczenstwa) zamiast osobnego pola. "
-                "Jedno zrodlo prawdy zamiast dwoch."},
-        {"title": "Salda kont przez PSD2 (GoCardless/Nordigen)",
-         "impact": "wysoki", "effort": "sredni",
-         "saves": "~3 min/mies \u2014 likwiduje ostatni reczny punkt",
-         "how": "Darmowe UE API bankowe (Open Banking). n8n raz dziennie pobiera saldo do Supabase, "
-                "apka czyta jak kursy. Zostaje zero comiesiecznego wpisywania sald."},
-        {"title": "Przychod dzialalnosci auto z pipeline'u",
-         "impact": "sredni", "effort": "sredni",
-         "saves": "~2 min/mies",
-         "how": "Jesli dane sprzedazy sa w Supabase, auto-uzupelniaj przychod zamiast wpisywac wynik recznie."},
-        {"title": "Alert przy nieswiezych danych \u2705 gotowe",
-         "impact": "niski", "effort": "zrobione",
-         "saves": "spokoj \u2014 lapiesz zerwany sync sam",
-         "how": "Gotowy workflow n8n \u2192 Telegram w integrations/n8n/ (codzienny check swiezosci "
-                "market_prices w Supabase, alert gdy > prog dni). Import do n8n wg README; rozszerzalny."},
+        {"title": "Portfolio: store the number of units, not the value",
+         "impact": "high", "effort": "low",
+         "saves": "~3 min/mo + always current",
+         "how": "You already have rates in the cache. Store only how many units you hold; value = units x last price. "
+                "An entry only on purchase, not every month."},
+        {"title": "Goal progress derived from liquidity",
+         "impact": "medium", "effort": "low",
+         "saves": "~1 min/mo + consistency",
+         "how": "Compute the saved amount from (liquid accounts \u2212 safety buffer) instead of a separate field. "
+                "One source of truth instead of two."},
+        {"title": "Account balances via PSD2 (GoCardless/Nordigen)",
+         "impact": "high", "effort": "medium",
+         "saves": "~3 min/mo \u2014 removes the last manual point",
+         "how": "Free EU banking API (Open Banking). n8n fetches the balance daily into Supabase, "
+                "the app reads it like rates. Zero monthly balance entry remains."},
+        {"title": "Business revenue auto-pulled from the pipeline",
+         "impact": "medium", "effort": "medium",
+         "saves": "~2 min/mo",
+         "how": "If sales data lives in Supabase, auto-fill revenue instead of typing the result by hand."},
+        {"title": "Alert on stale data \u2705 done",
+         "impact": "low", "effort": "done",
+         "saves": "peace of mind \u2014 you catch a broken sync yourself",
+         "how": "A ready n8n \u2192 Telegram workflow in integrations/n8n/ (daily freshness check of "
+                "market_prices in Supabase, alert when > threshold days). Import into n8n per the README; extensible."},
     ]
 
     return {
@@ -2022,9 +2022,9 @@ def git_status(do_fetch=True):
 
     out = {"repo": repo}
     out["branch"] = g(["rev-parse", "--abbrev-ref", "HEAD"]) or "?"
-    out["remote"] = g(["remote", "get-url", "origin"]) or "brak remote"
+    out["remote"] = g(["remote", "get-url", "origin"]) or "no remote"
     fetched = False
-    if do_fetch and out["remote"] != "brak remote":
+    if do_fetch and out["remote"] != "no remote":
         try:
             import subprocess as _sp
             _sp.run(["git", "-C", repo, "fetch", "--quiet", "origin"],
@@ -2048,18 +2048,18 @@ def git_status(do_fetch=True):
     out["uncommitted_files"] = uncommitted_files
     out["synced"] = (out["uncommitted"] == 0 and out["ahead"] == 0 and out["behind"] == 0)
     if out["synced"]:
-        out["status"] = "ok"; out["summary"] = "Zsynchronizowane z GitHub ✓"
+        out["status"] = "ok"; out["summary"] = "In sync with GitHub ✓"
     elif out["behind"] > 0:
-        out["status"] = "warn"; out["summary"] = f"GitHub ma {out['behind']} commitów, których nie masz lokalnie"
+        out["status"] = "warn"; out["summary"] = f"GitHub has {out['behind']} commits you do not have locally"
     elif out["uncommitted"] or out["ahead"]:
         parts = []
         if out["uncommitted"]:
-            parts.append(f"{out['uncommitted']} niezacommitowanych zmian")
+            parts.append(f"{out['uncommitted']} uncommitted changes")
         if out["ahead"]:
-            parts.append(f"{out['ahead']} commitów przed GitHub")
-        out["status"] = "warn"; out["summary"] = "Do wypchnięcia: " + ", ".join(parts)
+            parts.append(f"{out['ahead']} commits ahead of GitHub")
+        out["status"] = "warn"; out["summary"] = "To push: " + ", ".join(parts)
     else:
-        out["status"] = "ok"; out["summary"] = "Zsynchronizowane"
+        out["status"] = "ok"; out["summary"] = "In sync"
     return out
 
 
@@ -2086,7 +2086,7 @@ def fire_projection():
     except Exception:
         freed = 0
 
-    scenarios = {"ostrożny (4%)": 0.04, "bazowy (6,5%)": 0.065, "optymistyczny (9%)": 0.09}
+    scenarios = {"cautious (4%)": 0.04, "base (6.5%)": 0.065, "optimistic (9%)": 0.09}
     today = date.today()
     horizon = 15 * 12
     series = {k: [] for k in scenarios}
@@ -2165,7 +2165,7 @@ def fire_projection():
     try:
         tracking = fire_tracking(contrib, freed, 0.065)
     except Exception:
-        tracking = {"status": "brak danych"}
+        tracking = {"status": "no data"}
 
     return {
         "start": round(start), "target": round(target),
@@ -2175,10 +2175,10 @@ def fire_projection():
         "real_crossover": real_cross,
         "italy": {"target": round(italy_target), "start": round(italy_start),
                   "crossover": italy_cross, "series": italy_series, "delay_months": delay,
-                  "note": "Akumulacja wkładu startuje po spłacie kredytu (~" + (label_at(delay)) + "). Ostrożny zwrot 4% (środki blisko celu). UWAGA: te same nadwyżki co work-optional — kupno domu opóźnia dojście do 3 mln."},
+                  "note": "Down-payment accumulation starts after the loan is paid off (~" + (label_at(delay)) + "). Cautious 4% return (funds close to the goal). NOTE: the same surpluses as work-optional — buying the house delays reaching 3M."},
         "tracking": tracking,
-        "assumptions": {"base_return": "6,5% nominalnie", "inflation": "3%",
-                        "contrib_note": f"{round(contrib)} zł/mies. (oszczędności {round(base_month)} + bonus/RSU {round(extras)}); po spłacie kredytu +{round(freed)}"},
+        "assumptions": {"base_return": "6.5% nominal", "inflation": "3%",
+                        "contrib_note": f"{round(contrib)} PLN/mo (savings {round(base_month)} + bonus/RSU {round(extras)}); after loan payoff +{round(freed)}"},
     }
 
 
@@ -2214,7 +2214,7 @@ def fire_tracking(contrib, freed, base_annual):
     """Porównuje realne miesięczne snapshoty z oczekiwanym tempem (plan)."""
     snaps = eb._rows("select month, liquid from fire_snapshots order by month asc")
     if len(snaps) < 2:
-        return {"status": "zbieram dane", "snapshots": len(snaps),
+        return {"status": "collecting data", "snapshots": len(snaps),
                 "first": snaps[0]["month"] if snaps else None}
     base_r = base_annual / 12
     rows = []
@@ -2229,8 +2229,8 @@ def fire_tracking(contrib, freed, base_annual):
                      "actual_growth": round(actual_growth),
                      "expected_growth": round(expected_growth), "delta": round(delta)})
     last = rows[-1]
-    verdict = ("wyprzedzasz plan" if cum_delta > 5000 else
-               "jesteś za planem" if cum_delta < -5000 else "zgodnie z planem")
+    verdict = ("ahead of plan" if cum_delta > 5000 else
+               "behind plan" if cum_delta < -5000 else "on plan")
     return {"status": "ok", "rows": rows[-6:], "cum_delta": round(cum_delta),
             "verdict": verdict, "months_tracked": len(snaps),
             "latest_liquid": round(snaps[-1]["liquid"])}
@@ -2330,14 +2330,14 @@ def security_scan():
     # 1. pliki-sekrety śledzone
     bad = [f for f in tracked if re.search(r"(^|/)\.env($|\.)(?!example)|\.pem$|\.key$|id_rsa|\.p12$|secret", f, re.I)]
     if bad:
-        findings.append({"sev": "high", "what": "Śledzone pliki-sekrety", "detail": ", ".join(bad[:5])})
+        findings.append({"sev": "high", "what": "Tracked secret files", "detail": ", ".join(bad[:5])})
 
     # 2. wrażliwe ścieżki nie-ignorowane
     for p in ("private", ".finance", "doc-raw", "backups"):
         ci = g(["check-ignore", p + "/"])
         leaked = [f for f in tracked if f.startswith(p + "/")]
         if leaked:
-            findings.append({"sev": "high", "what": f"Śledzone pliki w {p}/", "detail": ", ".join(leaked[:3])})
+            findings.append({"sev": "high", "what": f"Tracked files in {p}/", "detail": ", ".join(leaked[:3])})
 
     # 3. leak-check: realne wartości z .env w śledzonych plikach
     env = Path(repo) / ".env"
@@ -2354,7 +2354,7 @@ def security_scan():
             checked += 1
             r = g(["grep", "-F", v, "--", "."])
             if r and r.stdout.strip():
-                findings.append({"sev": "critical", "what": f"WYCIEK wartości {k.strip()}", "detail": "wartość z .env znaleziona w śledzonym pliku!"})
+                findings.append({"sev": "critical", "what": f"LEAK of the {k.strip()} value", "detail": "a value from .env found in a tracked file!"})
 
     # 4. wzorce sekretów (poza base64/blogami). Literały rozbite, by skaner nie łapał sam siebie.
     pat = "|".join([
@@ -2370,11 +2370,11 @@ def security_scan():
            "--", ".", ":(exclude)posts/*", ":(exclude)*.html", ":(exclude)doc-raw/*"])
     if r and r.stdout.strip():
         for ln in r.stdout.strip().splitlines()[:5]:
-            findings.append({"sev": "high", "what": "Wzorzec sekretu", "detail": ln[:100]})
+            findings.append({"sev": "high", "what": "Secret pattern", "detail": ln[:100]})
 
     crit = sum(1 for f in findings if f["sev"] == "critical")
     high = sum(1 for f in findings if f["sev"] == "high")
     status = "error" if (crit or high) else "ok"
     return {"status": status, "findings": findings, "tracked_files": len(tracked),
             "secrets_checked": checked, "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "summary": ("🚨 " + str(crit + high) + " znalezisk — sprawdź!") if findings else f"Czysto — {len(tracked)} plików, {checked} wartości .env zweryfikowanych, zero wycieków"}
+            "summary": ("🚨 " + str(crit + high) + " findings — check!") if findings else f"Clean — {len(tracked)} files, {checked} .env values verified, zero leaks"}
