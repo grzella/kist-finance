@@ -87,7 +87,7 @@ async function renderControl(el) {
       <h3 style="margin-top:0">🤖 AI mode
         <span class="badge" style="background:${ai.ai_mode === "both" ? "#b78cff22;color:#b78cff" : "#3ecf8e22;color:#3ecf8e"}">${ai.ai_mode === "both" ? "local + cloud" : "local only"}</span></h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">This mode governs <b>every AI feature in the app</b>:
-        transaction categorization, forecast narration and the "AI second opinion" on Recommendations. The default is local only —
+        the "AI second opinion" on Recommendations, forecast narration and questions typed below. The default is local only —
         nothing leaves your machine. "Local + cloud" asks BOTH engines and synthesizes one verdict (usually the best result),
         but <b class="neg">the cloud sends your question + snippets of your data to Anthropic</b> — enable deliberately.</div>
       <div class="row" style="gap:16px;flex-wrap:wrap">
@@ -97,7 +97,7 @@ async function renderControl(el) {
           🔒+☁️ Local + Claude <span class="muted" style="font-size:.85em">(${ai.cloud.online ? "🟢 " + ai.cloud.model : "🔴 no key — " + (ai.cloud.hint || "")})</span></label>
       </div>
       <div class="row mt" style="gap:8px">
-        <input id="aiPrompt" placeholder="ask both models… (e.g. categorize: WHOLE FOODS 187)" style="flex:1">
+        <input id="aiPrompt" placeholder="ask a question… (e.g. overpay the mortgage or invest?)" style="flex:1">
         <button class="primary" id="aiAsk">Ask</button>
       </div>
       <div id="aiOut" class="mt"></div>

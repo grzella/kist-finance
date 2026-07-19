@@ -62,7 +62,7 @@ The app **runs fully offline**. Live market data and alerts are opt-in:
 
 Cloud finance assistants send your balances to someone else's server. This app takes the opposite route: **the AI runs on your machine by default**, and the cloud is a deliberate, clearly-labelled opt-in.
 
-**How the local LLM works.** You run a small open model (e.g. Qwen 2.5 3B) with [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server` — a local process exposing an OpenAI-compatible API on `localhost`. The app talks to it over HTTP; no API keys, no data egress, no per-call cost. Because it speaks the OpenAI API, the same setup works with LM Studio or Ollama. Where the answer must be machine-readable (e.g. transaction categorization), the app sends a **JSON Schema and llama.cpp enforces it at the token level** (GBNF grammars) — the model physically cannot return an invalid category.
+**How the local LLM works.** You run a small open model (e.g. Qwen 2.5 3B) with [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server` — a local process exposing an OpenAI-compatible API on `localhost`. The app talks to it over HTTP; no API keys, no data egress, no per-call cost. Because it speaks the OpenAI API, the same setup works with LM Studio or Ollama. Where the answer must be machine-readable, the app sends a **JSON Schema and llama.cpp enforces it at the token level** (GBNF grammars) — the model physically cannot return malformed output.
 
 ```bash
 brew install llama.cpp        # or build from source; any OpenAI-compatible server works
@@ -74,7 +74,6 @@ Then set `LOCAL_LLM_KEY=<secret>` (and optionally `LOCAL_LLM_URL`) in `.env`. Co
 **What the AI actually does in the app:**
 
 - **AI second opinion on Recommendations** — the rule engine computes recommendations from your data; the AI reviews them (agrees/disagrees, what's missing) with your own numbers as context. One click in the Recommendations tab.
-- **Private transaction categorization** — "STORE 4231" → "Groceries", schema-constrained, sub-second on a small model.
 - **Forecast narration** — turns the self-learning forecast journal into a plain-language *why*.
 - **A grounded ask-anything box** (Control Center) plus a keyless `/api/llm/chat` hook for your own scripts.
 
