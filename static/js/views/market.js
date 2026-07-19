@@ -36,12 +36,34 @@ function marketBriefHtml(b) {
 }
 
 async function renderMarket(el) {
-  const [wl, brief] = await Promise.all([
+  const [wl, brief, radar] = await Promise.all([
     api.get("/api/watchlist"),
     api.get("/api/analysis/market_brief").catch(() => ({})),
+    api.get("/api/risk-radar").catch(() => null),
   ]);
   el.innerHTML = `
     <h2>Market</h2>
+    ${radar ? `<div class="card mt" style="border-left:4px solid ${radar.score >= 4 ? "#ff5c5c" : radar.score >= 2 ? "#ffd166" : "#3ecf8e"}">
+      <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">🌍 Risk Radar <span class="badge">${radar.state} · ${radar.score}/${radar.max_score}</span></h3>
+      </div>
+      <div class="muted" style="font-size:.85em;margin:4px 0 8px">Is the world nervous today? Measurable fear proxies the market already prices — instead of meme "pizza indexes" 🍕.</div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Component</th><th style="text-align:right">Level</th><th style="text-align:right">Δ 1d</th><th style="text-align:center">Score</th></tr></thead>
+        <tbody>${radar.components.map((c) => `<tr title="${c.rule}">
+          <td>${c.label} <span class="muted" style="font-size:.8em">${c.ticker}</span></td>
+          <td style="text-align:right">${c.level ?? "<span class=muted>no data</span>"}</td>
+          <td style="text-align:right" class="${(c.chg_1d || 0) > 0 ? "pos" : (c.chg_1d || 0) < 0 ? "neg" : "muted"}">${c.chg_1d != null ? c.chg_1d + "%" : "—"}</td>
+          <td style="text-align:center">${c.score == null ? "—" : ["🟢","🟡","🔴"][c.score]}</td>
+        </tr>`).join("")}</tbody></table></div>
+      ${radar.note ? `<div class="muted mt" style="font-size:.82em">⚠️ ${radar.note}</div>` : ""}
+      ${radar.history && radar.history.length
+        ? `<div class="mt"><canvas id="radarChart" height="50"></canvas>
+           ${radar.history[radar.history.length-1].comment ? `<div class="muted mt" style="font-size:.85em">🤖 Comment (local AI): ${radar.history[radar.history.length-1].comment}</div>` : ""}</div>`
+        : `<div class="muted mt" style="font-size:.82em">No readings yet — the radar stores the first one on the next daily cycle (or once the nightly sync delivers quotes).</div>`}
+      <div class="muted mt" style="font-size:.78em">The radar predicts nothing — it contextualizes. Thresholds are explicit (hover a component).</div>
+    </div>` : ""}
+
     ${marketBriefHtml(brief)}
     <h3 class="mt">Watchlist</h3>
     <div class="card">
@@ -55,6 +77,22 @@ async function renderMarket(el) {
     <div class="card mt"><div id="wlTable"><div class="empty">Loading…</div></div></div>
     <div class="card mt"><h3 id="chartTitle">Pick a ticker from the table</h3><canvas id="priceChart"></canvas></div>
     `;
+  if (radar && radar.history && radar.history.length && document.getElementById("radarChart")) {
+    trackChart(new Chart(document.getElementById("radarChart"), {
+      type: "line",
+      data: { labels: radar.history.map((h) => h.date.slice(5)),
+        datasets: [{ label: "score", data: radar.history.map((h) => h.score),
+          borderColor: "#ffd166", backgroundColor: "transparent", tension: 0.3, pointRadius: 2 },
+          { label: "trend (7d)", data: radar.history.map((_, i, a) => {
+              const w = a.slice(Math.max(0, i - 6), i + 1);
+              return +(w.reduce((x, h) => x + h.score, 0) / w.length).toFixed(2);
+            }), borderColor: "#4c8dff", backgroundColor: "transparent",
+            tension: 0.35, pointRadius: 0, borderDash: [5, 4] }] },
+      options: { plugins: { legend: { display: false } },
+        scales: { y: { min: 0, max: radar.max_score } } },
+    }));
+  }
+
 
   const TICKER_NAMES = {
     "AAPL": "RSU stock (set the ticker in RSU)",

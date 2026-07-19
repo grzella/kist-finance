@@ -12,6 +12,7 @@ A *kist* is an old word for the chest where you keep what's valuable — at home
 - **"When will I actually reach my goal?"** — month-by-month projections: goal ETA at your savings pace, FIRE/work-optional crossover, overpay-vs-invest scenarios with saved-interest math.
 - **"Should I sell my vested stock? Overpay the mortgage? Convert currency now?"** — opinionated, data-grounded guidance: an FX signal engine with a historical backtest, RSU Monte-Carlo on real volatility, debt-overpayment simulations.
 - **"I don't trust cloud finance apps"** — local-first by design; optional cloud integrations touch only *public market data*, never your numbers.
+- **"Is the world nervous today?"** — a 🌍 **Risk Radar** in the Markets tab: VIX, gold, oil and USD with explicit thresholds blended into one calm/elevated/hot reading, backfilled a month and refreshed daily — an honest, measurable take on the meme "pizza index" idea (it contextualizes; it doesn't predict).
 - **"AI assistants read my finances on someone else's server"** — here the AI is **built in and runs on your machine**: a local LLM reviews your recommendations, narrates forecasts and answers questions grounded in your own numbers — with an explicit, off-by-default switch if you ever want a cloud model's second opinion.
 - **"Forecasts that admit what they don't know"** — research-grounded modeling: short-horizon **range forecasts** (EWMA volatility + empirical quantiles — because direction of a single stock/FX is not predictable, and the app doesn't pretend otherwise) and long-horizon labeled scenario bands. The forecast journal **grades itself daily** (band-coverage vs an 80% target) and **self-calibrates on its own past errors** (conformal calibration) — no black box, every band is explainable in one sentence.
 
@@ -41,7 +42,7 @@ Optional — toggle in the wizard, disabled ones disappear from the UI:
 |---|---|
 | 🏠 Loans & mortgage | principal/interest split, effective rate, overpayment scenarios |
 | 🏛️ Taxes | consolidated tax sources + payment calendar |
-| 📈 Markets & FX | watchlist, price analytics, currency signal engine with backtest |
+| 📈 Markets & FX | watchlist, price analytics, currency signal engine with backtest, daily 🌍 Risk Radar |
 | 💎 Equity / RSU | vesting schedule, Monte-Carlo projection, sell-vs-hold guidance |
 | 🚁 Side business | revenue/costs of self-employment or a side company |
 | 💼 Career tracker | inbound job offers, market barometer, commit-activity tracker |

@@ -127,3 +127,43 @@ def test_security_review_full_pass(client):
     assert rep["verdict"] in ("ok", "warn", "error")
     areas = {a["area"] for a in rep["areas"]}
     assert any("FUNCTIONAL" in a or "FUNKCJONALNE" in a for a in areas)
+
+
+# ---------- risk radar ----------
+
+def test_risk_radar_scoring_on_seeded_prices(client):
+    import db
+    import risk_radar
+    from datetime import date, timedelta
+    y, t = (date.today() - timedelta(days=1)).isoformat(), date.today().isoformat()
+    with db.get_conn() as conn:
+        rows = [  # VIX hot (32, +14%), gold elevated (+1.4%), oil calm, EURUSD hot (-1.5%)
+            ("^VIX", y, 28.0), ("^VIX", t, 32.0),
+            ("GC=F", y, 2400.0), ("GC=F", t, 2433.6),
+            ("CL=F", y, 80.0), ("CL=F", t, 80.8),
+            ("EURUSD=X", y, 1.10), ("EURUSD=X", t, 1.0835),
+        ]
+        for r in rows:
+            conn.execute("insert or replace into market_prices_cache values (?,?,?,?)",
+                         (*r, "USD"))
+    d = risk_radar.compute()
+    by = {c["ticker"]: c for c in d["components"]}
+    assert by["^VIX"]["score"] == 2
+    assert by["GC=F"]["score"] == 1
+    assert by["CL=F"]["score"] == 0
+    assert by["EURUSD=X"]["score"] == 2
+    assert d["score"] == 5 and "🔴" in d["state"]
+    assert not d["missing"]
+
+
+def test_risk_radar_endpoint_and_snapshot(client, monkeypatch):
+    import llm_local
+    monkeypatch.setattr(llm_local, "chat", lambda *a, **k: "elevated risk, stay the course")
+    r = client.get("/api/risk-radar").get_json()
+    assert "score" in r and "components" in r and "history" in r
+    s1 = client.post("/api/risk-radar/snapshot").get_json()
+    assert s1["ok"] is True
+    s2 = client.post("/api/risk-radar/snapshot").get_json()   # idempotent per day
+    assert s2["ok"] is True
+    h = client.get("/api/risk-radar").get_json()["history"]
+    assert len(h) >= 1 and h[-1]["comment"]

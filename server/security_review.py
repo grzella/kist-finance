@@ -84,11 +84,16 @@ _SENSITIVE_PATHS = re.compile(
 # this fails the build. (In the private personal app these terms are expected;
 # here they are a leak.)
 _PERSONAL_MARKERS = [
-    ("employer / ticker", r"\bAtlassian\b"),
+    ("employer / ticker", r"Atlassian"),
     ("city A",            r"\u0141[o\u00f3]d[\u017a\u017c]|\u0141[o\u00f3]dzk"),
     ("city B",            r"Tarchomin"),
     ("street",            r"Piotrkowsk"),
     ("surname",           r"Grzella"),
+    ("email",             r"l\.grzella"),
+    ("home path",         r"/Users/lukaszgrzella"),
+    ("private repo name", r"private-lab"),
+    ("personal goal geo",  r"W\u0142och|Wloch\b|Hiszpan"),
+    ("employer ticker",    r"\"TEAM\""),
 ]
 
 # Excludes for content scans (docs / vendored / sample data are not code).

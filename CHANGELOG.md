@@ -11,6 +11,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - **Self-learning forecast journal** (`forecast_track`): daily band forecasts for the whole watchlist are recorded, auto-scored when they mature, and bands become **conformally calibrated on the model's own realized errors** (≥40 scored forecasts per ticker+horizon). Walk-forward backfill seeds the journal. Self-score (band coverage vs 80% target) surfaces in Control Center.
 - Short-horizon range panel in RSU, 1M/3M ranges on FX cards, goal ETA shown as a **range** (pace ±25%) instead of a single date; `/api/forecast/bands/<ticker>`, `/api/forecast/selfscore`, `/api/forecast/cycle`.
 
+## [2026-07-19]
+
+### Added
+- **🌍 Risk Radar** (Markets): VIX + gold + WTI oil + USD with explicit 0–2 thresholds → one composite reading (calm/elevated/hot), a month of backfilled history with a 7-day trend line, keyless Yahoo fallback fetch when the nightly sync hasn't run yet, optional local-AI one-liner, and a daily schedule task.
+- **AI second opinion on Recommendations**: the rule engine's list is reviewed by the AI (local, or local+cloud with a synthesized verdict) against your own data; result stored with timestamp.
+- **Shared AI pipeline** (`_ai_answer`): RAG grounding → local model → (both-mode: cloud + verdict synthesis) → prompt log; governs every AI feature via the Control Center mode. Cloud model defaults to `claude-fable-5` (with limits sized for its always-on thinking).
+- **User-configurable schedules** (Data tab): frequency/day/hour for backup snapshots, wealth snapshots, the forecast self-learning cycle and RAG reindex; tasks fire at the first app-open past their moment.
+- **Backups**: consistent snapshots into a cloud-synced folder (Google Drive "My Drive"/localized dirs detected correctly), optional Fernet encryption, restore with a pre-restore safety copy, auto-backup master switch.
+- **Semantic RAG upgrade**: BM25 + optional embedding hybrid, light PL/EN stemming (inflection no longer blocks matches), richer index (debts, current wealth values, a profile summary, business totals) and a bigger context window.
+- Freshness stamp under every view title; human-friendly copy for the AI mode and the AI's "private memory" (RAG).
+
+### Changed
+- App renamed to **Kist**; data stored **outside the repo** by default; UI English-native with a Polish toggle; repo made public with CONTRIBUTING, issue/PR templates, coverage floor + bandit in CI, CodeQL (default setup) and Dependabot.
+- Personal-data audit hardened: portable regexes (macOS/Linux), new markers (email, home paths, private repo name, employer ticker) — and the audit immediately caught and removed leftover personal defaults.
+
+### Fixed
+- Wizard config API 500 on a list-of-modules payload; scanner false positive on JavaScript's `RegExp.exec()`; a tracked `.coverage` artifact removed from the repo and ignored.
+
 ## [2026-07-18]
 
 ### Added

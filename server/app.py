@@ -187,6 +187,18 @@ def fx_analysis():
     return jsonify(market.fx_analysis())
 
 
+@app.get("/api/risk-radar")
+def risk_radar_get():
+    import risk_radar
+    return jsonify(risk_radar.full())
+
+
+@app.post("/api/risk-radar/snapshot")
+def risk_radar_snap():
+    import risk_radar
+    return jsonify({"ok": risk_radar.snapshot()})
+
+
 @app.put("/api/market/target/<ticker>")
 def market_target(ticker):
     body = request.get_json(force=True)

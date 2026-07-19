@@ -42,6 +42,11 @@ def _run_rag_reindex():
     return rag.reindex() >= 0
 
 
+def _run_risk_radar():
+    import risk_radar
+    return risk_radar.snapshot()
+
+
 # id → definition. freq: daily|weekly|monthly. day: 0-6 Mon-Sun (weekly) or
 # 1-28 (monthly). hour: 0-23 local.
 REGISTRY = [
@@ -57,6 +62,10 @@ REGISTRY = [
      "kind": "app", "runner": _run_forecast_cycle,
      "note": "settles matured forecasts and records today's bands",
      "default": {"freq": "daily", "day": 0, "hour": 8}},
+    {"id": "risk_radar", "label": "Risk radar (daily reading)",
+     "kind": "app", "runner": _run_risk_radar,
+     "note": "VIX+gold+oil+USD → composite with a local-AI one-liner",
+     "default": {"freq": "daily", "day": 0, "hour": 9}},
     {"id": "rag_reindex", "label": "AI memory refresh (RAG reindex)",
      "kind": "app", "runner": _run_rag_reindex,
      "note": "keeps AI answers grounded in your latest data",
