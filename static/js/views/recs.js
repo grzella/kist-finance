@@ -6,7 +6,7 @@ async function renderRecs(el) {
     api.get("/api/recommendation/ai").catch(() => ({}))]);
 
   const STATUS_LABELS = { backlog: "backlog", "w trakcie": "in progress", zrobione: "done", odrzucone: "rejected" };
-  const engineItems = [...rec.items, ...(xtb.items || []).map((i) => ({ ...i, area: "brokerage: " + i.area }))];
+  const engineItems = [...rec.items, ...(xtb.items || []).map((i) => ({ ...i, area: "Portfolio: " + i.area }))];
 
   const byStatus = { "w trakcie": [], backlog: [], zrobione: [], odrzucone: [] };
   acts.actions.forEach((a) => (byStatus[a.status] || byStatus.backlog).push(a));

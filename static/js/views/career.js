@@ -6,14 +6,14 @@ async function renderCareer(el) {
   }
   el.innerHTML = `
     <div class="muted" style="margin-bottom:4px"><a href="#offers" style="text-decoration:none">← Career (offers and market)</a></div>
-    <h2>🧭 Career — long-term growth</h2>
+    <h2>🧭 Career — long-term growth analysis</h2>
     <div class="card" style="border-left:4px solid #3ecf8e">
       <div style="font-size:1.05em"><b>${a.headline}</b></div>
       <div class="muted mt" style="font-size:.82em">As of ${a.as_of}.</div>
     </div>
 
     <div class="card mt">
-      <h3>Where you sit on the comp ladder (Poland, 2026)</h3>
+      <h3>Where you sit on the comp ladder (your market)</h3>
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Level / role</th><th style="text-align:right">Compensation/yr</th></tr></thead>
         <tbody>${a.comp_levels.map((c) => `<tr style="${c.you ? "background:rgba(62,207,142,0.12)" : ""}">
@@ -21,7 +21,6 @@ async function renderCareer(el) {
           <td style="text-align:right" class="${c.you ? "pos" : ""}"><b>${c.comp}</b></td>
         </tr>`).join("")}</tbody>
       </table></div>
-      <div class="muted mt" style="font-size:.85em">.</div>
     </div>
 
     <div class="card mt">
@@ -36,7 +35,7 @@ async function renderCareer(el) {
     </div>
 
     <div class="card mt" style="border-left:4px solid #e0a458">
-      <h3 style="margin-top:0">🎯 Your target role — should you aim for it?</h3>
+      <h3 style="margin-top:0">🎯 ${a.target_role || "Your target role"} — should you aim for it?</h3>
       <div style="font-size:.95em">${a.head_of_eng}</div>
     </div>
 

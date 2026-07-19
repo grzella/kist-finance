@@ -408,7 +408,10 @@ def list_offers():
                     "new_months": round(new_months, 1) if new_months else None,
                     "months_saved": round(base_months - new_months, 1) if new_months else None,
                 })
-    return {"offers": offers, "settings": cfg, "stats": _offers_stats(offers, current)}
+    roles = {"a": get_setting("career_role_a") or "Engineering Manager",
+             "b": get_setting("career_role_b") or "Head of Engineering"}
+    return {"offers": offers, "settings": cfg, "stats": _offers_stats(offers, current),
+            "roles": roles}
 
 
 def _offers_stats(offers, current):
@@ -741,7 +744,7 @@ def recommendation():
     # Cushion definition: cash (kind=cushion) + brokerage + pension — all
     # quickly liquidable. A tenant deposit (a liability) is excluded by kind.
     liquid_extra = sum(i["latest_value"] or 0 for i in w["items"]
-                       if i["name"].startswith("brokerage") or i["name"] == "pension")
+                       if i.get("kind") == "savings")  # liquid savings-kind items
     cushion = t.get("cushion", 0) + liquid_extra
     assets = w["total"] - t.get("income", 0)  # income kind is a monthly figure, not an asset
     real_estate = sum(i["latest_value"] or 0 for i in w["items"]
@@ -776,7 +779,7 @@ def recommendation():
         recs.append({
             "area": "emergency fund", "priority": 1,
             "text": (f"Build the emergency cushion: you have {_zl(cushion)} "
-                     f"(cash + brokerage + employer pension), "
+                     f"(cash + liquid savings), "
                      f"the target is ~{_zl(target)} (6 months of fixed costs ~{_zl(essential_monthly)}/mo); "
                      f"{_zl(gap)} is missing — this is the priority before overpayments and investing.")})
 
@@ -1382,14 +1385,14 @@ def tax_summary():
     rental_m = _t("tax_rental_monthly"); rate = _t("tax_rental_rate")
     zus = _t("tax_zus_monthly"); salary = _t("tax_salary_gross_annual")
     try:
-        biz = biz_summary(); fpv_result = biz.get("total_result", 0)
+        biz = biz_summary(); biz_result = biz.get("total_result", 0)
     except Exception:
-        fpv_result = 0
-    fpv_profit = max(0, fpv_result)
+        biz_result = 0
+    biz_profit = max(0, biz_result)
     rental_annual = rental_m * 12
     rental_tax = round(rental_annual * rate / 100, 0)
     zus_annual = round(zus * 12, 0)
-    fpv_pit = round(fpv_profit * 0.12, 0)
+    biz_pit = round(biz_profit * 0.12, 0)
 
     items = [
         {"source": "Rental (lump-sum)", "rate": f"{rate}%",
@@ -1398,8 +1401,8 @@ def tax_summary():
         {"source": "business — social security/health", "rate": "—", "base": None, "tax": zus_annual,
          "cadence": "monthly by the 20th", "managed": "you (sole prop.)",
          "note": "With an employment contract ≥ minimum wage → overlapping titles: the sole proprietorship is usually EXEMPT from social contributions, you pay only the health premium. This is NOT a time-limited preference while the job lasts (confirm with your accountant what the 431.54 covers)"},
-        {"source": "business — income tax on profit", "rate": "12–32% / 19%", "base": fpv_profit,
-         "tax": fpv_pit, "cadence": "monthly/quarterly advance", "managed": "you (sole prop.)",
+        {"source": "business — income tax on profit", "rate": "12–32% / 19%", "base": biz_profit,
+         "tax": biz_pit, "cadence": "monthly/quarterly advance", "managed": "you (sole prop.)",
          "note": "currently a loss → 0; the loss offsets future profits"},
         {"source": "RSU / capital gains", "rate": "19%", "base": 0, "tax": 0,
          "cadence": "on sale", "managed": "auto",
@@ -1408,7 +1411,7 @@ def tax_summary():
          "cadence": "withheld by the employer", "managed": "employer",
          "note": "for reference — you do not manage it yourself (PIT-11)"},
     ]
-    self_managed = rental_tax + zus_annual + fpv_pit
+    self_managed = rental_tax + zus_annual + biz_pit
 
     today = date.today()
     def nth(month_offset, day):
@@ -1621,7 +1624,7 @@ def delete_reminder(rid):
     eb._exec("delete from reminders where id=?", (rid,))
 
 
-# ---------- market barometer (demand for tracked roles) ----------
+# ---------- market barometer (demand for the roles you track — configurable) ----------
 
 def list_barometer():
     rows = eb._rows("select * from market_barometer order by month asc")

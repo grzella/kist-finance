@@ -7,7 +7,7 @@ async function renderOffers(el) {
   const statsBar = s ? `
     <div class="card" style="padding:10px 16px">
       <div class="row" style="gap:22px;flex-wrap:wrap;align-items:baseline">
-        <span title="A known company + scope ≥ yours (senior scope) + range ≥ current. The most important market signal.">
+        <span title="A known company + scope ≥ yours + range ≥ current. The most important market signal.">
           🏆 Tier-1: <b>${s.tier1_count}</b> <span class="muted">(${fmt.num(s.tier1_per_month, 1)}/mo)</span></span>
         <span title="All inbound, no applying.">📥 Total: <b>${s.total}</b>
           <span class="muted">(${fmt.num(s.per_month, 1)}/mo over ${s.span_months} mo)</span></span>
@@ -26,7 +26,7 @@ async function renderOffers(el) {
     <div style="margin-bottom:10px">
       <a href="#career" style="text-decoration:none;display:inline-block;padding:6px 12px;
         border:1px solid ${CHART_COLORS[1]};border-radius:6px;color:${CHART_COLORS[1]};font-size:.9em">
-        🧭 Career analysis — long-term growth →</a>
+        🧭 Long-term career analysis →</a>
       <a href="#commits" style="text-decoration:none;display:inline-block;padding:6px 12px;margin-left:6px;
         border:1px solid #3ecf8e;border-radius:6px;color:#3ecf8e;font-size:.9em">
         🧑‍💻 Committing${gh ? ` — today ${gh.today}, streak ${gh.streak}🔥` : ""} →</a></div>
@@ -34,8 +34,8 @@ async function renderOffers(el) {
     <div class="muted" style="margin:6px 0 12px;font-size:.88em">Reference point (auto): <b>${s ? fmt.pln(s.current) : "—"}</b>/mo —
       current total (base + bonus + RSU, computed dynamically from the RSU stock price). Offer deltas and goal impact are computed against this.</div>
     <div class="card" id="baroCard">
-      <h3>📈 Market barometer — demand for the tracked roles (+ your inbound)</h3>
-      <div class="muted" style="font-size:.85em;margin-bottom:8px">Total openings on the market (Europe, remote) for the tracked roles — a monthly trend against your inbound (bars).
+      <h3>📈 Market barometer — demand for ${d.roles.a} / ${d.roles.b} roles (+ your inbound)</h3>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">Total open roles on your market for the two roles you track (rename them in Settings: career_role_a / career_role_b) — a monthly trend against your inbound (bars).
         Shows whether the growing number of inquiries to you is your brand or market growth (and whether AI is shrinking it).
         <b>Updated by Claude monthly</b> (research across board aggregates: Glassdoor / Indeed / Remote Rocketship) — you compute nothing by hand.</div>
       <canvas id="baroChart" height="95" class="mt"></canvas>
@@ -103,7 +103,7 @@ async function renderOffers(el) {
   const btbl = document.getElementById("baroTable");
   if (bpts.length) {
     btbl.innerHTML = `<table><thead><tr><th>Month</th><th style="text-align:right">EM openings</th>
-      <th style="text-align:right">Head of Eng</th><th style="text-align:right">Your inbound</th><th>Source</th><th></th></tr></thead><tbody>` +
+      <th style="text-align:right">${d.roles.b}</th><th style="text-align:right">Your inbound</th><th>Source</th><th></th></tr></thead><tbody>` +
       [...bpts].reverse().map((p) => `<tr><td>${p.month}</td>
         <td style="text-align:right">${p.em_openings != null ? fmt.grouped(p.em_openings) : "—"}</td>
         <td style="text-align:right">${p.head_openings != null ? fmt.grouped(p.head_openings) : "—"}</td>
@@ -120,7 +120,7 @@ async function renderOffers(el) {
             backgroundColor: "rgba(255,209,102,0.55)", yAxisID: "y1", order: 3, barPercentage: 0.5, categoryPercentage: 0.6 },
           { type: "line", label: "Market: tracked role", data: bpts.map((p) => p.em_openings),
             borderColor: CHART_COLORS[0], backgroundColor: "transparent", yAxisID: "y", tension: 0.25, borderWidth: 3, pointRadius: 3, order: 1 },
-          { type: "line", label: "Market: Head of Eng", data: bpts.map((p) => p.head_openings),
+          { type: "line", label: "Market: " + d.roles.b, data: bpts.map((p) => p.head_openings),
             borderColor: CHART_COLORS[1], backgroundColor: "transparent", yAxisID: "y", tension: 0.25, borderWidth: 3, pointRadius: 3, order: 2 },
         ],
       },
