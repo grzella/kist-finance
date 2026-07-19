@@ -132,3 +132,47 @@ def test_recommendation_ai_endpoint(client):
     d = r.get_json()
     assert ("text" in d) or ("error" in d)
     assert client.get("/api/recommendation/ai").status_code == 200
+
+
+# ---------- schedules ----------
+
+def test_schedules_get_and_set_roundtrip(client):
+    d = client.get("/api/schedules").get_json()
+    assert d["tasks"] and all(k in d["tasks"][0] for k in ("id", "freq", "day", "hour"))
+    tid = d["tasks"][0]["id"]
+    r = client.post(f"/api/schedules/{tid}", json={"freq": "weekly", "day": 4, "hour": 18}).get_json()
+    assert r["ok"] and r["freq"] == "weekly" and r["day"] == 4 and r["hour"] == 18
+    d2 = client.get("/api/schedules").get_json()
+    t = next(t for t in d2["tasks"] if t["id"] == tid)
+    assert (t["freq"], t["day"], t["hour"]) == ("weekly", 4, 18)
+    assert client.post(f"/api/schedules/{tid}", json={"freq": "hourly"}).get_json()["ok"] is False
+    assert client.post("/api/schedules/nope", json={"freq": "daily"}).get_json()["ok"] is False
+    client.post(f"/api/schedules/{tid}", json={"freq": "daily", "day": 0, "hour": 10})
+
+
+def test_schedules_is_due_logic():
+    from datetime import datetime
+    import schedules as sc
+    mon10 = datetime(2026, 7, 13, 10, 0)   # Monday
+    assert sc._is_due({"freq": "daily", "day": 0, "hour": 9}, None, mon10) is True
+    assert sc._is_due({"freq": "daily", "day": 0, "hour": 11}, None, mon10) is False
+    assert sc._is_due({"freq": "daily", "day": 0, "hour": 9}, "2026-07-13", mon10) is False
+    assert sc._is_due({"freq": "weekly", "day": 0, "hour": 9}, None, mon10) is True
+    assert sc._is_due({"freq": "weekly", "day": 2, "hour": 9}, None, mon10) is False
+    assert sc._is_due({"freq": "weekly", "day": 0, "hour": 9}, "2026-W29", mon10) is False
+    assert sc._is_due({"freq": "monthly", "day": 13, "hour": 9}, None, mon10) is True
+    assert sc._is_due({"freq": "monthly", "day": 20, "hour": 9}, None, mon10) is False
+
+
+def test_schedules_run_due_records_period(client, monkeypatch):
+    import schedules as sc
+    import planner
+    ran = {"n": 0}
+    task = next(t for t in sc.REGISTRY if t["kind"] == "app")
+    monkeypatch.setitem(task, "runner", lambda: ran.__setitem__("n", ran["n"] + 1) or True)
+    planner.set_settings({f"sched_last.{task['id']}": ""})
+    from datetime import datetime
+    out = sc.run_due(datetime(2026, 7, 13, 23, 0))
+    assert task["id"] in out and ran["n"] == 1
+    out2 = sc.run_due(datetime(2026, 7, 13, 23, 30))
+    assert task["id"] not in out2 and ran["n"] == 1   # once per period

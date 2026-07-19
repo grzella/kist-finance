@@ -18,11 +18,6 @@ import planner  # noqa: E402
 
 db.init_db()          # base tables (self-contained; replaces external skill)
 planner.ensure_tables()
-try:                  # auto-backup on start if enabled and the last one is stale
-    import data_backup as _bk
-    _bk.maybe_auto_backup()
-except Exception:
-    pass
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
@@ -351,12 +346,24 @@ def allocation():
 
 @app.get("/api/health")
 def health():
-    try:  # auto-backup piggybacks on health: fires whenever the app is opened
-        import data_backup as _bk
-        _bk.maybe_auto_backup()
+    try:  # scheduled tasks piggyback on health: run at first app-open past due
+        import schedules
+        schedules.run_due()
     except Exception:
         pass
     return jsonify(planner.health())
+
+
+@app.get("/api/schedules")
+def schedules_get():
+    import schedules
+    return jsonify(schedules.get_schedules())
+
+
+@app.post("/api/schedules/<task_id>")
+def schedules_set(task_id):
+    import schedules
+    return jsonify(schedules.set_schedule(task_id, request.get_json(force=True)))
 
 
 @app.get("/api/data-inventory")

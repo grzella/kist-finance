@@ -1,5 +1,7 @@
 async function renderData(el) {
-  const d = await api.get("/api/data-inventory");
+  const [d, sched] = await Promise.all([
+    api.get("/api/data-inventory"),
+    api.get("/api/schedules").catch(() => null)]);
   const s = d.summary;
 
   const MODE = {
@@ -77,5 +79,49 @@ async function renderData(el) {
       <b>End state:</b> the only point that can't be automated "for free" is account balances —
       and even that goes away once free PSD2 (Open Banking) is hooked up via n8n. Once the roadmap is done
       you only enter event-driven things by hand (a new offer, an ETF purchase, an installment change), nothing recurring.
-    </div>`;
+    </div>
+    ${sched ? `<div class="card mt" style="border-left:4px solid #4c8dff">
+      <h3 style="margin-top:0">⏰ Schedules — when things run</h3>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">Change frequency, day and hour — saved instantly. 'app' tasks run at the first app-open past the chosen time; external ones are read-only.</div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Task</th><th>Frequency</th><th>Day</th><th>Hour</th><th>Last run</th><th></th></tr></thead>
+        <tbody>
+        ${sched.tasks.map((t) => `<tr data-sched="${t.id}">
+          <td><b>${t.label}</b> <span class="badge">${t.kind}</span>
+            <div class="muted" style="font-size:.8em">${t.note}</div></td>
+          <td><select data-f="freq">
+            <option value="daily" ${t.freq === "daily" ? "selected" : ""}>daily</option>
+            <option value="weekly" ${t.freq === "weekly" ? "selected" : ""}>weekly</option>
+            <option value="monthly" ${t.freq === "monthly" ? "selected" : ""}>monthly</option>
+          </select></td>
+          <td><select data-f="day" ${t.freq === "daily" ? "disabled" : ""}>
+            ${t.freq === "monthly"
+              ? Array.from({length: 28}, (_, i) => `<option value="${i + 1}" ${t.day === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("")
+              : ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((n, i) => `<option value="${i}" ${t.day === i ? "selected" : ""}>${n}</option>`).join("")}
+          </select></td>
+          <td><select data-f="hour">
+            ${Array.from({length: 24}, (_, h) => `<option value="${h}" ${t.hour === h ? "selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("")}
+          </select></td>
+          <td class="muted" style="font-size:.85em">${t.last_run || "—"}</td>
+          <td class="muted" style="font-size:.8em" data-st></td>
+        </tr>`).join("")}
+        ${sched.external.map((t) => `<tr>
+          <td><b>${t.label}</b> <span class="badge">external</span>
+            <div class="muted" style="font-size:.8em">${t.note}</div></td>
+          <td colspan="4" class="muted">${t.freq_text}</td><td></td>
+        </tr>`).join("")}
+        </tbody></table></div>
+    </div>` : ""}
+`;
+
+  el.querySelectorAll("[data-sched] select").forEach((sel) =>
+    sel.addEventListener("change", async (e) => {
+      const row = e.target.closest("[data-sched]");
+      const get = (f) => row.querySelector(`[data-f="${f}"]`);
+      const body = { freq: get("freq").value, day: +get("day").value || 0, hour: +get("hour").value };
+      const st = row.querySelector("[data-st]");
+      const r = await api.post("/api/schedules/" + row.dataset.sched, body);
+      st.textContent = r.ok ? "✓ saved" : (r.error || "!");
+      if (e.target.dataset.f === "freq") route();
+    }));
 }
