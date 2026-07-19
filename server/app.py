@@ -629,6 +629,30 @@ def llm_log_view():
     return jsonify({"stats": llm_log.stats(), "recent": llm_log.recent(int(request.args.get("n", 25)))})
 
 
+@app.post("/api/experience")
+def experience_learn():
+    """Distill a good Q+A into a transferable lesson and store it (user-triggered
+    'learn from this'). The lesson then grounds future similar questions."""
+    import experience
+    b = request.get_json(force=True)
+    lesson = experience.learn(b.get("question", ""), b.get("answer", ""))
+    return jsonify({"ok": True, "lesson": lesson} if lesson else
+                   {"ok": False, "error": "no transferable lesson found (or AI offline)"})
+
+
+@app.get("/api/experiences")
+def experiences_list():
+    import experience
+    return jsonify({"experiences": experience.listing()})
+
+
+@app.delete("/api/experiences/<eid>")
+def experience_delete(eid):
+    import experience
+    experience.delete(eid)
+    return jsonify({"ok": True})
+
+
 @app.get("/api/rag/status")
 def rag_status():
     import rag

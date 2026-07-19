@@ -28,13 +28,14 @@ function securityReviewHtml(rev) {
 }
 
 async function renderControl(el) {
-  const [d, rev, ai, ragStatus, bk, aiLog] = await Promise.all([
+  const [d, rev, ai, ragStatus, bk, aiLog, exp] = await Promise.all([
     api.get("/api/health"),
     api.get("/api/security-review").catch(() => ({})),
     api.get("/api/llm/config").catch(() => null),
     api.get("/api/rag/status").catch(() => null),
     api.get("/api/backup/status").catch(() => null),
     api.get("/api/llm/log").catch(() => null),
+    api.get("/api/experiences").catch(() => null),
   ]);
   const esc = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const s = d.summary;
@@ -113,11 +114,22 @@ async function renderControl(el) {
       </div>` : ""}
       ${aiLog && aiLog.stats.total ? `<details class="mt" style="font-size:.85em">
         <summary style="cursor:pointer">📊 AI prompt log (${aiLog.stats.total}) — ${aiLog.stats.rag_grounded} RAG-grounded · ${aiLog.stats.cloud_calls} cloud calls</summary>
-        <div class="mt">${aiLog.recent.slice(0, 8).map((e) => `<div style="border-top:1px solid #2a2f45;padding:6px 0">
+        <div class="mt">${aiLog.recent.slice(0, 8).map((e) => { const ans = e.synthesis_text || e.cloud_text || e.local_text; return `<div style="border-top:1px solid #2a2f45;padding:6px 0">
           <div class="muted" style="font-size:.8em">${e.ts} · ${e.mode}${e.rag_used ? " · RAG" : ""}</div>
           <div><b>${esc(e.prompt)}</b></div>
-          <div style="white-space:pre-wrap;color:#c9cee0">${esc(e.synthesis_text || e.cloud_text || e.local_text)}</div></div>`).join("")}</div>
+          <div style="white-space:pre-wrap;color:#c9cee0">${esc(ans)}</div>
+          ${ans ? `<button class="expLearn" style="font-size:.78em;margin-top:4px" data-q="${encodeURIComponent(e.prompt || "")}" data-a="${encodeURIComponent(ans)}">💡 Learn from this</button> <span class="expMsg muted" style="font-size:.78em"></span>` : ""}</div>`; }).join("")}</div>
       </details>` : ""}
+
+      <details class="mt" style="font-size:.85em" ${exp && exp.experiences.length ? "" : ""}>
+        <summary style="cursor:pointer">🧠 Learned experiences (${(exp && exp.experiences.length) || 0})</summary>
+        <div class="muted mt" style="font-size:.82em">Lessons distilled from answers you marked as good. They're indexed into the AI's memory (RAG) and injected as guidance on similar questions — so the assistant improves without retraining. Prune any that don't hold up.</div>
+        <div class="mt">${(exp && exp.experiences.length) ? exp.experiences.map((x) => `<div style="border-top:1px solid #2a2f45;padding:6px 0;display:flex;gap:8px;align-items:flex-start">
+          <div style="flex:1"><div style="white-space:pre-wrap;color:#c9cee0">${esc(x.lesson)}</div>
+            <div class="muted" style="font-size:.75em">${x.created_at}${x.question ? " · from: " + esc(x.question) : ""}</div></div>
+          <button class="expDel danger" style="font-size:.75em" data-id="${x.id}">✕</button></div>`).join("")
+          : `<div class="muted" style="font-size:.82em">Nothing yet — ask the AI something, then click <b>💡 Learn from this</b> on a good answer above.</div>`}</div>
+      </details>
     </div>` : ""}
 
     ${bk ? `<div class="card mt" style="border-left:4px solid #4c8dff">
@@ -234,6 +246,20 @@ async function renderControl(el) {
       try { await api.post("/api/rag/reindex", {}); } finally { route(); }
     });
   }
+  // experience distillation: "learn from this" on a good answer, and pruning
+  document.querySelectorAll(".expLearn").forEach((b) => b.addEventListener("click", async () => {
+    const msg = b.nextElementSibling;
+    b.disabled = true; if (msg) msg.textContent = "distilling…";
+    try {
+      const r = await api.post("/api/experience", {
+        question: decodeURIComponent(b.dataset.q), answer: decodeURIComponent(b.dataset.a) });
+      if (r.ok) { if (msg) msg.textContent = "✅ learned"; setTimeout(route, 700); }
+      else { if (msg) msg.textContent = "no transferable lesson"; b.disabled = false; }
+    } catch (e) { if (msg) msg.textContent = "error"; b.disabled = false; }
+  }));
+  document.querySelectorAll(".expDel").forEach((b) => b.addEventListener("click", async () => {
+    await api.del("/api/experiences/" + b.dataset.id); route();
+  }));
   const bkDest = document.getElementById("bkDest");
   if (bkDest) {
     bkDest.addEventListener("change", async (e) => {

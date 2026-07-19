@@ -166,3 +166,27 @@ def test_fetch_yahoo_history_stores_rows(client, monkeypatch):
     assert market.fetch_yahoo_history("TESTX") == 1  # None close skipped
     hist = market.prices("TESTX", days=10)
     assert any(abs(h["close"] - 101.5) < 1e-9 for h in hist)
+
+
+def test_experience_distillation_roundtrip(client, monkeypatch):
+    """A distilled lesson is stored, indexed into RAG, retrieved as guidance on a
+    similar question, and prunable — self-evolution without retraining (book ch.8)."""
+    import experience, rag, llm_local
+    # gate: refusals / too-short replies are NOT stored (transferability caveat)
+    monkeypatch.setattr(llm_local, "chat", lambda *a, **k: "NONE")
+    assert experience.learn("q", "a") is None
+    assert experience.listing() == []
+    # a real transferable lesson is stored + marks the index stale
+    monkeypatch.setattr(llm_local, "chat", lambda *a, **k:
+                        "Compare the loan rate to the market return AFTER capital-gains tax, not gross.")
+    assert experience.learn("Overpay mortgage or invest?", "answer") is not None
+    assert len(experience.listing()) == 1
+    # RAG reindex surfaces it as an 'experience' chunk, retrievable by meaning-adjacent words
+    rag.reindex()
+    hits = rag.search("should I overpay the loan or invest in an ETF", k=6)
+    assert any(h["source"] == "experience" for h in hits)
+    # pruning removes it from the knowledge base
+    experience.delete(experience.listing()[0]["id"])
+    assert experience.listing() == []
+    rag.reindex()
+    assert not any(h["source"] == "experience" for h in rag.search("overpay loan invest", k=6))

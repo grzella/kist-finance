@@ -154,6 +154,15 @@ def _gather():
                 " ".join(str(r.get(k, "")) for k in ("title", "text", "note", "message") if r.get(k)))
     except Exception:
         pass
+    # distilled experiences — lessons from past good answers, injected as guidance
+    # so the assistant improves on similar questions (see experience.py, book ch. 8)
+    try:
+        for e in eb._rows("select question, lesson from agent_experiences "
+                          "order by created_at desc"):
+            add("experience", (e.get("question") or "")[:60],
+                f"LEARNED LESSON (apply if relevant): {e.get('lesson', '')}")
+    except Exception:
+        pass
     return out
 
 
