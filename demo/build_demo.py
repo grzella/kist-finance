@@ -122,7 +122,19 @@ for it in eb._rows("select id, name from wealth_items"):
                  (f"demo-{it['id']}-{back}", it["id"], month_iso(back) + "-01",
                   round(v, 2), datetime.now().isoformat()))
 
-# --- career: market barometer (8 months) + a long-term analysis for a mid dev ---
+# --- career: PM persona — Senior PM offers, PM barometer, principal/HoP analysis ---
+eb._exec("delete from job_offers")  # replace the seed's EM offers
+planner.add_offer({"company": "Acme Corp", "role": "Senior Product Manager",
+                   "total_monthly": 15500, "work_model": "hybrid", "status": "new",
+                   "received_at": month_iso(2) + "-10",
+                   "notes": "Sample offer — demo data.", "tier": 2})
+planner.add_offer({"company": "Globex", "role": "Senior Product Manager (Platform)",
+                   "total_monthly": 17800, "work_model": "remote", "status": "interviewing",
+                   "received_at": month_iso(1) + "-18",
+                   "notes": "Sample offer — demo data.", "tier": 1})
+
+planner.set_settings({"career_role_a": "Senior PM",
+                      "career_role_b": "Head of Product"})
 for back in range(8, 0, -1):
     best_effort("barometer", planner.add_barometer_point, {
         "month": month_iso(back),
@@ -132,43 +144,52 @@ for back in range(8, 0, -1):
         "note": "sample data" if back == 8 else ""})
 
 planner.set_settings({"analysis_career": json.dumps({
-    "headline": "Mid-level dev with strong fundamentals — the fastest path to senior "
-                "runs through owning one system end-to-end and making AI leverage visible.",
-    "as_of": TODAY.isoformat(), "target_role": "Senior Software Engineer (18–24 mo)",
+    "headline": "Senior PM with shipped outcomes — the fork ahead is Principal (IC craft "
+                "at scale) vs Head of Product (org leverage); both pay, they compound "
+                "differently.",
+    "as_of": TODAY.isoformat(), "target_role": "Principal PM / Head of Product (2–3 yrs)",
     "comp_levels": [
-        {"role": "Junior Developer", "comp": "$70–95k", "you": False},
-        {"role": "Mid-level Developer", "comp": "$110–140k", "you": True},
-        {"role": "Senior Engineer", "comp": "$150–190k", "you": False},
-        {"role": "Staff / Lead", "comp": "$190–240k", "you": False}],
+        {"role": "Product Manager", "comp": "$125–155k", "you": False},
+        {"role": "Senior PM", "comp": "$155–190k", "you": True},
+        {"role": "Principal PM", "comp": "$190–235k", "you": False},
+        {"role": "Head of Product", "comp": "$230–300k", "you": False}],
     "money_paths": [
-        {"tag": "A", "title": "Deepen at current company", "verdict": "solid",
-         "text": "Own a service end-to-end, lead one cross-team project; promo cycle "
-                 "puts senior within ~18 months at +25–30% comp."},
-        {"tag": "B", "title": "Jump to a bigger tech co", "verdict": "highest EV",
-         "text": "Market pays a premium for mid→senior switchers with system-design "
-                 "stories; expect +30–45% but budget 2–3 months of interview prep."},
-        {"tag": "C", "title": "Contract / freelance", "verdict": "later",
-         "text": "Rates look great ($90–120/h) but pipeline risk is real at mid level; "
-                 "revisit after senior scope is on the CV."}],
-    "head_of_eng": "Not a 5-year concern — the leverage now is technical depth plus "
-                   "visible AI-assisted delivery, not management.",
+        {"tag": "A", "title": "Principal track where you are", "verdict": "solid",
+         "text": "Own the hardest product area end-to-end, write the strategy memos "
+                 "leadership forwards; principal within ~2 years at +20–25% comp, "
+                 "no management overhead."},
+        {"tag": "B", "title": "Head of Product at a scale-up", "verdict": "highest EV",
+         "text": "Series B–D companies pay a premium for a senior PM who has shipped "
+                 "0→1 and run discovery; expect +35–50% plus meaningful equity — and "
+                 "a genuinely different job (hiring, roadmap politics, board decks)."},
+        {"tag": "C", "title": "Fractional / advisory", "verdict": "later",
+         "text": "Fractional CPO rates are strong ($150–250/h) but the pipeline needs "
+                 "a reputation that principal or HoP scope builds first."}],
+    "head_of_eng": "Head of Product is a real option within 2–3 years — but only if "
+                   "you enjoy hiring, stakeholder management and being measured on the "
+                   "team's outcomes. If the craft is what you love, Principal pays "
+                   "nearly as well without the meetings tax. Decide by trying: lead a "
+                   "PM hire and a quarter of roadmap before you commit.",
     "ai_impact": [
-        "Boilerplate and CRUD are commoditizing fastest — the mid-level tasks of 2020.",
-        "Engineers who direct AI tools ship 2–3× faster; make that visible in reviews.",
-        "System design, debugging production, and owning trade-offs stay human longer."],
+        "Spec-writing, ticket grooming and basic analytics are commoditizing — the "
+        "junior-PM tasks of 2020.",
+        "PMs who prototype with AI tools compress discovery from weeks to days; make "
+        "that visible.",
+        "Judgment, narrative, and stakeholder trust stay human longest — that's the "
+        "principal/HoP moat."],
     "skills": [
-        {"skill": "System design", "why": "The senior interview gate — practice designing the systems you already use."},
-        {"skill": "AI-assisted delivery", "why": "Fluency with agents/LLM tooling is becoming the productivity baseline."},
-        {"skill": "Production ownership", "why": "On-call, incidents, postmortems — the fastest trust builder."}],
+        {"skill": "Product strategy & narrative", "why": "The principal gate — memos that change the roadmap, not just describe it."},
+        {"skill": "AI-assisted discovery", "why": "Prototype-first PMs ship evidence, not opinions — becoming the baseline."},
+        {"skill": "Org leadership", "why": "Hiring and developing PMs — the Head-of-Product gate; testable before you commit."}],
     "skills_note": "Sample analysis written for the demo persona — in the real app "
                    "you author this yourself or with any AI assistant.",
     "roadmap": [
-        {"period": "0–6 mo", "title": "Own one service end-to-end",
-         "text": "Volunteer for the deploy/on-call story nobody wants; document it."},
-        {"period": "6–18 mo", "title": "Senior scope, visibly",
-         "text": "Lead a cross-team project; practice system design weekly."},
-        {"period": "18–36 mo", "title": "Cash in", "text":
-         "Promo or jump — whichever pays the senior premium first."}],
+        {"period": "0–6 mo", "title": "Own the hardest product area",
+         "text": "Take the messy, cross-team problem; write the strategy memo that frames it."},
+        {"period": "6–18 mo", "title": "Test both forks",
+         "text": "Lead one PM hire and a quarter of roadmap (HoP test) while shipping a principal-level bet."},
+        {"period": "18–36 mo", "title": "Commit and cash in",
+         "text": "Promo to Principal, or jump to Head of Product at a scale-up — whichever fork felt like energy, not drain."}],
     "philosophies": {
         "max": {"title": "Max earnings", "text":
                 "Optimize comp aggressively: jump every 2–3 years, interview yearly "
@@ -179,11 +200,20 @@ planner.set_settings({"analysis_career": json.dumps({
         "note": "Sample framing — the app doesn't pick for you; it shows what each "
                 "path does to the numbers in Forecasts."},
     "next_steps": [
-        "Book the system-design mock for next month.",
-        "Draft the promo doc with three shipped stories.",
+        "Write one strategy memo this quarter that proposes killing something.",
+        "Volunteer to run the next PM hiring loop — cheapest Head-of-Product test.",
         "Update the market barometer monthly — trend beats snapshot.",
         "Re-run this analysis after the next comp review."],
     "sources": []})})
+
+# --- brokerage portfolio for the XTB-style rule engine (duplicates + tech concentration) ---
+planner.set_settings({"xtb_portfolio": json.dumps({"positions": [
+    {"name": "NASDAQ 100 ETF", "container": "Plan 1", "value": 20000, "theme": "tech"},
+    {"name": "NASDAQ 100 ETF", "container": "Plan 2", "value": 10000, "theme": "tech"},
+    {"name": "MSCI World IT ETF", "container": "Plan 1", "value": 16000, "theme": "tech"},
+    {"name": "Semiconductors ETF", "container": "Plan 2", "value": 10000, "theme": "tech"},
+    {"name": "VWCE All-World ETF", "container": "Plan 2", "value": 20000, "theme": "world"},
+    {"name": "S&P 500 ETF", "container": "Plan 1", "value": 9000, "theme": "us"}]})})
 
 # --- open-source contribution research (generic sample) ---
 planner.set_settings({"analysis_contributions": json.dumps({

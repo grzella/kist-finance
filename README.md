@@ -32,7 +32,7 @@ pip install -r requirements.txt
 
 That's it. On first launch a **setup wizard** walks you through:
 1. **Modules** — enable only what fits your life (see below).
-2. **Data** — load a fake sample persona to look around, or start empty with your own numbers.
+2. **Data** — three ways to start: load a **fake sample persona** to look around, start **empty** and type your own numbers, or pick **"Set it up with an AI assistant"** — a copyable onboarding prompt that has any AI assistant interview you and fill the app tab by tab (with a privacy warning: cloud assistants take your answers off localhost).
 3. **Integrations** — optional; skip freely, the app is fully functional offline.
 
 Re-run the wizard anytime at `http://127.0.0.1:8321/#wizard`. Use a different port with `PORT=8400 ./run.sh`.
