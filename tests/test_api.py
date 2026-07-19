@@ -88,6 +88,20 @@ def test_mortgage_overpayment_endpoint(client):
     assert isinstance(r.get_json(), dict)
 
 
+def test_app_config_accepts_dict_and_list_modules(client):
+    # the wizard sends {id: bool}; API consumers naturally send a list of ids —
+    # both must work (regression: the list shape used to 500)
+    r1 = client.post("/api/app-config", json={"modules": {"debts": True, "taxes": False}})
+    assert r1.status_code == 200 and r1.get_json()["modules"]["taxes"] is False
+    r2 = client.post("/api/app-config", json={"modules": ["debts", "markets"], "wizard_completed": True})
+    assert r2.status_code == 200
+    d = r2.get_json()
+    assert d["modules"]["debts"] is True and d["modules"]["taxes"] is False
+    assert d["wizard_completed"] is True
+    # restore defaults so other tests see all views
+    client.post("/api/app-config", json={"modules": {m["id"]: True for m in d["registry"]}})
+
+
 def test_wealth_item_crud(client):
     iid = client.post("/api/wealth/items",
                       json={"name": "Test asset", "kind": "investment", "value": 1000}).get_json()["id"]

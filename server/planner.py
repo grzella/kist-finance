@@ -185,7 +185,11 @@ def get_app_config():
 def save_app_config(data):
     import json as _json
     cur = get_app_config()
-    mods = {m["id"]: bool((data.get("modules") or {}).get(m["id"], cur["modules"].get(m["id"], m["default"])))
+    raw = data.get("modules") or {}
+    if isinstance(raw, list):
+        # tolerate a plain list of enabled module ids (natural API-consumer shape)
+        raw = {m["id"]: (m["id"] in raw) for m in MODULES}
+    mods = {m["id"]: bool(raw.get(m["id"], cur["modules"].get(m["id"], m["default"])))
             for m in MODULES}
     cfg = {"wizard_completed": bool(data.get("wizard_completed", cur["wizard_completed"])),
            "modules": mods}
