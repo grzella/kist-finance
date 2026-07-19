@@ -206,6 +206,22 @@ planner.set_settings({"analysis_career": json.dumps({
         "Re-run this analysis after the next comp review."],
     "sources": []})})
 
+# --- side business: a few months of drone-services revenue/costs ---
+for back, entries in {
+    3: [("revenue", "service", 3800, "Aerial photo shoot — sample entry"),
+        ("cost", "equipment", -950, "Spare propellers & batteries — sample entry")],
+    2: [("revenue", "service", 4200, "Roof inspection flight — sample entry"),
+        ("cost", "marketing", -180, "Meta ads — sample entry"),
+        ("cost", "software", -49, "Editing suite subscription — sample entry")],
+    1: [("revenue", "service", 3600, "Construction-site progress video — sample entry"),
+        ("revenue", "content", 450, "Stock-footage royalties — sample entry"),
+        ("cost", "marketing", -175, "Meta ads — sample entry")],
+}.items():
+    for kind, cat, amount, desc in entries:
+        best_effort("biz entry", planner.add_biz_entry, {
+            "date": month_iso(back) + "-14", "kind": kind, "category": cat,
+            "amount": amount, "description": desc})
+
 # --- brokerage portfolio for the XTB-style rule engine (duplicates + tech concentration) ---
 planner.set_settings({"xtb_portfolio": json.dumps({"positions": [
     {"name": "NASDAQ 100 ETF", "container": "Plan 1", "value": 20000, "theme": "tech"},
