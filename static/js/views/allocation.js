@@ -3,9 +3,14 @@ async function renderAllocation(el) {
   const flagCls = (f) => f === "too much" ? "neg" : f === "add more" ? "pos" : "muted";
   el.innerHTML = `
     <h2>📊 Asset allocation — structure and concentration</h2>
-    <div class="muted" style="margin-bottom:12px">Net wealth ${fmt.pln(d.total)} (real estate counted as equity net of loans).
-      Targets are your desired shares — edit them in the table and Save; the 5/25 rule
-      (rebalance at ±5pp absolute or 25% relative drift) drives the flags and the Recommendations tab.</div>
+    <div class="card" style="border-left:4px solid #4c8dff;margin-bottom:12px;font-size:.9em">
+      This tab compares how your wealth is split (<b>Share</b>) against a target split (<b>Target</b>).
+      ${d.targets_customized
+        ? "Your targets are set — the <b>Drift</b> is how far each class is from where you want it."
+        : `The targets start from a <b>📐 Model</b> — a textbook diversified allocation (e.g. real estate ~${d.rows.find((r) => r.key === "nieruchomosci") ? (d.rows.find((r) => r.key === "nieruchomosci").model) : 55}%, stocks/ETF ~${(d.rows.find((r) => r.key === "etf") || {}).model || 22}%), <b>not your own choice yet</b>. So the initial <b>Drift</b> is measured against that model. Edit the <b>Target</b> cells and Save to make them yours.`}
+      Flags follow the 5/25 rule (rebalance at ±5pp absolute or 25% relative drift) and feed the Recommendations tab.
+    </div>
+    <div class="muted" style="margin-bottom:12px">Net wealth ${fmt.pln(d.total)} (real estate counted as equity net of loans).</div>
 
     <div class="grid cols-2">
       <div class="card"><h3>Wealth structure</h3><canvas id="allocChart" height="220"></canvas></div>
@@ -13,11 +18,15 @@ async function renderAllocation(el) {
         <h3>Share vs target</h3>
         <div style="overflow-x:auto"><table>
           <thead><tr><th>Class</th><th style="text-align:right">Value</th>
-            <th style="text-align:right">Share</th><th style="text-align:right">Target</th><th style="text-align:right">Drift</th></tr></thead>
+            <th style="text-align:right">Share</th>
+            <th style="text-align:right" title="Textbook model allocation — the starting reference">📐 Model</th>
+            <th style="text-align:right" title="Your target — editable; starts from the model">Target</th>
+            <th style="text-align:right">Drift</th></tr></thead>
           <tbody>${d.rows.map((r) => `<tr>
             <td>${r.label}</td>
             <td style="text-align:right">${fmt.pln(r.value)}</td>
             <td style="text-align:right"><b>${r.pct}%</b></td>
+            <td style="text-align:right" class="muted">${r.model}%</td>
             <td style="text-align:right"><input data-num data-tgt="${r.key}" value="${r.target}" style="width:52px;text-align:right">%</td>
             <td style="text-align:right" class="${flagCls(r.flag)}">${r.drift > 0 ? "+" : ""}${r.drift} <span style="font-size:.85em">${r.flag}</span></td>
           </tr>`).join("")}</tbody>

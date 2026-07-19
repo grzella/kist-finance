@@ -1525,10 +1525,11 @@ def allocation():
         breach = abs(drift) >= 5 or (target > 0 and abs(drift) >= 0.25 * target)
         rows.append({
             "key": k, "label": ALLOC_LABELS[k], "value": round(classes[k], 0),
-            "pct": pct, "target": target, "drift": drift,
+            "pct": pct, "target": target, "model": ALLOC_TARGETS[k], "drift": drift,
             "flag": ("too much" if drift > 0 else "add more") if breach else "ok",
         })
     rows.sort(key=lambda r: -r["value"])
+    customized = bool(get_setting("alloc_targets"))
     hints = []
     re_row = next(r for r in rows if r["key"] == "nieruchomosci")
     if re_row["pct"] > 65:
@@ -1539,7 +1540,8 @@ def allocation():
     team_row = next(r for r in rows if r["key"] == "team")
     if team_row["pct"] > 4:
         hints.append(f"RSU shares {team_row['pct']}% — plus future vests. Sell at vest, do not accumulate (risk: salary+bonus+shares in one company).")
-    return {"rows": rows, "total": round(total, 0), "hints": hints}
+    return {"rows": rows, "total": round(total, 0), "hints": hints,
+            "targets_customized": customized}
 
 
 # ---------- reminders ----------
