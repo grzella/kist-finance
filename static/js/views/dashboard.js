@@ -59,7 +59,7 @@ async function renderDashboard(el) {
       ${!bizMkt.error && bizMkt.weeks.length && bizMkt.weeks[0].recommendation ?
         `<div class="mt">💡 <b>Marketing (week):</b> ${bizMkt.weeks[0].recommendation}</div>` : ""}
     </details>` : ""}
-    <div class="grid cols-4">
+    <div class="grid cols-4 mt">
       <div class="card kpi"><div class="label">Net worth</div>
         <div class="value">${fmt.pln(sum.net_worth)}</div>
         <div class="sub">cash ${fmt.pln(sum.cash_total)} · investments ${fmt.pln(sum.investments_total)} · debt −${fmt.pln(sum.debt_total)}</div></div>
