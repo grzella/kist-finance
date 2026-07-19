@@ -180,21 +180,21 @@ async function renderMarket(el) {
       ${hint("Target", "YOUR price target — enter it manually (e.g. analyst consensus or a sell/buy-more price). Saves automatically.")}
       ${hint("Upside", "How many % from the price to your target. Negative = price already above the target — revise the target or take profit.")}
       <th></th>
-    </tr></thead><tbody>` + rows.map((a) => a.error
-      ? `<tr><td>${a.ticker}</td><td colspan="8" class="muted">no data — refresh from cloud</td>
-         <td><button class="danger" data-rm="${a.ticker}">✕</button></td></tr>`
-      : `<tr data-t="${a.ticker}" style="cursor:pointer">
-        <td><b><span class="hint" title="${tickerDesc(a.ticker) || a.ticker}">${a.ticker}</span></b>${tickerShort(a.ticker) ? `<div class="muted" style="font-size:.72em;line-height:1.2">${tickerShort(a.ticker)}</div>` : ""}</td>
+    </tr></thead><tbody>` + rows.map((a) => { const t = esc(a.ticker); return a.error
+      ? `<tr><td>${t}</td><td colspan="8" class="muted">no data — refresh from cloud</td>
+         <td><button class="danger" data-rm="${t}">✕</button></td></tr>`
+      : `<tr data-t="${t}" style="cursor:pointer">
+        <td><b><span class="hint" title="${esc(tickerDesc(a.ticker) || a.ticker)}">${t}</span></b>${tickerShort(a.ticker) ? `<div class="muted" style="font-size:.72em;line-height:1.2">${esc(tickerShort(a.ticker))}</div>` : ""}</td>
         <td>${fmt.num(a.last_close)} ${a.currency}</td>
         <td class="${a.change_1d_pct >= 0 ? "pos" : "neg"}">${fmt.pct(a.change_1d_pct)}</td>
         <td class="${a.change_30d_pct >= 0 ? "pos" : "neg"}">${fmt.pct(a.change_30d_pct)}</td>
         <td>${a.sma50 == null ? `<span class="muted hint" title="fewer than 50 sessions in cache — click the row: the chart fetches deeper history from Yahoo and this fills in">—</span>` : `<span class="badge ${a.last_close > a.sma50 ? "up" : "down"}">${a.last_close > a.sma50 ? "above" : "below"} ${fmt.num(a.sma50, 0)}</span>`}</td>
         <td>${a.rsi14 == null ? '<span class="muted">—</span>' : `<span class="${a.rsi14 > 70 ? "neg" : a.rsi14 < 30 ? "pos" : "muted"}">${a.rsi14}</span>`}</td>
         <td class="neg">${fmt.pct(a.drawdown_from_high_pct)}</td>
-        <td><input type="number" value="${a.analyst_target || ""}" data-target="${a.ticker}" style="width:80px"></td>
+        <td><input type="number" value="${a.analyst_target || ""}" data-target="${t}" style="width:80px"></td>
         <td class="${a.target_upside_pct >= 0 ? "pos" : "neg"}">${fmt.pct(a.target_upside_pct)}</td>
-        <td><button class="danger" data-rm="${a.ticker}">✕</button></td>
-      </tr>`).join("") + "</tbody></table>";
+        <td><button class="danger" data-rm="${t}">✕</button></td>
+      </tr>`; }).join("") + "</tbody></table>";
 
     document.querySelectorAll("[data-rm]").forEach((b) =>
       b.addEventListener("click", async (e) => {

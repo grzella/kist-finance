@@ -55,7 +55,57 @@ def _no_cache(resp):
         resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         resp.headers["Pragma"] = "no-cache"
         resp.headers["Expires"] = "0"
+    # cheap hardening for every response: no framing (clickjacking), no MIME
+    # sniffing, and don't leak the loopback URL as a referrer to any external link
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    # Content-Security-Policy: all scripts are external files under /static (no
+    # inline <script>, no on* handlers), so 'self' is enough — this NEUTRALIZES
+    # any injected <script>/onerror even if some field slipped through unescaped
+    # (defense in depth for stored data, incl. market text synced from Supabase).
+    # 'unsafe-inline' is scoped to styles only (the UI uses inline style="").
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; connect-src 'self'; object-src 'none'; "
+        "base-uri 'none'; frame-ancestors 'none'")
     return resp
+
+
+def _loopback_hosts():
+    """Host/authority values that count as 'this machine'. The app only ever
+    binds 127.0.0.1, so a request whose Host is anything else is either a
+    DNS-rebinding attack or a misconfiguration."""
+    port = str(CFG.get("port", ""))
+    hosts = {"127.0.0.1", "localhost", "[::1]", "::1"}
+    return hosts | {f"{h}:{port}" for h in hosts}
+
+
+@app.before_request
+def _guard_local_only():
+    """No auth by design (localhost, single user) — so we defend the two ways a
+    browser could reach this server on the user's behalf without their consent:
+
+    1. DNS rebinding: the attacker's page resolves its own hostname to 127.0.0.1
+       and talks to us — but the Host header is then the attacker's domain, not
+       loopback. Reject any non-loopback Host.
+    2. CSRF: a cross-site POST/PUT/DELETE carries an Origin (or Referer) that
+       isn't ours. Reject state-changing API calls whose Origin isn't loopback.
+       Same-origin fetches from our own page send Origin=http://127.0.0.1:PORT;
+       trusted local tooling (curl, the test client) sends no Origin and passes.
+    """
+    allowed = _loopback_hosts()
+    host = (request.host or "").lower()
+    if host and host not in allowed:
+        return jsonify({"error": "forbidden host — this app is loopback-only"}), 403
+    if request.method in ("POST", "PUT", "DELETE", "PATCH") and request.path.startswith("/api/"):
+        origin = request.headers.get("Origin") or request.headers.get("Referer") or ""
+        if origin:
+            from urllib.parse import urlparse
+            netloc = urlparse(origin).netloc.lower()
+            if netloc and netloc not in allowed:
+                return jsonify({"error": "cross-origin request blocked"}), 403
+    return None
 
 
 # ---------- dashboard ----------

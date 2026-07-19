@@ -79,6 +79,16 @@ document.addEventListener("blur", (e) => {
   }
 }, true);
 
+// HTML-escape any value before it goes into innerHTML. Use for free-text and
+// especially anything from an external source (e.g. market data synced from
+// Supabase) so a crafted string can't inject markup. Numbers/computed values
+// don't need it. (The CSP already blocks script execution as a second layer.)
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 // ---------- DEMO MODE — masks amounts with a 0-1 pattern (for screenshots) ----------
 function demoOn() {
   if (/[?&#](demo|test)\b/.test(location.search + location.hash)) return true;

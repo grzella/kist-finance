@@ -214,3 +214,16 @@ def test_stress_test_endpoint(client):
     d = client.get("/api/stress-test").get_json()
     assert len(d["scenarios"]) == 3
     assert "policy" in d and "verdict" in d["policy"]
+
+
+def test_web_guard_blocks_rebinding_and_csrf(client):
+    """The loopback/CSRF guard: a forged Host and a cross-origin write are refused,
+    but a same-origin write is not (no auth by design, so this is the defense)."""
+    assert client.get("/api/health", headers={"Host": "attacker.example"}).status_code == 403
+    assert client.put("/api/settings", headers={"Origin": "http://evil.example"},
+                      json={"x": 1}).status_code == 403
+    # loopback Origin passes the guard (may 200 or other, but never the 403 block)
+    ok = client.put("/api/settings", headers={"Origin": "http://127.0.0.1:8321"}, json={})
+    assert ok.status_code != 403
+    # and a normal request (test client Host=localhost, no Origin) is fine
+    assert client.get("/api/health").status_code == 200

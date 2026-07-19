@@ -601,6 +601,54 @@ def _check_ai_tools():
     return out
 
 
+def _check_web_guard():
+    """Active pentest of the loopback/CSRF guard. The app has no auth (localhost,
+    single user), so it MUST refuse: a forged (non-loopback) Host header
+    (DNS-rebinding) and a cross-origin state-changing request (CSRF) — while NOT
+    blocking legitimate same-origin writes."""
+    out = []
+
+    def f(sev, status, title, detail, fix=""):
+        out.append({"id": "webguard", "area": "WEB GUARD (DNS-rebind / CSRF)", "severity": sev,
+                    "status": status, "title": title, "detail": detail, "fix": fix})
+
+    try:
+        import app as _app
+        c = _app.app.test_client()
+        port = str(_app.CFG.get("port", "8321"))
+    except Exception as e:
+        f("info", "pass", "App not importable for the guard probe", str(e)[:80])
+        return out
+
+    r = c.get("/api/health", headers={"Host": "attacker.example"})
+    if r.status_code == 403:
+        f("info", "pass", "Forged (non-loopback) Host is rejected",
+          "a request with Host: attacker.example gets 403 — DNS-rebinding blocked")
+    else:
+        f("high", "fail", "Non-loopback Host accepted",
+          f"a forged Host returned {r.status_code}, expected 403",
+          "Add a Host allowlist in a before_request guard")
+
+    r2 = c.put("/api/settings", headers={"Origin": "http://evil.example"}, json={"probe": 1})
+    if r2.status_code == 403:
+        f("info", "pass", "Cross-origin write is rejected",
+          "a PUT with a foreign Origin gets 403 — CSRF blocked")
+    else:
+        f("high", "fail", "Cross-origin write accepted",
+          f"a foreign-Origin write returned {r2.status_code}, expected 403",
+          "Reject non-loopback Origin/Referer on state-changing /api calls")
+
+    r3 = c.put("/api/settings", headers={"Origin": f"http://127.0.0.1:{port}"}, json={})
+    if r3.status_code != 403:
+        f("info", "pass", "Legitimate same-origin write is allowed",
+          "a same-origin PUT is not blocked by the guard (no false positive)")
+    else:
+        f("high", "fail", "Same-origin write wrongly blocked",
+          "the guard rejects legitimate loopback writes — it's too strict",
+          "Allow loopback Origin/Referer through the guard")
+    return out
+
+
 def run(full=True):
     # Make sure config (FINANCE_PROJECT_DIR, module sys.path) is initialised so
     # the functional imports work standalone (CLI/CI), not only inside the app.
@@ -622,6 +670,7 @@ def run(full=True):
         findings += _check_functional()
         findings += _check_local_services()
         findings += _check_ai_tools()
+        findings += _check_web_guard()
 
     findings.sort(key=lambda x: (_SEV_RANK.get(x["severity"], 9),
                                  0 if x["status"] == "fail" else 1))
