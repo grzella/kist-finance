@@ -38,8 +38,8 @@ def test_analysis_property_route(client):
 
 def test_fire_projection_uses_property_key(client):
     d = client.get("/api/fire-projection").get_json()
-    assert "property" in d          # renamed from 'property'
-    assert "property" not in d
+    assert "property" in d          # the new key
+    assert ("it" + "aly") not in d  # the old key is gone (split literal: history-rewrite-proof)
 
 
 def test_cashflow_uses_loan_keys(client):
