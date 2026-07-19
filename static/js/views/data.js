@@ -7,7 +7,7 @@ async function renderData(el) {
   const MODE = {
     auto: ["🟢 auto", "#3ecf8e"],
     derived: ["🔵 derived", "#4c8dff"],
-    claude: ["🟣 Claude", "#b78cff"],
+    claude: ["🟣 AI notes", "#b78cff"],
     manual: ["🟡 manual", "#ffd166"],
   };
   const modeBadge = (m) => {
@@ -49,7 +49,7 @@ async function renderData(el) {
     <div class="grid cols-4">
       <div class="card kpi"><div class="label">Zero-effort sources</div><div class="value pos">${s.auto}</div>
         <div class="sub">auto + derived by the app</div></div>
-      <div class="card kpi"><div class="label">Maintained by Claude</div><div class="value" style="color:#b78cff">${s.claude}</div>
+      <div class="card kpi"><div class="label">AI research notes</div><div class="value" style="color:#b78cff">${s.claude}</div>
         <div class="sub">monthly / on demand</div></div>
       <div class="card kpi"><div class="label">Manual touchpoints / mo</div><div class="value" style="color:#ffd166">${s.manual_touchpoints}</div>
         <div class="sub">+ ${s.manual_rare} rare/event-driven</div></div>
@@ -57,29 +57,6 @@ async function renderData(el) {
         <div class="sub">target after automation: ~3 min</div></div>
     </div>
 
-    ${d.groups.map(groupCard).join("")}
-
-    <div class="card mt" style="border-left:4px solid #ffd166">
-      <h3 style="margin-top:0">🚀 Automation roadmap — getting down to the minimum</h3>
-      <div class="muted" style="margin:-4px 0 10px;font-size:.9em">Priority: eliminate monthly data entry.
-        Ordered by impact-to-effort ratio.</div>
-      <div style="overflow-x:auto"><table>
-        <thead><tr><th>Improvement</th><th>Impact</th><th>Effort</th><th>Payoff</th><th>How</th></tr></thead>
-        <tbody>${d.roadmap.map((r) => `<tr>
-          <td><b>${r.title}</b></td>
-          <td class="${lvl(r.impact)}">${r.impact}</td>
-          <td class="muted">${r.effort}</td>
-          <td class="muted" style="font-size:.88em">${r.saves}</td>
-          <td class="muted" style="font-size:.85em">${r.how}</td>
-        </tr>`).join("")}</tbody>
-      </table></div>
-    </div>
-
-    <div class="card mt muted" style="font-size:.85em">
-      <b>End state:</b> the only point that can't be automated "for free" is account balances —
-      and even that goes away once free PSD2 (Open Banking) is hooked up via n8n. Once the roadmap is done
-      you only enter event-driven things by hand (a new offer, an ETF purchase, an installment change), nothing recurring.
-    </div>
     ${sched ? `<div class="card mt" style="border-left:4px solid #4c8dff">
       <h3 style="margin-top:0">⏰ Schedules — when things run</h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">Change frequency, day and hour — saved instantly. 'app' tasks run at the first app-open past the chosen time; external ones are read-only.</div>
@@ -112,6 +89,31 @@ async function renderData(el) {
         </tr>`).join("")}
         </tbody></table></div>
     </div>` : ""}
+
+    ${d.groups.map(groupCard).join("")}
+
+    <div class="card mt" style="border-left:4px solid #ffd166">
+      <h3 style="margin-top:0">🚀 Automation roadmap — getting down to the minimum</h3>
+      <div class="muted" style="margin:-4px 0 10px;font-size:.9em">Priority: eliminate monthly data entry.
+        Ordered by impact-to-effort ratio.</div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Improvement</th><th>Impact</th><th>Effort</th><th>Payoff</th><th>How</th></tr></thead>
+        <tbody>${d.roadmap.map((r) => `<tr>
+          <td><b>${r.title}</b></td>
+          <td class="${lvl(r.impact)}">${r.impact}</td>
+          <td class="muted">${r.effort}</td>
+          <td class="muted" style="font-size:.88em">${r.saves}</td>
+          <td class="muted" style="font-size:.85em">${r.how}</td>
+        </tr>`).join("")}</tbody>
+      </table></div>
+    </div>
+
+    <div class="card mt muted" style="font-size:.85em">
+      <b>End state:</b> the only point that can't be automated "for free" is account balances —
+      and even that goes away once free PSD2 (Open Banking) is hooked up via n8n. Once the roadmap is done
+      you only enter event-driven things by hand (a new offer, an ETF purchase, an installment change), nothing recurring.
+    </div>
+    
 `;
 
   el.querySelectorAll("[data-sched] select").forEach((sel) =>

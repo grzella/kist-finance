@@ -1922,8 +1922,8 @@ def data_inventory():
                  "monthly (auto)", debt_last, debt_c,
                  note="the balance drops by itself; a per-bank correction only occasionally (below)"),
          ]},
-        {"key": "claude", "title": "\U0001F7E3 Maintained offline (Claude/notes) \u2014 monthly/on demand",
-         "note": "Research snapshots, authored outside the runtime. The app only reads them.",
+        {"key": "claude", "title": "🟣 AI research notes (optional) — monthly/on demand",
+         "note": "Deep-dive snapshots authored by you or any AI assistant (Claude Code, the built-in local AI, or plain notes). The app only reads them — empty is fine.",
          "items": [
             item("Market brief", "claude", "app_settings: analysis_market_brief",
                  "monthly", brief_asof, note="moves + macro context + per-position recommendations" if brief_has else "none \u2014 to generate"),
