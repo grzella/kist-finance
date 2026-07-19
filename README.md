@@ -8,7 +8,7 @@ A *kist* is an old word for the chest where you keep what's valuable — at home
 
 ## What problems does it solve?
 
-Honestly? Mine. Too many apps to check, a spreadsheet I kept forgetting to update, and a nagging feeling that every finance tool out there wants my data in its cloud more than it wants to help me. So I built the small local tool I actually wanted — nothing revolutionary, it just answers my own everyday questions. If it answers yours too, great; that's the only reason it's public.
+Mostly my own. Too many apps to check, a spreadsheet I kept forgetting to update, and a nagging feeling that every finance tool out there wants my data in its cloud more than it wants to help me. So I built the small local tool I actually wanted — nothing revolutionary, it just answers my own everyday questions. If it answers yours too, great; that's the only reason it's public.
 
 
 - **"My money is scattered across 10 apps and a spreadsheet"** — one dashboard: net worth, cash-flow, debts, goals, investments, taxes.
