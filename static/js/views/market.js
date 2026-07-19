@@ -95,7 +95,17 @@ async function renderMarket(el) {
       </div>
     </div>
     <div class="card mt"><div id="wlTable"><div class="empty">Loading…</div></div></div>
-    <div class="card mt"><h3 id="chartTitle">Pick a ticker from the table</h3><canvas id="priceChart"></canvas></div>
+    <div class="card mt">
+      <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
+        <h3 id="chartTitle" style="margin:0">Pick a ticker from the table</h3>
+        <span id="chartRange" style="display:none;gap:4px" class="row">
+          ${["1M", "6M", "1Y", "Max"].map((r) => `<button data-range="${r}" style="font-size:.8em">${r}</button>`).join("")}
+        </span>
+      </div>
+      <div id="chartMeta" class="muted" style="font-size:.78em;margin:2px 0"></div>
+      <canvas id="priceChart"></canvas>
+      <canvas id="rsiChart" height="70" style="display:none;margin-top:6px"></canvas>
+    </div>
     `;
   if (radar && radar.history && radar.history.length && document.getElementById("radarChart")) {
     trackChart(new Chart(document.getElementById("radarChart"), {
@@ -165,19 +175,21 @@ async function renderMarket(el) {
       ${hint("1D", "Price change vs the previous session")}
       ${hint("30D", "Price change over the last 30 days")}
       ${hint("SMA50", "Average price over the last 50 sessions (~2.5 mo). ABOVE = price above the average, uptrend; BELOW = downtrend. A classic momentum filter. Number = the average value.")}
+      ${hint("RSI14", "Relative Strength Index (14 sessions), 0–100: >70 overbought (stretched up), <30 oversold (stretched down), ~50 neutral. Works even on short history — useful where SMA50/200 has no data yet.")}
       ${hint("Off 52w high", "How many % the price is below the one-year maximum (drawdown). −5% = near the top; −40% = a deep sell-off.")}
       ${hint("Target", "YOUR price target — enter it manually (e.g. analyst consensus or a sell/buy-more price). Saves automatically.")}
       ${hint("Upside", "How many % from the price to your target. Negative = price already above the target — revise the target or take profit.")}
       <th></th>
     </tr></thead><tbody>` + rows.map((a) => a.error
-      ? `<tr><td>${a.ticker}</td><td colspan="7" class="muted">no data — refresh from cloud</td>
+      ? `<tr><td>${a.ticker}</td><td colspan="8" class="muted">no data — refresh from cloud</td>
          <td><button class="danger" data-rm="${a.ticker}">✕</button></td></tr>`
       : `<tr data-t="${a.ticker}" style="cursor:pointer">
         <td><b><span class="hint" title="${tickerDesc(a.ticker) || a.ticker}">${a.ticker}</span></b>${tickerShort(a.ticker) ? `<div class="muted" style="font-size:.72em;line-height:1.2">${tickerShort(a.ticker)}</div>` : ""}</td>
         <td>${fmt.num(a.last_close)} ${a.currency}</td>
         <td class="${a.change_1d_pct >= 0 ? "pos" : "neg"}">${fmt.pct(a.change_1d_pct)}</td>
         <td class="${a.change_30d_pct >= 0 ? "pos" : "neg"}">${fmt.pct(a.change_30d_pct)}</td>
-        <td><span class="badge ${a.last_close > a.sma50 ? "up" : "down"}">${a.last_close > a.sma50 ? "above" : "below"} ${fmt.num(a.sma50, 0)}</span></td>
+        <td>${a.sma50 == null ? `<span class="muted hint" title="fewer than 50 sessions in cache — click the row: the chart fetches deeper history from Yahoo and this fills in">—</span>` : `<span class="badge ${a.last_close > a.sma50 ? "up" : "down"}">${a.last_close > a.sma50 ? "above" : "below"} ${fmt.num(a.sma50, 0)}</span>`}</td>
+        <td>${a.rsi14 == null ? '<span class="muted">—</span>' : `<span class="${a.rsi14 > 70 ? "neg" : a.rsi14 < 30 ? "pos" : "muted"}">${a.rsi14}</span>`}</td>
         <td class="neg">${fmt.pct(a.drawdown_from_high_pct)}</td>
         <td><input type="number" value="${a.analyst_target || ""}" data-target="${a.ticker}" style="width:80px"></td>
         <td class="${a.target_upside_pct >= 0 ? "pos" : "neg"}">${fmt.pct(a.target_upside_pct)}</td>
@@ -197,28 +209,95 @@ async function renderMarket(el) {
       tr.addEventListener("click", () => drawChart(tr.dataset.t)));
   }
 
-  let chart;
-  async function drawChart(ticker) {
-    const hist = await api.get(`/api/market/prices/${ticker}?days=365`);
+  let chart, rsiChart, curTicker;
+  const RANGE_DAYS = { "1M": 22, "6M": 128, "1Y": 252, "Max": 100000 };
+  async function drawChart(ticker, range) {
+    curTicker = ticker;
+    range = range || localStorage.getItem("chart_range") || "1Y";
+    localStorage.setItem("chart_range", range);
+    let hist = await api.get(`/api/market/prices/${ticker}?days=100000`);
+    // deepen thin tickers (radar commodities/FX only get a shallow backfill) so
+    // a real 1-year view — and the 50/200 averages — become available
+    const wantDays = RANGE_DAYS[range];
+    if (hist.length < Math.min(wantDays, 240) && !window[`_deep_${ticker}`]) {
+      window[`_deep_${ticker}`] = true;
+      document.getElementById("chartMeta").textContent = "fetching more history…";
+      await api.post(`/api/market/deepen/${encodeURIComponent(ticker)}`, { range: "2y" }).catch(() => {});
+      hist = await api.get(`/api/market/prices/${ticker}?days=100000`);
+    }
     if (!hist.length) return;
-    document.getElementById("chartTitle").textContent = ticker + " — 12 months";
-    const closes = hist.map((h) => h.close);
-    const sma = (n) => closes.map((_, i) =>
-      i + 1 >= n ? closes.slice(i + 1 - n, i + 1).reduce((a, b) => a + b, 0) / n : null);
+    const shown = range === "Max" ? hist : hist.slice(-wantDays);
+    const closes = shown.map((h) => h.close);
+    const full = hist.map((h) => h.close);
+    // SMAs computed on the FULL series so the line is correct at the left edge
+    const offset = hist.length - shown.length;
+    const smaFull = (n) => full.map((_, i) =>
+      i + 1 >= n ? full.slice(i + 1 - n, i + 1).reduce((a, b) => a + b, 0) / n : null);
+    const smaShown = (n) => smaFull(n).slice(offset);
+    // Bollinger(20) on the full series, then sliced to the view
+    const bands = full.map((_, i) => {
+      if (i + 1 < 20) return [null, null];
+      const w = full.slice(i - 19, i + 1);
+      const m = w.reduce((a, b) => a + b, 0) / 20;
+      const sd = Math.sqrt(w.reduce((a, b) => a + (b - m) ** 2, 0) / 20);
+      return [m - 2 * sd, m + 2 * sd];
+    });
+    const bLow = bands.map((x) => x[0]).slice(offset);
+    const bUp = bands.map((x) => x[1]).slice(offset);
+
+    document.getElementById("chartTitle").textContent = ticker;
+    document.getElementById("chartRange").style.display = "inline-flex";
+    document.querySelectorAll("[data-range]").forEach((b) =>
+      b.classList.toggle("primary", b.dataset.range === range));
+    const span = shown.length ? `${shown[0].date} → ${shown[shown.length - 1].date}` : "";
+    const thin = range !== "Max" && shown.length < wantDays * 0.8;
+    document.getElementById("chartMeta").innerHTML =
+      `${shown.length} sessions · ${span}` +
+      (thin ? ` · <span style="color:#e0a458">only ${shown.length} in cache for this window — the sync/Yahoo has no more yet</span>` : "") +
+      ` · <span class="hint" title="Bollinger Bands: SMA20 ± 2σ. Price hugging the upper band = stretched high; lower = stretched low; wide bands = high volatility.">Bollinger 20</span> shown`;
+
     if (chart) chart.destroy();
     chart = trackChart(new Chart(document.getElementById("priceChart"), {
       type: "line",
       data: {
-        labels: hist.map((h) => h.date),
+        labels: shown.map((h) => h.date),
         datasets: [
+          { label: "Bollinger upper", data: bUp, borderColor: "#3ecf8e55", borderDash: [2, 3], pointRadius: 0, fill: false },
+          { label: "Bollinger lower", data: bLow, borderColor: "#3ecf8e55", borderDash: [2, 3], pointRadius: 0, fill: "-1", backgroundColor: "#3ecf8e12" },
           { label: ticker, data: closes, borderColor: "#4c8dff", tension: 0.2, pointRadius: 0 },
-          { label: "SMA50", data: sma(50), borderColor: "#ffd166", borderDash: [4, 4], pointRadius: 0 },
-          { label: "SMA200", data: sma(200), borderColor: "#b78cff", borderDash: [4, 4], pointRadius: 0 },
+          { label: "SMA50", data: smaShown(50), borderColor: "#ffd166", borderDash: [4, 4], pointRadius: 0 },
+          { label: "SMA200", data: smaShown(200), borderColor: "#b78cff", borderDash: [4, 4], pointRadius: 0 },
         ],
       },
-      options: { interaction: { mode: "index", intersect: false } },
+      options: { interaction: { mode: "index", intersect: false },
+        plugins: { legend: { labels: { filter: (i) => !/Bollinger lower/.test(i.text) } } } },
+    }));
+
+    // RSI(14) sub-chart with 30/70 guide lines
+    const rsi = full.map((_, i) => {
+      if (i < 14) return null;
+      let g = 0, l = 0;
+      for (let k = i - 13; k <= i; k++) { const d = full[k] - full[k - 1]; if (d > 0) g += d; else l -= d; }
+      if (l === 0) return 100;
+      return 100 - 100 / (1 + (g / 14) / (l / 14));
+    }).slice(offset);
+    const rsiEl = document.getElementById("rsiChart");
+    rsiEl.style.display = "block";
+    if (rsiChart) rsiChart.destroy();
+    rsiChart = trackChart(new Chart(rsiEl, {
+      type: "line",
+      data: { labels: shown.map((h) => h.date), datasets: [
+        { label: "RSI(14)", data: rsi, borderColor: "#e0a458", pointRadius: 0, tension: 0.2 },
+        { label: "70", data: shown.map(() => 70), borderColor: "#ff5c5c33", borderDash: [3, 3], pointRadius: 0 },
+        { label: "30", data: shown.map(() => 30), borderColor: "#3ecf8e33", borderDash: [3, 3], pointRadius: 0 },
+      ] },
+      options: { interaction: { mode: "index", intersect: false }, scales: { y: { min: 0, max: 100 } },
+        plugins: { legend: { labels: { filter: (i) => i.text === "RSI(14)" } } } },
     }));
   }
+
+  document.querySelectorAll("[data-range]").forEach((b) =>
+    b.addEventListener("click", () => { if (curTicker) drawChart(curTicker, b.dataset.range); }));
 
   document.getElementById("wlAdd").addEventListener("click", async () => {
     const t = document.getElementById("wlTicker").value.trim().toUpperCase();

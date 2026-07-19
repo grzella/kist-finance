@@ -185,6 +185,35 @@ def _sma(closes, n):
     return round(mean(closes[-n:]), 2) if len(closes) >= n else None
 
 
+def _rsi(closes, n=14):
+    """Wilder's RSI over the last n changes. 0-100: >70 overbought, <30 oversold,
+    ~50 neutral. Needs n+1 closes; None otherwise. Momentum, works on short history."""
+    if len(closes) < n + 1:
+        return None
+    gains = losses = 0.0
+    for i in range(-n, 0):
+        d = closes[i] - closes[i - 1]
+        gains += max(d, 0.0)
+        losses += max(-d, 0.0)
+    if losses == 0:
+        return 100.0
+    rs = (gains / n) / (losses / n)
+    return round(100 - 100 / (1 + rs), 1)
+
+
+def _bollinger(closes, n=20, k=2.0):
+    """Bollinger Bands: SMA(n) +/- k*stddev(n). Returns (lower, mid, upper) or
+    None. Price near the upper band = stretched up; near lower = stretched down;
+    band width = volatility. Needs n closes."""
+    if len(closes) < n:
+        return None
+    from statistics import pstdev
+    window = closes[-n:]
+    mid = mean(window)
+    sd = pstdev(window)
+    return round(mid - k * sd, 2), round(mid, 2), round(mid + k * sd, 2)
+
+
 def analytics(ticker):
     hist = prices(ticker, days=400)
     if not hist:
@@ -204,6 +233,9 @@ def analytics(ticker):
         "change_1d_pct": delta(1),
         "change_30d_pct": delta(21),
         "sma20": _sma(closes, 20), "sma50": _sma(closes, 50), "sma200": _sma(closes, 200),
+        "rsi14": _rsi(closes, 14),
+        "bollinger": (lambda b: {"lower": b[0], "mid": b[1], "upper": b[2]} if b else None)(_bollinger(closes)),
+        "points": len(closes), "first_date": hist[0]["date"],
         "high_52w": hi_52w, "low_52w": lo_52w,
         "drawdown_from_high_pct": round((last / hi_52w - 1) * 100, 2) if hi_52w else None,
         "analyst_target": target,
@@ -1014,3 +1046,35 @@ def get_briefs():
         except Exception:
             out[kind] = None
     return out
+
+
+
+def fetch_yahoo_history(ticker, range_="1y"):
+    """Keyless Yahoo history for ANY ticker (public data) → market_prices_cache,
+    so charts/indicators have depth even for symbols the nightly sync doesn't
+    cover (e.g. the risk-radar commodities/FX). Returns the number of rows stored."""
+    import json as _json
+    import urllib.parse
+    import urllib.request
+    url = ("https://query1.finance.yahoo.com/v8/finance/chart/"
+           + urllib.parse.quote(ticker) + f"?range={range_}&interval=1d")
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = _json.loads(r.read())["chart"]["result"][0]
+        stamps = data.get("timestamp") or []
+        quote = (data.get("indicators", {}).get("quote") or [{}])[0]
+        closes = quote.get("close") or []
+        currency = (data.get("meta") or {}).get("currency", "USD")
+    except Exception:
+        return 0
+    from datetime import datetime, timezone
+    n = 0
+    for ts, close in zip(stamps, closes):
+        if close is None:
+            continue
+        d = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+        eb._exec("insert or replace into market_prices_cache (ticker, date, close, currency) "
+                 "values (?,?,?,?)", (ticker.upper(), d, float(close), currency))
+        n += 1
+    return n

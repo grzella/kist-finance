@@ -171,6 +171,14 @@ def market_prices(ticker):
     return jsonify(market.prices(ticker, int(request.args.get("days", 365))))
 
 
+@app.post("/api/market/deepen/<ticker>")
+def market_deepen(ticker):
+    """Backfill a ticker's full history from Yahoo (keyless) so its chart and
+    indicators have depth — for symbols the nightly sync doesn't cover."""
+    rng = (request.get_json(silent=True) or {}).get("range", "1y")
+    return jsonify({"stored": market.fetch_yahoo_history(ticker, rng)})
+
+
 @app.get("/api/market/analytics/<ticker>")
 def market_analytics(ticker):
     return jsonify(market.analytics(ticker))
