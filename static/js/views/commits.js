@@ -10,13 +10,16 @@ async function renderCommits(el) {
     <h2>🧑‍💻 Committing — coding activity and open source</h2>
 
     ${gh ? `<div class="card" style="border-left:4px solid #3ecf8e">
-      <div class="muted" style="font-size:.85em;margin-bottom:8px">Your commits from local repos (${gh.repos}) over ${gh.days} days.
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">
+        ${gh.github && gh.github.connected
+          ? `<b class="pos">Full GitHub activity</b> (commits + PRs + issues + reviews, all repos — including merged contributions to other projects) merged with local repos (${gh.repos}) over ${gh.days} days. In window: ${gh.github.prs} PRs · ${gh.github.issues} issues · ${gh.github.reviews} reviews.`
+          : `Your commits from local repos (${gh.repos}) over ${gh.days} days (GitHub offline — local only).`}
         Goal: coding activity every day — builds an AI-native, "I code with AI" profile. Status also in Control → Automation.</div>
       <div class="grid cols-4">
-        <div class="card kpi"><div class="label">Today</div><div class="value ${gh.today > 0 ? "pos" : ""}">${gh.today}</div><div class="sub">commits</div></div>
+        <div class="card kpi"><div class="label">Today</div><div class="value ${gh.today > 0 ? "pos" : ""}">${gh.today}</div><div class="sub">contributions</div></div>
         <div class="card kpi"><div class="label">Streak</div><div class="value ${gh.streak >= 3 ? "pos" : ""}">${gh.streak} 🔥</div><div class="sub">days in a row · record ${gh.best_streak}</div></div>
-        <div class="card kpi"><div class="label">This week</div><div class="value">${gh.week}</div><div class="sub">commits</div></div>
-        <div class="card kpi"><div class="label">Active days</div><div class="value">${gh.active_pct}%</div><div class="sub">${gh.active_days}/${gh.days} days · ${gh.total} commits</div></div>
+        <div class="card kpi"><div class="label">This week</div><div class="value">${gh.week}</div><div class="sub">contributions</div></div>
+        <div class="card kpi"><div class="label">Active days</div><div class="value">${gh.active_pct}%</div><div class="sub">${gh.active_days}/${gh.days} days · ${gh.total} contributions</div></div>
       </div>
       <canvas id="ghChart" height="60" class="mt"></canvas>
       <div class="muted mt" style="font-size:.82em">${gh.today > 0 ? "✅ You already committed today — the streak lives." : "⚠️ Still 0 commits today — a small commit will keep the streak alive."}

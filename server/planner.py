@@ -2253,10 +2253,62 @@ def fire_tracking(contrib, freed, base_annual):
 
 # ---------- GitHub / commit activity ----------
 
+def _github_contribution_calendar(days=90):
+    """Full GitHub-wide activity (the profile's green graph: commits, PRs,
+    issues, reviews — across all repos, including merged contributions to other
+    people's projects) via the GraphQL contributionsCollection. Invoked through
+    the `gh` CLI (logged in locally); cached 6h in app_settings. Returns None
+    when gh is unavailable/offline — the tracker then stays local-only."""
+    import json as _json
+    import subprocess
+    from datetime import datetime, timedelta, timezone
+    cache_raw = get_setting("gh_activity_cache")
+    if cache_raw:
+        try:
+            cache = _json.loads(cache_raw)
+            age_h = (datetime.now() - datetime.fromisoformat(cache["at"])).total_seconds() / 3600
+            if age_h < 6 and cache.get("days") == days:
+                return cache
+        except Exception:
+            pass
+    now = datetime.now(timezone.utc)
+    frm = (now - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00Z")
+    to = now.strftime("%Y-%m-%dT23:59:59Z")
+    query = (
+        'query { viewer { contributionsCollection(from: "%s", to: "%s") {'
+        ' totalCommitContributions totalPullRequestContributions'
+        ' totalIssueContributions totalPullRequestReviewContributions'
+        ' contributionCalendar { weeks { contributionDays { date contributionCount } } }'
+        ' } } }' % (frm, to))
+    try:
+        out = subprocess.run(["gh", "api", "graphql", "-f", f"query={query}"],
+                             capture_output=True, text=True, timeout=15)
+        data = _json.loads(out.stdout)["data"]["viewer"]["contributionsCollection"]
+    except Exception:
+        return None
+    counts = {}
+    for week in data["contributionCalendar"]["weeks"]:
+        for d in week["contributionDays"]:
+            counts[d["date"]] = d["contributionCount"]
+    cache = {"at": datetime.now().isoformat(timespec="seconds"), "days": days,
+             "counts": counts,
+             "totals": {"commits": data["totalCommitContributions"],
+                        "prs": data["totalPullRequestContributions"],
+                        "issues": data["totalIssueContributions"],
+                        "reviews": data["totalPullRequestReviewContributions"]}}
+    try:
+        set_settings({"gh_activity_cache": _json.dumps(cache)})
+    except Exception:
+        pass
+    return cache
+
+
 def github_activity(days=90):
     """Daily commit activity across local git repos. Configure which repos and
     author to count via settings `commit_repos` (comma-separated absolute paths)
-    and `commit_author` (git --author filter; blank = all authors)."""
+    and `commit_author` (git --author filter; blank = all authors).
+    When the `gh` CLI is logged in, the local counts are merged with the full
+    GitHub contribution calendar (max per day)."""
     import os
     import subprocess
     from datetime import date, timedelta
@@ -2292,6 +2344,14 @@ def github_activity(days=90):
         except Exception:
             pass
 
+    # full GitHub-wide activity (commits+PRs+issues+reviews, incl. merged
+    # contributions to other repos). Per day take max(local, GitHub): local
+    # catches unpushed work, GitHub catches everything server-side.
+    gh_cal = _github_contribution_calendar(days)
+    if gh_cal:
+        for dd, n in gh_cal["counts"].items():
+            counts[dd] = max(counts.get(dd, 0), n)
+
     today = date.today()
     series = []
     for i in range(days - 1, -1, -1):
@@ -2320,6 +2380,8 @@ def github_activity(days=90):
         "streak": streak, "best_streak": best,
         "avg_per_active": round(total / active_days, 1) if active_days else 0,
         "active_pct": round(100 * active_days / days),
+        "github": ({"connected": True, **gh_cal["totals"]} if gh_cal
+                   else {"connected": False}),
     }
 
 
