@@ -255,7 +255,12 @@ async function renderControl(el) {
         question: decodeURIComponent(b.dataset.q), answer: decodeURIComponent(b.dataset.a) });
       if (r.ok) { if (msg) msg.textContent = "✅ learned"; setTimeout(route, 700); }
       else { if (msg) msg.textContent = "no transferable lesson"; b.disabled = false; }
-    } catch (e) { if (msg) msg.textContent = "error"; b.disabled = false; }
+    } catch (e) {
+      // show the reason instead of a bare "error" — a 404 usually means a stale
+      // server (endpoint added after ./run.sh started → restart the app)
+      if (msg) msg.textContent = /404/.test(e.message) ? "error: restart the app (new endpoint)" : "error: " + e.message;
+      b.disabled = false;
+    }
   }));
   document.querySelectorAll(".expDel").forEach((b) => b.addEventListener("click", async () => {
     await api.del("/api/experiences/" + b.dataset.id); route();
