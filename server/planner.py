@@ -2147,7 +2147,7 @@ def fire_projection():
     milestones = {}
     bal = start
     for m in range(horizon + 1):
-        for mk in (1000000, 660000, 1000000):
+        for mk in (round(target / 3), round(target * 2 / 3), target):  # thirds of the goal
             if mk not in milestones and bal >= mk:
                 milestones[mk] = label_at(m)
         bal = bal * (1 + base_r) + contrib + (freed if m >= 12 else 0)

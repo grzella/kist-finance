@@ -118,7 +118,7 @@ async function renderOffers(el) {
         datasets: [
           { type: "bar", label: "Your inbound (offers to you)", data: bpts.map((p) => p.my_inbound),
             backgroundColor: "rgba(255,209,102,0.55)", yAxisID: "y1", order: 3, barPercentage: 0.5, categoryPercentage: 0.6 },
-          { type: "line", label: "Market: tracked role", data: bpts.map((p) => p.em_openings),
+          { type: "line", label: "Market: " + data.roles.a, data: bpts.map((p) => p.em_openings),
             borderColor: CHART_COLORS[0], backgroundColor: "transparent", yAxisID: "y", tension: 0.25, borderWidth: 3, pointRadius: 3, order: 1 },
           { type: "line", label: "Market: " + data.roles.b, data: bpts.map((p) => p.head_openings),
             borderColor: CHART_COLORS[1], backgroundColor: "transparent", yAxisID: "y", tension: 0.25, borderWidth: 3, pointRadius: 3, order: 2 },
