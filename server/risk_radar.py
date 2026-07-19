@@ -48,12 +48,16 @@ def _score_usd(level, chg):
 
 COMPONENTS = [
     {"ticker": "^VIX", "label": "VIX (US equity fear)", "score": _score_vix,
+     "unit": "pts", "what": "S&P 500 volatility index — expected annualized volatility in %; historically 12–20 normal, 30+ panic",
      "rule": "level <18 calm · 18–25 elevated · >25 hot; a +10%/d jump bumps it"},
     {"ticker": "GC=F", "label": "Gold (flight to safety)", "score": _score_gold,
+     "unit": "USD/oz", "what": "gold price per ounce in dollars (futures)",
      "rule": "daily change >+1% elevated · >+2.5% hot"},
     {"ticker": "CL=F", "label": "WTI oil (geopolitical shock)", "score": _score_oil,
+     "unit": "USD/bbl", "what": "WTI barrel price in dollars (futures)",
      "rule": "|daily change| >3% elevated · >6% hot"},
     {"ticker": "EURUSD=X", "label": "USD (global risk-off)", "score": _score_usd,
+     "unit": "", "what": "euro priced in dollars — a drop = a strengthening dollar (flight to USD)",
      "rule": "EURUSD −0.5%/d elevated · −1.2%/d hot (a drop = strong USD)"},
 ]
 
@@ -87,11 +91,13 @@ def compute():
         if level is None:
             missing.append(c["ticker"])
             parts.append({"ticker": c["ticker"], "label": c["label"], "rule": c["rule"],
+                          "unit": c.get("unit", ""), "what": c.get("what", ""),
                           "level": None, "chg_1d": None, "score": None, "asof": None})
             continue
         s = c["score"](level, chg)
         total += s
         parts.append({"ticker": c["ticker"], "label": c["label"], "rule": c["rule"],
+                      "unit": c.get("unit", ""), "what": c.get("what", ""),
                       "level": round(level, 2), "chg_1d": chg, "score": s, "asof": asof})
     state = next(lbl for lo, hi, lbl in STATES if lo <= total <= hi)
     return {"score": total, "max_score": 2 * len(COMPONENTS), "state": state,
@@ -109,8 +115,8 @@ def _ai_one_liner(reading):
                           for p in reading["components"] if p["level"] is not None)
         return llm_local.chat(
             f"Market risk radar: {reading['state']}, {reading['score']}/{reading['max_score']}. "
-            f"Components: {parts}. One sentence: what this reading means for a calm "
-            f"long-term investor.", max_tokens=90)
+            f"Components: {parts}. At most 2 complete sentences (finish the thought!): what this reading means for a calm "
+            f"long-term investor.", max_tokens=220)
     except Exception:
         return None
 

@@ -45,14 +45,14 @@ async function renderMarket(el) {
     <h2>Market</h2>
     ${radar ? `<div class="card mt" style="border-left:4px solid ${radar.score >= 4 ? "#ff5c5c" : radar.score >= 2 ? "#ffd166" : "#3ecf8e"}">
       <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <h3 style="margin:0">🌍 Risk Radar <span class="badge">${radar.state} · ${radar.score}/${radar.max_score}</span></h3>
+        <h3 style="margin:0">🌍 Risk Radar <span class="badge" title="sum of the 4 component scores (0–2 each) — max ${radar.max_score}. E.g. 3/8 = three fear points total, not 3 of 8 components">${radar.state} · ${radar.score}/${radar.max_score} pts ⓘ</span></h3>
       </div>
       <div class="muted" style="font-size:.85em;margin:4px 0 8px">Is the world nervous today? Measurable fear proxies the market already prices — instead of meme "pizza indexes" 🍕.</div>
       <div style="overflow-x:auto"><table>
-        <thead><tr><th>Component</th><th style="text-align:right">Level</th><th style="text-align:right">Δ 1d</th><th style="text-align:center">Score</th></tr></thead>
-        <tbody>${radar.components.map((c) => `<tr title="${c.rule}">
+        <thead><tr><th>Component</th><th style="text-align:right" title="current indicator/price value — unit next to the number, meaning in the row tooltip">Level ⓘ</th><th style="text-align:right" title="percentage change vs the previous close (prior trading day)">Δ 1d ⓘ</th><th style="text-align:center" title="component contribution: 0 🟢 calm · 1 🟡 elevated · 2 🔴 hot (thresholds in the row tooltip)">Score 0–2 ⓘ</th></tr></thead>
+        <tbody>${radar.components.map((c) => `<tr title="${c.what} • Thresholds: ${c.rule}">
           <td>${c.label} <span class="muted" style="font-size:.8em">${c.ticker}</span></td>
-          <td style="text-align:right">${c.level ?? "<span class=muted>no data</span>"}</td>
+          <td style="text-align:right">${c.level != null ? c.level + (c.unit ? " " + c.unit : "") : "<span class=muted>no data</span>"}</td>
           <td style="text-align:right" class="${(c.chg_1d || 0) > 0 ? "pos" : (c.chg_1d || 0) < 0 ? "neg" : "muted"}">${c.chg_1d != null ? c.chg_1d + "%" : "—"}</td>
           <td style="text-align:center">${c.score == null ? "—" : ["🟢","🟡","🔴"][c.score]}</td>
         </tr>`).join("")}</tbody></table></div>
@@ -61,7 +61,7 @@ async function renderMarket(el) {
         ? `<div class="mt"><canvas id="radarChart" height="50"></canvas>
            ${radar.history[radar.history.length-1].comment ? `<div class="muted mt" style="font-size:.85em">🤖 Comment (local AI): ${radar.history[radar.history.length-1].comment}</div>` : ""}</div>`
         : `<div class="muted mt" style="font-size:.82em">No readings yet — the radar stores the first one on the next daily cycle (or once the nightly sync delivers quotes).</div>`}
-      <div class="muted mt" style="font-size:.78em">The radar predicts nothing — it contextualizes. Thresholds are explicit (hover a component).</div>
+      <div class="muted mt" style="font-size:.78em">The reading = the sum of component scores (each 0🟢/1🟡/2🔴, max 8 total). The radar predicts nothing — it contextualizes. Hover rows/columns for explanations.</div>
     </div>` : ""}
 
     ${marketBriefHtml(brief)}

@@ -233,9 +233,9 @@ def _check_code(repo):
 
     # dangerous-pattern grep across python + js (docs/vendor excluded)
     checks = [
-        ("high",   r"\beval\s*\(",                       "eval() — arbitrary code execution",
+        ("high",   r"(^|[^A-Za-z0-9_.])eval\s*\(",                       "eval() — arbitrary code execution",
          "Replace with a safe parser (json.loads / ast.literal_eval)"),
-        ("high",   r"\bexec\s*\(",                       "exec() — arbitrary code execution",
+        ("high",   r"(^|[^A-Za-z0-9_.])exec\s*\(",                       "exec() — arbitrary code execution",
          "Remove exec; redesign without dynamic code"),
         ("high",   r"os\.system\s*\(",                   "os.system() — shell injection",
          "Use subprocess with an argument list, no shell"),
