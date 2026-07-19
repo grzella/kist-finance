@@ -60,39 +60,37 @@ The app **runs fully offline**. Live market data and alerts are opt-in:
 
 ## Local AI (optional)
 
-Cloud finance assistants send your balances to someone else's server. This app takes the opposite route: point it at a **local** model and every AI feature runs on your machine — no API keys, no data egress, no per-call cost.
+Cloud finance assistants send your balances to someone else's server. This app takes the opposite route: **the AI runs on your machine by default**, and the cloud is a deliberate, clearly-labelled opt-in.
 
-**What it gives you concretely:**
-
-- **Private transaction categorization** — label imported transactions ("BIEDRONKA 4231" → "Groceries") without shipping your spending to a cloud API. `categorize_transaction()` returns a category in well under a second on a small model.
-- **Plain-language narration over your own data** — e.g. `explain_forecast_miss()` turns the self-learning forecast journal into a sentence ("the band was too tight because earnings gapped the stock"), so the numbers come with a *why*.
-- **A private, keyless `/api/llm/chat`** — a generic hook other features (or your own scripts) can call to summarize, extract, or draft over sensitive figures, all offline.
-- **Zero lock-in** — it speaks the OpenAI API, so the same code works against `llama.cpp`, LM Studio, or Ollama; swap the model with one flag.
-
-**Enable it:**
+**How the local LLM works.** You run a small open model (e.g. Qwen 2.5 3B) with [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server` — a local process exposing an OpenAI-compatible API on `localhost`. The app talks to it over HTTP; no API keys, no data egress, no per-call cost. Because it speaks the OpenAI API, the same setup works with LM Studio or Ollama. Where the answer must be machine-readable (e.g. transaction categorization), the app sends a **JSON Schema and llama.cpp enforces it at the token level** (GBNF grammars) — the model physically cannot return an invalid category.
 
 ```bash
 brew install llama.cpp        # or build from source; any OpenAI-compatible server works
 llama-server -hf bartowski/Qwen2.5-3B-Instruct-GGUF:Q4_K_M --port 8080 --api-key <secret>
 ```
 
-Then set `LOCAL_LLM_KEY=<secret>` (and optionally `LOCAL_LLM_URL`) in `.env`. Control Center shows the model's status, and the security review actively **probes the local server to confirm it rejects keyless requests** — a local model on `localhost:8080` with no key is reachable by any web page in your browser, so the suite flags an unprotected one. Without a running server, AI features simply report "offline"; nothing breaks.
+Then set `LOCAL_LLM_KEY=<secret>` (and optionally `LOCAL_LLM_URL`) in `.env`. Control Center shows the model's status, and the security review actively **probes the local server to confirm it rejects keyless requests**. Without a running server, AI features simply report "offline"; nothing breaks.
 
-**AI mode — local by default, cloud strictly opt-in.** Control Center has an **AI mode** switch. The default is **local only**: every AI question stays on your machine. Optionally flip it to **local + Claude**, which asks *both* your local model and Anthropic's Claude and shows the answers side by side — often the best of the two — with a plain warning that this mode **sends the prompt to Anthropic**. Cloud is never on unless you turn it on; set your own `ANTHROPIC_API_KEY` in `.env` to enable it. AI answers are framed by a rigorous financial-analyst system prompt (explicit assumptions, scenario ranges, opportunity-cost/tax, a one-line bottom line).
+**What the AI actually does in the app:**
 
-**Local RAG — answers grounded in your own numbers.** A pure-stdlib retriever (zero dependencies, fully offline) indexes your own data — goals, wealth, offers, business entries, saved analyses, plus computed recommendations and reminders — into a `rag_chunks` table. Every AI question is automatically grounded in the most relevant snippets, so the model reasons about *your* figures, not generic ones. Hit **Reindex** in Control Center after adding data.
+- **AI second opinion on Recommendations** — the rule engine computes recommendations from your data; the AI reviews them (agrees/disagrees, what's missing) with your own numbers as context. One click in the Recommendations tab.
+- **Private transaction categorization** — "STORE 4231" → "Groceries", schema-constrained, sub-second on a small model.
+- **Forecast narration** — turns the self-learning forecast journal into a plain-language *why*.
+- **A grounded ask-anything box** (Control Center) plus a keyless `/api/llm/chat` hook for your own scripts.
 
-Retrieval is **BM25 (lexical) out of the box**, and upgrades to a **BM25 + semantic hybrid** if you point it at a local embedding server — then a question can match by *meaning* even with different words or across languages ("saving for retirement" finds your "pension account"). To enable it, run an embedding model and set two env vars, then Reindex:
+**AI mode — local by default, cloud strictly opt-in.** The Control Center **AI mode** switch governs *all* of the above. Default: **local only** — every AI call stays on your machine. Flip to **local + Claude** and the app asks *both* engines, then **synthesizes one verdict** from the two answers (typically the best of both); the cloud model defaults to Anthropic's newest (`claude-fable-5`, configurable via `CLOUD_LLM_MODEL`). The UI warns plainly that this mode **sends the prompt and snippets of your data to Anthropic** — set your own `ANTHROPIC_API_KEY` in `.env` to enable it. All AI answers are framed by a rigorous financial-analyst system prompt (explicit assumptions, scenario ranges, opportunity-cost/tax, a one-line bottom line), and every question/answer is recorded in a **local prompt log** (Control Center) so you can see what was asked and whether the AI helps.
+
+**Local RAG — answers grounded in your own numbers.** Before the AI answers, the app hands it the matching snippets of *your* data — goals, wealth items, offers, business entries, saved analyses, plus computed recommendations and reminders — from a local `rag_chunks` index (pure stdlib, fully offline). So the model reasons about your figures, not generic advice. Hit **Refresh memory** in Control Center after adding data.
+
+Retrieval is **BM25 (lexical) out of the box**, and upgrades to a **BM25 + semantic hybrid** if you point it at a local embedding server — then a question can match by *meaning* even with different words or across languages ("saving for retirement" finds your "pension account"):
 
 ```bash
 llama-server -hf <embedding-model-GGUF> --embeddings --port 8081
 # in .env:
 LOCAL_EMBED_URL=http://127.0.0.1:8081/v1
-# LOCAL_EMBED_MODEL=...   # optional, if the server needs an explicit model id
-# LOCAL_EMBED_KEY=...     # optional, if the embedding server requires a key
 ```
 
-Embeddings are stored per chunk (L2-normalized) and cosine similarity is computed in plain Python — no vector DB, no SQLite extension. Without an embedding server, everything stays lexical and works exactly as before; Control Center shows how many chunks are embedded.
+Embeddings are stored per chunk (L2-normalized) and cosine similarity is computed in plain Python — no vector DB, no SQLite extension. Without an embedding server everything stays lexical; Control Center shows how many chunks are embedded.
 
 ## Backups
 
