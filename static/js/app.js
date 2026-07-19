@@ -93,7 +93,7 @@ function maskSensitiveText(root) {
 
 // ---------- i18n: DOM translation layer (EN→PL, for the optional "pl" mode) ----------
 const _I18N_EXACT = {
-  "💰 Budget": "💰 Budżet", "💧 Cash-flow": "💧 Płynność", "💡 Recommendations": "💡 Rekomendacje",
+  "💧 Cash-flow": "💧 Płynność", "💡 Recommendations": "💡 Rekomendacje",
   "🏦 Wealth": "🏦 Majątek", "🧩 Allocation": "🧩 Alokacja", "🎯 Goals": "🎯 Cele",
   "💼 Career": "💼 Kariera", "🏠 Loans": "🏠 Kredyty", "🏛️ Taxes": "🏛️ Podatki",
   "🚁 Business": "🚁 Firma", "📈 Market": "📈 Rynek", "💱 FX": "💱 Waluty",
