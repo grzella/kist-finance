@@ -243,8 +243,12 @@ def _check_code(repo):
         ("high",   r"render_template_string\s*\(",       "render_template_string — SSTI",
          "Render static templates; do not build them from data"),
     ]
-    files = ["*.py", "static/js/**"]
+    # Python-only rules must not scan JS: RegExp.prototype.exec() is a safe
+    # regex method that merely shares a name with Python's exec().
+    py_only = ("exec(", "os.system", "pickle", "yaml", "render_template_string")
     for sev, rx, title, fix in checks:
+        files = (["*.py"] if any(k in title for k in py_only)
+                 else ["*.py", "static/js/**"])
         r = _git(repo, ["grep", "-nIE", rx, "--"] + files + _SCAN_EXCLUDES)
         hits = [l for l in (r.stdout.splitlines() if r else []) if l.strip()]
         if hits:
