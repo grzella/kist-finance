@@ -108,7 +108,7 @@ async function renderControl(el) {
         </div>
         <div class="muted" style="margin-top:4px">Before the AI answers, the app hands it the matching snippets of <b>your</b>
           data (goals, wealth, recommendations, reminders) — so it talks about your numbers, not generic advice.
-          Click "Refresh memory" after adding data.
+          It also refreshes automatically (schedule: Data tab → Schedules); the button is for right-now.
           <span class="muted">(technically: RAG, ${ragStatus.engine}${ragStatus.embedded ? ", " + ragStatus.embedded + " embedded" : ""})</span></div>
       </div>` : ""}
       ${aiLog && aiLog.stats.total ? `<details class="mt" style="font-size:.85em">
