@@ -141,3 +141,28 @@ def test_security_review_runs_and_reports(client):
     assert set(("verdict", "score", "findings", "counts")) <= set(rep)
     assert 0 <= rep["score"] <= 100
     assert isinstance(rep["findings"], list) and rep["findings"]
+
+
+def test_fetch_yahoo_history_stores_rows(client, monkeypatch):
+    """Regression: the cache-write path once crashed with a NameError (eb
+    undefined) that the offline `return 0` fallback silently hid — so mock the
+    Yahoo response and make sure rows actually land in market_prices_cache."""
+    import io
+    import json as _json
+    import urllib.request
+    import market
+
+    payload = {"chart": {"result": [{
+        "timestamp": [1752624000, 1752710400],
+        "indicators": {"quote": [{"close": [101.5, None]}]},
+        "meta": {"currency": "USD"}}]}}
+
+    class FakeResp(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda *a, **kw: FakeResp(_json.dumps(payload).encode()))
+    assert market.fetch_yahoo_history("TESTX") == 1  # None close skipped
+    hist = market.prices("TESTX", days=10)
+    assert any(abs(h["close"] - 101.5) < 1e-9 for h in hist)

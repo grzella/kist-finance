@@ -1070,11 +1070,13 @@ def fetch_yahoo_history(ticker, range_="1y"):
         return 0
     from datetime import datetime, timezone
     n = 0
-    for ts, close in zip(stamps, closes):
-        if close is None:
-            continue
-        d = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
-        eb._exec("insert or replace into market_prices_cache (ticker, date, close, currency) "
-                 "values (?,?,?,?)", (ticker.upper(), d, float(close), currency))
-        n += 1
+    _ensure_cache()
+    with db.get_conn() as conn:
+        for ts, close in zip(stamps, closes):
+            if close is None:
+                continue
+            d = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+            conn.execute("insert or replace into market_prices_cache (ticker, date, close, currency) "
+                         "values (?,?,?,?)", (ticker.upper(), d, float(close), currency))
+            n += 1
     return n
