@@ -54,20 +54,7 @@ async function renderRecs(el) {
       </div>
     </div>
 
-    <div class="card mt" style="border-left:4px solid #b78cff">
-      <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <h3 style="margin:0">🤖 AI second opinion</h3>
-        <button class="primary" id="aiOpBtn">Ask for an opinion</button>
-      </div>
-      <div class="muted" style="font-size:.85em;margin-top:6px">The AI (per the Control Center mode: local, or local+Claude with
-        a synthesized verdict) assesses the rule engine's recommendations against your own data (RAG) — what it agrees with,
-        what it would change, what's missing.</div>
-      <div id="aiOpOut" class="mt">${aiOp && aiOp.text ? `
-        <div class="muted" style="font-size:.8em">${aiOp.at} · ${aiOp.by}${aiOp.rag_used ? " · grounded in your data" : ""}</div>
-        <div style="white-space:pre-wrap;font-size:.92em">${aiOp.text}</div>` : '<div class="muted" style="font-size:.85em">Not asked yet.</div>'}</div>
-    </div>
-
-    <div class="card mt">
+        <div class="card mt">
       <h3>Recommendation engine (live)</h3>
       <div class="muted" style="margin-bottom:8px">Recomputed every time the tab is opened,
         from current data (balances, rates, portfolio).</div>
@@ -84,6 +71,18 @@ async function renderRecs(el) {
         </tbody>
       </table>
     </div>
+
+    <div class="card mt" style="border-left:4px solid #b78cff">
+      <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">🧠 AI review of the recommendations above</h3>
+        <button class="primary" id="aiOpBtn">Ask for an opinion</button>
+      </div>
+      <div class="muted" style="font-size:.85em;margin-top:6px">The list above comes from the <b>rule engine</b> (deterministic code, not AI). Here the AI reviews it critically against your own data: what it agrees with, what it would change, and which recommendation is missing. AI engine per the Control Center mode (local, or local+Claude with a synthesized verdict).</div>
+      <div id="aiOpOut" class="mt">${aiOp && aiOp.text ? `
+        <div class="muted" style="font-size:.8em">${aiOp.at} · ${aiOp.by}${aiOp.rag_used ? " · grounded in your data" : ""}</div>
+        <div style="white-space:pre-wrap;font-size:.92em">${aiOp.text}</div>` : '<div class="muted" style="font-size:.85em">Not asked yet.</div>'}</div>
+    </div>
+
 
     <div class="card mt">
       <h3>Add an action manually</h3>

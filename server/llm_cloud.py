@@ -27,7 +27,7 @@ def status():
             "hint": "" if k else "set ANTHROPIC_API_KEY in .env"}
 
 
-def chat(prompt, system=None, max_tokens=600):
+def chat(prompt, system=None, max_tokens=2000):
     """One request to Claude. Returns text or None (no key / error / refusal)."""
     k = _key()
     if not k:
@@ -41,7 +41,7 @@ def chat(prompt, system=None, max_tokens=600):
         headers={"x-api-key": k, "anthropic-version": "2023-06-01",
                  "content-type": "application/json"}, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=60) as r:
+        with urllib.request.urlopen(req, timeout=120) as r:
             out = json.loads(r.read())
     except Exception:
         return None

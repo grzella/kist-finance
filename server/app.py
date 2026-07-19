@@ -504,7 +504,7 @@ def recommendation_ai():
     out = _ai_answer(prompt)
     stored = {"at": datetime.now().isoformat(timespec="minutes"), "mode": out["mode"],
               "rag_used": out["rag_used"], "text": out.get("best"),
-              "by": "synthesis" if out.get("synthesis") else ("cloud" if (out.get("cloud") or {}).get("ok") else "local")}
+              "by": "synthesis" if out.get("synthesis") else ("cloud" if (out.get("cloud") or {}).get("ok") else ("local (cloud did not answer)" if out["mode"] == "both" else "local"))}
     if stored["text"]:
         planner.set_settings({"ai_recs_opinion": _json.dumps(stored, ensure_ascii=False)})
     return jsonify(stored if stored["text"] else {"error": "AI offline — start a local model (Control → AI mode)"})
