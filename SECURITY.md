@@ -50,9 +50,15 @@ attacks that don't need your machine, only your browser:
   no inline scripts) neutralizes injected markup even if crafted data — e.g.
   market text synced from an external source — reaches the DOM unescaped; plus
   `X-Frame-Options: DENY` and `nosniff`.
+- **Mass-assignment guard** — the generic `PUT /api/settings` writer drops
+  security-sensitive keys (`commit_repos`, `commit_author`, `ai_mode`,
+  `backup_dir`, `app_config`, …); those are set only through their own dedicated
+  endpoints, so a same-origin write can't repoint the commit tracker at an
+  arbitrary path or flip the AI to cloud mode through one open key/value setter.
 
 The `security_review` suite **actively pentests these guards** (a forged `Host`
-and a cross-origin write must both return 403) so a regression fails CI.
+and a cross-origin write must both return 403, and a protected settings key must
+stay unwritable) so a regression fails CI.
 
 ## Not in scope
 
