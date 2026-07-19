@@ -41,14 +41,14 @@ Core (always on):
 
 | Module | What it does |
 |---|---|
-| 📊 Dashboard | net-worth overview and the key figures at a glance |
-| 💸 Cash-flow | income vs. expenses and the monthly surplus you actually have to work with |
-| 💡 Recommendations | opinionated guidance computed from your data by a rule engine (+ optional AI second opinion) |
-| 💎 Wealth | assets and net worth over time, with periodic snapshots |
-| 🥧 Allocation | portfolio breakdown vs. targets, with 5/25 rebalancing drift |
-| 🎯 Goals | savings goals with ETA shown as a range at your real saving pace |
-| 🔮 Forecasts | self-calibrating range forecasts, FIRE/work-optional crossover, stress test + withdrawal guardrails |
-| 🛠️ Control Center | status, AI mode, prompt log, backups, demo mode and the security review |
+| 📊 Dashboard | net worth and key figures at a glance |
+| 💸 Cash-flow | income vs. expenses, monthly surplus |
+| 💡 Recommendations | rule-engine guidance from your data (+ optional AI) |
+| 💎 Wealth | assets and net worth over time, with snapshots |
+| 🥧 Allocation | portfolio breakdown vs. targets, 5/25 drift |
+| 🎯 Goals | savings goals with ETA as a range |
+| 🔮 Forecasts | range forecasts, FIRE crossover, stress test + guardrails |
+| 🛠️ Control Center | status, AI mode, prompt log, backups, security review |
 
 Optional — toggle in the wizard, disabled ones disappear from the UI:
 

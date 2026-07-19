@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+_Nothing yet — the latest work is released under 2026-07-19 below._
+
+## [2026-07-19]
+
 ### Added
 - **AI SQL-tool pentest**: the security review now actively attacks the local model's SQL tool — injection/DDL/stacked-query payloads must all be refused, the tool connection is proven read-only at the SQLite layer, and a guard-efficacy test fails loudly if the guard is ever weakened (`_check_ai_tools` + Hypothesis fuzz in `tests/test_quality.py`).
 - **On-demand history backfill**: `/api/market/deepen/<ticker>` pulls a watchlist symbol's full history straight from Yahoo (keyless, no setup) so the chart and indicators have depth even where the nightly sync is thin.
@@ -20,10 +24,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - **Research-grounded forecasting engine** (`server/forecast_models.py`, stdlib-only): short-horizon **range forecasts** (EWMA λ=0.94 volatility + empirical N-day quantiles — direction of single stocks/FX is not predictable, so the app forecasts ranges, not direction) and long-horizon scenario-band framing (i.i.d. Monte-Carlo GBM rejected for 1–15y per Kitces/Pfau; labeled scenario bands kept as primary).
 - **Self-learning forecast journal** (`forecast_track`): daily band forecasts for the whole watchlist are recorded, auto-scored when they mature, and bands become **conformally calibrated on the model's own realized errors** (≥40 scored forecasts per ticker+horizon). Walk-forward backfill seeds the journal. Self-score (band coverage vs 80% target) surfaces in Control Center.
 - Short-horizon range panel in RSU, 1M/3M ranges on FX cards, goal ETA shown as a **range** (pace ±25%) instead of a single date; `/api/forecast/bands/<ticker>`, `/api/forecast/selfscore`, `/api/forecast/cycle`.
-
-## [2026-07-19]
-
-### Added
 - **🌍 Risk Radar** (Markets): VIX + gold + WTI oil + USD with explicit 0–2 thresholds → one composite reading (calm/elevated/hot), a month of backfilled history with a 7-day trend line, keyless Yahoo fallback fetch when the nightly sync hasn't run yet, optional local-AI one-liner, and a daily schedule task.
 - **AI second opinion on Recommendations**: the rule engine's list is reviewed by the AI (local, or local+cloud with a synthesized verdict) against your own data; result stored with timestamp.
 - **Shared AI pipeline** (`_ai_answer`): RAG grounding → local model → (both-mode: cloud + verdict synthesis) → prompt log; governs every AI feature via the Control Center mode. Cloud model defaults to `claude-fable-5` (with limits sized for its always-on thinking).
