@@ -336,6 +336,14 @@ def cashflow():
     return jsonify(planner.cashflow(int(request.args.get("months", 15))))
 
 
+@app.get("/api/stress-test")
+def stress_test():
+    """Deterministic fire drill: equity −25%, rates +2pp, income stops —
+    plus a Guyton-Klinger withdrawal policy with guardrails."""
+    import stress
+    return jsonify(stress.run())
+
+
 @app.get("/api/fire-projection")
 def fire_projection():
     return jsonify(planner.fire_projection())

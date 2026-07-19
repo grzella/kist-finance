@@ -192,3 +192,9 @@ def test_data_wipe_requires_confirm_and_resets(client):
     assert r["ok"] is True
     cfg = client.get("/api/app-config").get_json()
     assert cfg["has_data"] is False and cfg["wizard_completed"] is False
+
+
+def test_stress_test_endpoint(client):
+    d = client.get("/api/stress-test").get_json()
+    assert len(d["scenarios"]) == 3
+    assert "policy" in d and "verdict" in d["policy"]

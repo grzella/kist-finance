@@ -1,9 +1,10 @@
 async function renderForecasts(el) {
   el.innerHTML = '<div class="empty">Computing scenarios…</div>';
-  const [debtsData, rsu, cfg, sum, fire] = await Promise.all([
+  const [debtsData, rsu, cfg, sum, fire, stress] = await Promise.all([
     api.get("/api/debts"), api.get("/api/rsu"),
     api.get("/api/settings"), api.get("/api/dashboard/summary"),
-    api.get("/api/fire-projection").catch(() => null)]);
+    api.get("/api/fire-projection").catch(() => null),
+    api.get("/api/stress-test").catch(() => null)]);
 
   const loan = debtsData.debts.find((d) => d.balance > 0);
   const secondLoan = debtsData.debts.filter((d) => d.balance > 0)[1];
@@ -98,6 +99,21 @@ async function renderForecasts(el) {
         <canvas id="propertyChart" height="70" class="mt"></canvas>
         <div class="muted mt" style="font-size:.82em">${fire.property.note}</div>
       </div>` : ""}
+
+    ${stress ? `<div class="card mt" style="border-left:4px solid #ff8c66">
+      <h3 style="margin-top:0">🧯 Stress test — financial fire drill</h3>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">Deterministic what-ifs computed from your data (no simulation, no AI). The point: know the answers <i>before</i> markets ask the questions.</div>
+      <div class="grid cols-3">
+        ${stress.scenarios.map((sc) => `<div class="card" style="margin:0">
+          <div class="row" style="justify-content:space-between"><b>${sc.icon} ${sc.title}</b><b class="neg">${sc.impact}</b></div>
+          <div class="muted mt" style="font-size:.85em">${sc.detail}</div>
+        </div>`).join("")}
+      </div>
+      ${stress.policy ? `<div class="mt" style="padding:8px 12px;background:#00000022;border-radius:6px;font-size:.9em">
+        <b>🛡️ Withdrawal policy (Guyton-Klinger guardrails):</b> ${stress.policy.verdict}
+        ${stress.policy.current_pct != null ? `<div class="muted mt" style="font-size:.9em">Start rate ${stress.policy.initial_pct}% · guardrails ${stress.policy.lower_pct}–${stress.policy.upper_pct}% · portfolio ${fmt.pln(stress.policy.portfolio)} · essential spend ${fmt.pln(stress.policy.annual_spend)}/yr${stress.policy.portfolio_needed ? ` · calm-start portfolio ${fmt.pln(stress.policy.portfolio_needed)}` : ""}</div>` : ""}
+      </div>` : ""}
+    </div>` : ""}
 
       ${fire.tracking ? `<div class="card" style="border-left:4px solid #4c8dff">
         <h3 style="margin-top:0">📡 Progress vs plan (learning every month)</h3>

@@ -770,6 +770,19 @@ def recommendation():
 
     recs = []
 
+    # rebalancing per the 5/25 rule (threshold beats calendar — Vanguard/Bernstein)
+    try:
+        breaches = [r for r in allocation()["rows"] if r["flag"] != "ok" and r["value"] > 0]
+        if breaches:
+            parts = ", ".join(f"{b['label']} {b['pct']}% vs target {b['target']}% "
+                              f"({'+' if b['drift'] > 0 else ''}{b['drift']}pp)" for b in breaches[:3])
+            recs.append({"area": "rebalancing (5/25)", "priority": 2,
+                         "text": (f"Allocation drifted past the 5/25 band: {parts}. "
+                                  "Steer NEW contributions toward the underweight classes "
+                                  "(cheaper than selling: no tax event); targets are editable in the Allocation tab.")})
+    except Exception:
+        pass
+
     # 0. user-chosen strategy overrides generic debt heuristics
     strategy = get_setting("debt_strategy")
     if strategy:
@@ -1473,8 +1486,25 @@ def _alloc_class(name):
     return None
 
 
+def alloc_targets():
+    """Targets from the alloc_targets setting (UI-editable), falling back to
+    the built-in defaults. Values are % of net wealth."""
+    import json as _json
+    t = dict(ALLOC_TARGETS)
+    raw = get_setting("alloc_targets")
+    if raw:
+        try:
+            for k, v in _json.loads(raw).items():
+                if k in t and _num(v) is not None:
+                    t[k] = float(v)
+        except ValueError:
+            pass
+    return t
+
+
 def allocation():
     w = wealth_summary()
+    targets = alloc_targets()
     classes = {k: 0.0 for k in ALLOC_TARGETS}
     for it in w.get("items", []):
         if it.get("kind") in ("income",):
@@ -1489,12 +1519,14 @@ def allocation():
     rows = []
     for k in ALLOC_TARGETS:
         pct = round(100 * classes[k] / total, 1)
-        target = ALLOC_TARGETS[k]
+        target = targets[k]
         drift = round(pct - target, 1)
+        # 5/25 rule (Bernstein): rebalance at ±5pp absolute or 25% relative drift
+        breach = abs(drift) >= 5 or (target > 0 and abs(drift) >= 0.25 * target)
         rows.append({
             "key": k, "label": ALLOC_LABELS[k], "value": round(classes[k], 0),
             "pct": pct, "target": target, "drift": drift,
-            "flag": "too much" if drift > 8 else ("add more" if drift < -8 else "ok"),
+            "flag": ("too much" if drift > 0 else "add more") if breach else "ok",
         })
     rows.sort(key=lambda r: -r["value"])
     hints = []

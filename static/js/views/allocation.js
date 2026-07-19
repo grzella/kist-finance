@@ -4,7 +4,8 @@ async function renderAllocation(el) {
   el.innerHTML = `
     <h2>📊 Asset allocation — structure and concentration</h2>
     <div class="muted" style="margin-bottom:12px">Net wealth ${fmt.pln(d.total)} (real estate counted as equity net of loans).
-      Targets are indicative desired shares — editable in code (ALLOC_TARGETS).</div>
+      Targets are your desired shares — edit them in the table and Save; the 5/25 rule
+      (rebalance at ±5pp absolute or 25% relative drift) drives the flags and the Recommendations tab.</div>
 
     <div class="grid cols-2">
       <div class="card"><h3>Wealth structure</h3><canvas id="allocChart" height="220"></canvas></div>
@@ -17,10 +18,11 @@ async function renderAllocation(el) {
             <td>${r.label}</td>
             <td style="text-align:right">${fmt.pln(r.value)}</td>
             <td style="text-align:right"><b>${r.pct}%</b></td>
-            <td style="text-align:right" class="muted">${r.target}%</td>
+            <td style="text-align:right"><input data-num data-tgt="${r.key}" value="${r.target}" style="width:52px;text-align:right">%</td>
             <td style="text-align:right" class="${flagCls(r.flag)}">${r.drift > 0 ? "+" : ""}${r.drift} <span style="font-size:.85em">${r.flag}</span></td>
           </tr>`).join("")}</tbody>
         </table></div>
+        <div class="row mt" style="justify-content:flex-end"><button class="primary" id="tgtSave">Save targets</button></div>
       </div>
     </div>
 
@@ -39,4 +41,11 @@ async function renderAllocation(el) {
     },
     options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } } },
   }));
+
+  document.getElementById("tgtSave").addEventListener("click", async () => {
+    const t = {};
+    el.querySelectorAll("[data-tgt]").forEach((inp) => { t[inp.dataset.tgt] = parseNum(inp) || 0; });
+    await api.put("/api/settings", { alloc_targets: JSON.stringify(t) });
+    route();
+  });
 }
