@@ -178,6 +178,19 @@ async function route() {
   el.innerHTML = '<div class="empty">Loading…</div>';
   try {
     await fn(el);
+    try {  // freshness stamp under every view title
+      const h2 = el.querySelector("h2");
+      if (h2 && !el.querySelector("[data-fresh]")) {
+        const t = new Date();
+        const st = document.createElement("div");
+        st.dataset.fresh = "1"; st.className = "muted";
+        st.style.cssText = "font-size:.78em;margin:-6px 0 10px";
+        st.textContent = "🕐 updated: " + t.toLocaleDateString("en-GB")
+          + " " + String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0")
+          + " (computed live on every open)";
+        h2.after(st);
+      }
+    } catch (e) { /* stamp is cosmetic */ }
     if (demoOn()) { try { maskSensitiveText(el); } catch (e) { console.error("mask", e); } }
     if (langGet() === "pl") { try { translateDom(el); } catch (e) { console.error("i18n", e); } }
   } catch (e) {
