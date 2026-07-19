@@ -121,7 +121,7 @@ async function renderControl(el) {
           ${ans ? `<button class="expLearn" style="font-size:.78em;margin-top:4px" data-q="${encodeURIComponent(e.prompt || "")}" data-a="${encodeURIComponent(ans)}">💡 Learn from this</button> <span class="expMsg muted" style="font-size:.78em"></span>` : ""}</div>`; }).join("")}</div>
       </details>` : ""}
 
-      <details class="mt" style="font-size:.85em" ${exp && exp.experiences.length ? "" : ""}>
+      <details class="mt" style="font-size:.85em" ${exp && exp.experiences.length ? "open" : ""}>
         <summary style="cursor:pointer">🧠 Learned experiences (${(exp && exp.experiences.length) || 0})</summary>
         <div class="muted mt" style="font-size:.82em">Lessons distilled from answers you marked as good. They're indexed into the AI's memory (RAG) and injected as guidance on similar questions — so the assistant improves without retraining. Prune any that don't hold up.</div>
         <div class="mt">${(exp && exp.experiences.length) ? exp.experiences.map((x) => `<div style="border-top:1px solid #2a2f45;padding:6px 0;display:flex;gap:8px;align-items:flex-start">

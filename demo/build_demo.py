@@ -335,6 +335,28 @@ for q, lesson in [
 ]:
     best_effort("experience", __import__("experience").save, q, lesson)
 
+# --- sample AI prompt-log entries, so the log + "💡 Learn from this" flow shows
+# (these are the questions the sample lessons above were distilled from) ---
+best_effort("llm_log table", __import__("llm_log").ensure_tables)
+for q, a in [
+    ("Should I overpay the mortgage or invest the surplus?",
+     "With a ~6.5% mortgage vs a ~5% net expected market return (after 19% "
+     "capital-gains tax), overpaying wins on a risk-adjusted basis — but keep the "
+     "emergency fund intact first. Bottom line: keep the ETF auto-invest running and "
+     "direct the annual bonus to overpayment."),
+    ("Is now a good time to convert to EUR for the house deposit?",
+     "No clear signal today — the pair is range-bound and the FX engine hasn't crossed "
+     "its threshold. Prefer the natural hedge: let USD vests flow toward EUR. Bottom "
+     "line: wait for the engine's trigger; don't convert on a single day's move."),
+    ("Should I sell my RSU at the next vest?",
+     "Employer stock would be ~24% of the liquid portfolio post-vest — above the 10% "
+     "single-name ceiling. Sell ~60% at vest (the taxable event already happened, so "
+     "it's roughly tax-neutral) and route the proceeds to the ETF auto-invest."),
+]:
+    best_effort("llm_log", __import__("llm_log").record, q,
+                {"mode": "local", "rag_used": True,
+                 "local": {"ok": True, "text": a}, "best": a})
+
 # --- market brief (handcrafted — no LLM in the build) ---
 brief = {
     "headline": "Markets are drifting sideways while rate-cut expectations firm up; "
