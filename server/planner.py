@@ -1862,7 +1862,10 @@ def health():
     # 9. commit activity (goal: daily)
     try:
         ga = github_activity(days=30)
-        if ga["today"] > 0:
+        if not ga.get("configured"):
+            st = "info"; detail = ("not set up — connect it: run `gh auth login` or set "
+                                   "`commit_repos` in Data → Settings to track your own activity")
+        elif ga["today"] > 0:
             st = "ok"; detail = f"today {ga['today']} commits · streak {ga['streak']} days 🔥 (record {ga['best_streak']})"
         elif ga["streak"] > 0:
             st = "warn"; detail = f"still 0 today · streak {ga['streak']} days — a small commit will keep it alive"
@@ -2355,20 +2358,16 @@ def github_activity(days=90):
     import subprocess
     from datetime import date, timedelta
     from pathlib import Path
-    home = Path.home()
     repos = set()
     configured = (get_setting("commit_repos") or os.environ.get("COMMIT_REPOS", "")).strip()
     if configured:
         for p in configured.split(","):
             if (Path(p.strip()) / ".git").exists():
                 repos.add(p.strip())
-    else:
-        try:
-            for d in home.iterdir():
-                if (d / ".git").is_dir():
-                    repos.add(str(d))
-        except Exception:
-            pass
+    # NOTE: no home-directory auto-scan. On a fresh clone that would count
+    # commits from whatever repos happen to live in ~/ (and every author) —
+    # i.e. someone else's numbers. The tracker stays empty until the user
+    # points it at their repos (`commit_repos`) or logs in with `gh`.
     author = (get_setting("commit_author") or os.environ.get("COMMIT_AUTHOR", "")).strip()
 
     counts = {}
@@ -2395,6 +2394,18 @@ def github_activity(days=90):
             counts[dd] = max(counts.get(dd, 0), n)
 
     today = date.today()
+    # nothing wired up yet: no repos configured and no gh account connected.
+    # Return an explicit "not configured" state so the UI shows setup steps
+    # instead of a wall of zeros (or, worse, someone else's numbers).
+    if not configured and not gh_cal:
+        return {
+            "configured": False, "days": days, "repos": 0,
+            "series": [{"date": (today - timedelta(days=i)).isoformat(), "count": 0}
+                       for i in range(days - 1, -1, -1)],
+            "today": 0, "week": 0, "total": 0, "active_days": 0,
+            "streak": 0, "best_streak": 0, "avg_per_active": 0, "active_pct": 0,
+            "github": {"connected": False},
+        }
     series = []
     for i in range(days - 1, -1, -1):
         dd = (today - timedelta(days=i)).isoformat()
@@ -2416,6 +2427,7 @@ def github_activity(days=90):
             cur = 0
     week = sum(counts.get((today - timedelta(days=i)).isoformat(), 0) for i in range(7))
     return {
+        "configured": True,
         "series": series, "days": days, "repos": len(repos),
         "today": counts.get(today.isoformat(), 0),
         "week": week, "total": total, "active_days": active_days,

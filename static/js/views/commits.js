@@ -9,7 +9,17 @@ async function renderCommits(el) {
     <div class="muted" style="margin-bottom:4px"><a href="#offers" style="text-decoration:none">← Career</a></div>
     <h2>🧑‍💻 Committing — coding activity and open source</h2>
 
-    ${gh ? `<div class="card" style="border-left:4px solid #3ecf8e">
+    ${gh && !gh.configured ? `<div class="card" style="border-left:4px solid #4c8dff">
+      <h3 style="margin-top:0">📊 Track your coding activity</h3>
+      <div class="muted" style="font-size:.9em">Not set up yet — so nothing is counted. This tab turns daily commits into a streak and an "I code with AI" profile, once you point it at <b>your</b> data (two independent options, use either or both):</div>
+      <ol style="padding-left:18px;font-size:.92em">
+        <li class="mt"><b>Connect GitHub</b> — run <code>gh auth login</code> with your account. Pulls your full contribution calendar (commits + PRs + issues + reviews, all repos).</li>
+        <li class="mt"><b>Point at local repos</b> — in <a href="#data">Data → Settings</a> set <code>commit_repos</code> (comma-separated absolute paths) and optionally <code>commit_author</code> (a git <code>--author</code> filter). Catches unpushed work too.</li>
+      </ol>
+      <div class="muted" style="font-size:.82em">Deliberately empty until then: a fresh clone must never show commits scraped from whatever repos happen to sit in your home folder.</div>
+    </div>` : ""}
+
+    ${gh && gh.configured ? `<div class="card" style="border-left:4px solid #3ecf8e">
       <div class="muted" style="font-size:.85em;margin-bottom:8px">
         ${gh.github && gh.github.connected
           ? `<b class="pos">Full GitHub activity</b> (commits + PRs + issues + reviews, all repos — including merged contributions to other projects) merged with local repos (${gh.repos}) over ${gh.days} days. In window: ${gh.github.prs} PRs · ${gh.github.issues} issues · ${gh.github.reviews} reviews.`
