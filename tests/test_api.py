@@ -123,3 +123,12 @@ def test_backup_roundtrip(client, tmp_path):
     con = sqlite3.connect(str(snap))
     assert con.execute("select count(*) from goals").fetchone()[0] >= 1
     con.close()
+
+
+def test_recommendation_ai_endpoint(client):
+    # works with AI offline too: returns either a stored opinion or a clear error
+    r = client.post("/api/recommendation/ai")
+    assert r.status_code == 200
+    d = r.get_json()
+    assert ("text" in d) or ("error" in d)
+    assert client.get("/api/recommendation/ai").status_code == 200

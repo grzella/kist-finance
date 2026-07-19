@@ -86,9 +86,10 @@ async function renderControl(el) {
     ${ai ? `<div class="card mt" style="border-left:4px solid ${ai.ai_mode === "both" ? "#b78cff" : "#3ecf8e"}">
       <h3 style="margin-top:0">🤖 AI mode
         <span class="badge" style="background:${ai.ai_mode === "both" ? "#b78cff22;color:#b78cff" : "#3ecf8e22;color:#3ecf8e"}">${ai.ai_mode === "both" ? "local + cloud" : "local only"}</span></h3>
-      <div class="muted" style="font-size:.85em;margin-bottom:8px">How the app answers AI questions. Default is the local model only (fully private).
-        "Local + cloud" asks BOTH and shows the answers side by side — best result from the comparison, but
-        <b class="neg">the cloud sends your prompt to Anthropic</b>, so enable it deliberately (not for sensitive figures).</div>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">This mode governs <b>every AI feature in the app</b>:
+        transaction categorization, forecast narration and the "AI second opinion" on Recommendations. The default is local only —
+        nothing leaves your machine. "Local + cloud" asks BOTH engines and synthesizes one verdict (usually the best result),
+        but <b class="neg">the cloud sends your question + snippets of your data to Anthropic</b> — enable deliberately.</div>
       <div class="row" style="gap:16px;flex-wrap:wrap">
         <label style="cursor:pointer"><input type="radio" name="aiMode" value="local" ${ai.ai_mode !== "both" ? "checked" : ""}>
           🔒 Local only <span class="muted" style="font-size:.85em">(${ai.local.online ? "🟢 " + ai.local.model : "🔴 offline — " + (ai.local.hint || "")})</span></label>
@@ -100,10 +101,16 @@ async function renderControl(el) {
         <button class="primary" id="aiAsk">Ask</button>
       </div>
       <div id="aiOut" class="mt"></div>
-      ${ragStatus ? `<div class="row mt" style="gap:10px;align-items:center;font-size:.85em;padding-top:8px;border-top:1px solid #2a2f45">
-        <span>🔎 Local RAG: <b>${ragStatus.chunks}</b> chunks <span class="muted">(${ragStatus.engine}${ragStatus.embedded ? ", " + ragStatus.embedded + " embedded" : ""})</span></span>
-        <button id="ragReindex">Reindex</button>
-        <span class="muted">${ragStatus.hint || "AI questions are automatically grounded in your own data"}</span></div>` : ""}
+      ${ragStatus ? `<div class="mt" style="font-size:.85em;padding-top:8px;border-top:1px solid #2a2f45">
+        <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+          <span>📇 The AI's private memory: <b>${ragStatus.chunks}</b> snippets of your data</span>
+          <button id="ragReindex">Refresh memory</button>
+        </div>
+        <div class="muted" style="margin-top:4px">Before the AI answers, the app hands it the matching snippets of <b>your</b>
+          data (goals, wealth, recommendations, reminders) — so it talks about your numbers, not generic advice.
+          Click "Refresh memory" after adding data.
+          <span class="muted">(technically: RAG, ${ragStatus.engine}${ragStatus.embedded ? ", " + ragStatus.embedded + " embedded" : ""})</span></div>
+      </div>` : ""}
       ${aiLog && aiLog.stats.total ? `<details class="mt" style="font-size:.85em">
         <summary style="cursor:pointer">📊 AI prompt log (${aiLog.stats.total}) — ${aiLog.stats.rag_grounded} RAG-grounded · ${aiLog.stats.cloud_calls} cloud calls</summary>
         <div class="mt">${aiLog.recent.slice(0, 8).map((e) => `<div style="border-top:1px solid #2a2f45;padding:6px 0">

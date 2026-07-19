@@ -42,7 +42,8 @@ def list_destinations():
     home = Path.home()
     cs = home / "Library/CloudStorage"
     cands = [
-        ("gdrive", "Google Drive", _first(cs, "GoogleDrive-*/My Drive") or _first(cs, "GoogleDrive-*")),
+        ("gdrive", "Google Drive", _first(cs, "GoogleDrive-*/My Drive")
+            or _first(cs, "GoogleDrive-*/M\u00f3j dysk")),  # localized clients; never the virtual root
         ("gdrive_legacy", "Google Drive", home / "Google Drive"),
         ("dropbox", "Dropbox", home / "Dropbox"),
         ("dropbox_cs", "Dropbox", _first(cs, "Dropbox*")),

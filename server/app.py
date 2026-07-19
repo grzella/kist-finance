@@ -351,6 +351,11 @@ def allocation():
 
 @app.get("/api/health")
 def health():
+    try:  # auto-backup piggybacks on health: fires whenever the app is opened
+        import data_backup as _bk
+        _bk.maybe_auto_backup()
+    except Exception:
+        pass
     return jsonify(planner.health())
 
 
@@ -427,13 +432,20 @@ def llm_config_save():
 def llm_ask():
     """Ask a question per the AI mode: 'local' = local model only;
     'both' = local AND Claude (for comparison — best result from the pair)."""
-    import llm_local, llm_cloud, finance_prompt, rag, llm_log
     b = request.get_json(force=True)
-    prompt = b.get("prompt", "")
-    system = b.get("system") or finance_prompt.SYSTEM
+    return jsonify(_ai_answer(b.get("prompt", ""), system=b.get("system"),
+                              use_rag=b.get("rag", True)))
+
+
+def _ai_answer(prompt, system=None, use_rag=True):
+    """The app's shared AI pipeline: RAG grounding → local model → (both mode:
+    cloud + verdict synthesis) → prompt log. Used by /api/llm/ask AND internal
+    analyses (e.g. the AI second opinion on recommendations) — the Control
+    Center mode governs all of it."""
+    import llm_local, llm_cloud, finance_prompt, rag, llm_log
+    system = system or finance_prompt.SYSTEM
     mode = planner.get_setting("ai_mode") or "local"
-    # Local RAG: ground the question in your own data (offline, BM25). No hits — no change.
-    ctx = rag.context_for(prompt) if b.get("rag", True) else ""
+    ctx = rag.context_for(prompt) if use_rag else ""
     ask = (ctx + "\n\nQuestion: " + prompt) if ctx else prompt
     out = {"mode": mode, "rag_used": bool(ctx)}
     lt = llm_local.chat(ask, system=system)
@@ -454,8 +466,41 @@ def llm_ask():
                 by = "local"
             if sy:
                 out["synthesis"] = {"ok": True, "text": sy, "by": by}
+    # best single answer (synthesis > cloud > local)
+    out["best"] = (out.get("synthesis") or {}).get("text") or \
+                  (out.get("cloud") or {}).get("text") or out["local"]["text"]
     llm_log.record(prompt, out)
-    return jsonify(out)
+    return out
+
+
+@app.get("/api/recommendation/ai")
+def recommendation_ai_last():
+    import json as _json
+    raw = planner.get_setting("ai_recs_opinion")
+    return jsonify(_json.loads(raw) if raw else {})
+
+
+@app.post("/api/recommendation/ai")
+def recommendation_ai():
+    """AI second opinion on the app's recommendations — the rule engine computes
+    them, the AI (local / local+Claude per the Control mode) assesses them,
+    suggests changes and points out what's missing. Result is stored."""
+    import json as _json
+    from datetime import datetime
+    rec = planner.recommendation()
+    items = "\n".join("- " + (r.get("text") or "") for r in (rec.get("items") or [])[:10])
+    facts = _json.dumps(rec.get("facts") or {}, ensure_ascii=False)
+    prompt = ("My finance app's rule engine produced the recommendations below. "
+              "Assess them: which do you agree with and why, what would you change, "
+              "and which ONE recommendation is missing. Be concise.\n\n"
+              f"RECOMMENDATIONS:\n{items}\n\nFACTS: {facts}")
+    out = _ai_answer(prompt)
+    stored = {"at": datetime.now().isoformat(timespec="minutes"), "mode": out["mode"],
+              "rag_used": out["rag_used"], "text": out.get("best"),
+              "by": "synthesis" if out.get("synthesis") else ("cloud" if (out.get("cloud") or {}).get("ok") else "local")}
+    if stored["text"]:
+        planner.set_settings({"ai_recs_opinion": _json.dumps(stored, ensure_ascii=False)})
+    return jsonify(stored if stored["text"] else {"error": "AI offline — start a local model (Control → AI mode)"})
 
 
 @app.get("/api/llm/log")

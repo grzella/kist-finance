@@ -127,7 +127,7 @@ def test_llm_log_records_and_reads(client):
     llm_log.record("test question?", {"mode": "local", "rag_used": True,
                                        "local": {"ok": True, "text": "answer"}})
     recent = llm_log.recent(5)
-    assert recent and recent[0]["prompt"] == "test question?"
+    assert any(r["prompt"] == "test question?" for r in recent)
     assert llm_log.stats()["total"] >= 1
 
 

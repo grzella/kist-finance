@@ -1,8 +1,9 @@
 async function renderRecs(el) {
-  const [rec, xtb, acts] = await Promise.all([
+  const [rec, xtb, acts, aiOp] = await Promise.all([
     api.get("/api/recommendation"),
     api.get("/api/recommendation/xtb"),
-    api.get("/api/actions")]);
+    api.get("/api/actions"),
+    api.get("/api/recommendation/ai").catch(() => ({}))]);
 
   const STATUS_LABELS = { backlog: "backlog", "w trakcie": "in progress", zrobione: "done", odrzucone: "rejected" };
   const engineItems = [...rec.items, ...(xtb.items || []).map((i) => ({ ...i, area: "brokerage: " + i.area }))];
@@ -53,6 +54,19 @@ async function renderRecs(el) {
       </div>
     </div>
 
+    <div class="card mt" style="border-left:4px solid #b78cff">
+      <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">🤖 AI second opinion</h3>
+        <button class="primary" id="aiOpBtn">Ask for an opinion</button>
+      </div>
+      <div class="muted" style="font-size:.85em;margin-top:6px">The AI (per the Control Center mode: local, or local+Claude with
+        a synthesized verdict) assesses the rule engine's recommendations against your own data (RAG) — what it agrees with,
+        what it would change, what's missing.</div>
+      <div id="aiOpOut" class="mt">${aiOp && aiOp.text ? `
+        <div class="muted" style="font-size:.8em">${aiOp.at} · ${aiOp.by}${aiOp.rag_used ? " · grounded in your data" : ""}</div>
+        <div style="white-space:pre-wrap;font-size:.92em">${aiOp.text}</div>` : '<div class="muted" style="font-size:.85em">Not asked yet.</div>'}</div>
+    </div>
+
     <div class="card mt">
       <h3>Recommendation engine (live)</h3>
       <div class="muted" style="margin-bottom:8px">Recomputed every time the tab is opened,
@@ -89,6 +103,19 @@ async function renderRecs(el) {
       ${byStatus.odrzucone.length ? column("🚫 Rejected", byStatus.odrzucone) : ""}
     </div>`;
 
+  document.getElementById("aiOpBtn").addEventListener("click", async (e) => {
+    const btn = e.target; btn.disabled = true;
+    const out = document.getElementById("aiOpOut");
+    out.innerHTML = '<div class="muted">The AI is reviewing the recommendations against your data…</div>';
+    try {
+      const r = await api.post("/api/recommendation/ai", {});
+      out.innerHTML = r.text
+        ? `<div class="muted" style="font-size:.8em">${r.at} · ${r.by}${r.rag_used ? " · grounded in your data" : ""}</div>
+           <div style="white-space:pre-wrap;font-size:.92em">${r.text}</div>`
+        : `<div class="neg">${r.error || "no answer"}</div>`;
+    } catch (err) { out.innerHTML = `<div class="neg">Error: ${err.message}</div>`; }
+    finally { btn.disabled = false; }
+  });
   el.querySelectorAll("[data-eadd]").forEach((b) =>
     b.addEventListener("click", async () => {
       const r = engineItems[+b.dataset.eadd];
