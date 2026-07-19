@@ -20,6 +20,9 @@ concurrency:
 
 jobs:
   build:
+    # Only the canonical repo publishes the demo — a fork/clone won't try to
+    # deploy to Pages it hasn't set up (no failed runs, no wasted minutes).
+    if: github.repository == 'grzella/kist-finance'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
