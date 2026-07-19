@@ -386,7 +386,7 @@ def github_activity_snapshot(days=90):
         streak = streak + 1 if s["count"] > 0 else 0
         best = max(best, streak)
     total = sum(s["count"] for s in series)
-    return {"repos": 1, "days": days, "today": series[-1]["count"],
+    return {"configured": True, "repos": 1, "days": days, "today": series[-1]["count"],
             "week": sum(s["count"] for s in series[-7:]),
             "streak": streak, "best_streak": best,
             "active_days": len(active),
