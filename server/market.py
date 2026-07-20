@@ -23,6 +23,9 @@ def cfg():
         _CFG = {
             "url": os.environ.get("SUPABASE_URL", "").rstrip("/"),
             "key": os.environ.get("SUPABASE_ANON_KEY", ""),
+            # service_role key (server-side only, .env, gitignored) for reads of tables
+            # that RLS denies to the public anon key — see _supabase_get(service=True)
+            "service_key": os.environ.get("SUPABASE_SERVICE_KEY", ""),
         }
     return _CFG
 
@@ -49,13 +52,17 @@ def _ensure_cache():
         conn.commit()
 
 
-def _supabase_get(path_and_query):
+def _supabase_get(path_and_query, service=False):
     c = cfg()
-    if not c["url"] or not c["key"]:
+    # service=True reads with the service_role key so RLS can deny the public anon key
+    # any access to sensitive tables (ads analytics). Falls back to anon if no service
+    # key is configured, so dev/CI without it keeps working.
+    key = (c.get("service_key") or c["key"]) if service else c["key"]
+    if not c["url"] or not key:
         raise RuntimeError("SUPABASE_URL / SUPABASE_ANON_KEY not configured (.env)")
     req = urllib.request.Request(
         f"{c['url']}/rest/v1/{path_and_query}",
-        headers={"apikey": c["key"], "Authorization": f"Bearer {c['key']}"})
+        headers={"apikey": key, "Authorization": f"Bearer {key}"})
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read().decode())
 

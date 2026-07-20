@@ -1284,15 +1284,15 @@ def business_marketing():
     try:
         reports = market._supabase_get(
             "analysis_reports?select=week_start,week_end,total_spend,report_json,"
-            "recommendations,created_at&order=week_start.desc&limit=8")
+            "recommendations,created_at&order=week_start.desc&limit=8", service=True)
         insights = market._supabase_get(
             "insights?select=category,platform,insight,confidence,is_active"
-            "&is_active=eq.true&order=confidence.desc&limit=6")
+            "&is_active=eq.true&order=confidence.desc&limit=6", service=True)
         hypotheses = market._supabase_get(
             "hypotheses?select=title,predicted_outcome,success_metric,target_value,status"
-            "&status=eq.active&limit=5")
+            "&status=eq.active&limit=5", service=True)
         spend_rows = market._supabase_get(
-            "ad_snapshots?select=date,spend,clicks,impressions&order=date.desc&limit=60")
+            "ad_snapshots?select=date,spend,clicks,impressions&order=date.desc&limit=60", service=True)
     except Exception as e:
         return {"error": f"offline / no connection to Supabase: {e}"}
 
@@ -1897,7 +1897,7 @@ def health():
 
     # 3. marketing (ads-analyst, tygodniowo pon ~07:00)
     try:
-        rep = _mkt._supabase_get("analysis_reports?select=week_end&order=week_end.desc&limit=1")
+        rep = _mkt._supabase_get("analysis_reports?select=week_end&order=week_end.desc&limit=1", service=True)
         we = rep[0]["week_end"] if rep else None
         d = _days_since(we) if we else None
         st = "ok" if (d is not None and d <= 9) else ("warn" if we else "info")
