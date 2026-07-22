@@ -293,7 +293,10 @@ def test_barometer_index_trend_config_and_backcompat(client):
                                  "counts": {keys[0]: 60, keys[1]: 12},
                                  "sources": "JSearch", "geo": "Remote", "as_of": "2026-07-19"})
     b = planner.list_barometer()
-    s0 = b["series"][keys[0]]
+    # after the two-stream rework, series are keyed "role|stream"
+    # (points without a stream field fall into the default "trends")
+    assert b["streams"] == ["trends"]
+    s0 = b["series"][f"{keys[0]}|trends"]
     assert s0["index"][0] == 100.0 and s0["index"][-1] == 150.0   # 40 -> 60 = 150
     assert s0["q_pct"] == 50.0 and s0["reading"] == "growing"
     assert b["points"][-1]["sources"] == "JSearch" and b["points"][-1]["counts"][keys[0]] == 60
@@ -301,7 +304,7 @@ def test_barometer_index_trend_config_and_backcompat(client):
     planner.set_settings({"barometer_config": json.dumps(
         {"geo": ["US"], "roles": [{"key": "pm", "label": "Product Manager", "query": "product manager"}]})})
     b2 = planner.list_barometer()
-    assert list(b2["series"]) == ["pm"] and b2["geo"] == ["US"]
+    assert list(b2["series"]) == ["pm|trends"] and b2["geo"] == ["US"]
 
 
 def test_view_js_global_helpers_are_defined():

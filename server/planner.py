@@ -79,9 +79,10 @@ def ensure_tables():
         id text primary key, month text not null, em_openings integer,
         head_openings integer, region text default 'Europa (remote)',
         note text default '', created_at text not null)""")
-    # generalized barometer: per-role counts (JSON) + explicit methodology
-    for col, ddl in (("counts", "text"), ("sources", "text"),
-                     ("geo", "text"), ("as_of", "text")):
+    # generalized barometer: per-role counts (JSON), explicit methodology, stream
+    # (trends = search-interest demand proxy / openings = real posting counts)
+    for col, ddl in (("counts", "text"), ("sources", "text"), ("geo", "text"),
+                     ("as_of", "text"), ("stream", "text default 'trends'")):
         try:
             eb._exec(f"alter table market_barometer add column {col} {ddl}")
         except Exception:
@@ -1746,11 +1747,15 @@ def _pct(cur, prev):
     return round((cur / prev - 1) * 100, 1)
 
 
+_STREAM_LABEL = {"trends": "demand (Google Trends)", "openings": "openings (JSearch)"}
+
+
 def list_barometer():
-    """Barometer points + a computed INDEX (base 100 at the first month with data),
-    month-over-month and 3-month % change, and a direction reading — because this
-    tab is about the TREND in demand against your inbound, not a falsely precise
-    absolute count."""
+    """Barometer points + a computed INDEX (base 100 at the first month with data)
+    per role × STREAM (trends = Google Trends demand proxy with history / openings =
+    real posting counts from job boards, from now on), month-over-month and 3-month
+    % change and a direction reading — because this tab is about the TREND in
+    demand against your inbound, not a falsely precise absolute count."""
     cfg = barometer_config()
     role_keys = [r["key"] for r in cfg["roles"]]
     rows = eb._rows("select * from market_barometer order by month asc")
@@ -1763,29 +1768,41 @@ def list_barometer():
 
     points = []
     for r in rows:
-        counts = _baro_counts(r, role_keys)
         points.append({
-            "id": r["id"], "month": r["month"], "counts": counts,
+            "id": r["id"], "month": r["month"], "counts": _baro_counts(r, role_keys),
+            "stream": r.get("stream") or "trends",
             "my_inbound": inbound.get(r["month"], 0),
             "sources": r.get("sources") or r.get("note") or "",
             "geo": r.get("geo") or r.get("region") or "",
             "as_of": r.get("as_of") or "", "note": r.get("note") or "",
         })
 
+    months = sorted({p["month"] for p in points})
+    streams = sorted({p["stream"] for p in points}, key=lambda s: (s != "trends", s))
+    inbound_series = [inbound.get(m, 0) for m in months]
+
+    # per role × stream: series aligned to the month axis, index (base 100), trend
     series = {}
     for k in role_keys:
-        raw = [p["counts"].get(k) for p in points]
-        base = next((v for v in raw if v not in (None, 0)), None)
-        index = [round(100 * v / base, 1) if (v is not None and base) else None for v in raw]
-        last = raw[-1] if raw else None
-        mom = _pct(last, raw[-2]) if len(raw) >= 2 else None
-        q = _pct(last, raw[-4]) if len(raw) >= 4 else None
-        drv = q if q is not None else mom
-        reading = None if drv is None else ("shrinking" if drv < -10 else "growing" if drv > 10 else "steady")
-        series[k] = {"counts": raw, "index": index, "mom_pct": mom, "q_pct": q,
-                     "reading": reading, "last": last}
+        for st in streams:
+            by_month = {p["month"]: p["counts"].get(k) for p in points if p["stream"] == st}
+            raw = [by_month.get(m) for m in months]
+            base = next((v for v in raw if v not in (None, 0)), None)
+            index = [round(100 * v / base, 1) if (v is not None and base) else None for v in raw]
+            present = [v for v in raw if v is not None]
+            last = present[-1] if present else None
+            prev = present[-2] if len(present) >= 2 else None
+            prevq = present[-4] if len(present) >= 4 else None
+            mom = _pct(last, prev)
+            q = _pct(last, prevq)
+            drv = q if q is not None else mom
+            reading = None if drv is None else ("shrinking" if drv < -10 else "growing" if drv > 10 else "steady")
+            series[f"{k}|{st}"] = {"role": k, "stream": st, "stream_label": _STREAM_LABEL.get(st, st),
+                                   "counts": raw, "index": index, "mom_pct": mom, "q_pct": q,
+                                   "reading": reading, "last": last}
 
-    return {"points": points, "roles": cfg["roles"], "geo": cfg["geo"], "series": series}
+    return {"points": points, "roles": cfg["roles"], "geo": cfg["geo"],
+            "months": months, "streams": streams, "inbound": inbound_series, "series": series}
 
 
 def add_barometer_point(data):
@@ -1803,12 +1820,12 @@ def add_barometer_point(data):
         head = _num(vals[1]) if len(vals) > 1 else None
     eb._exec(
         "insert into market_barometer (id, month, em_openings, head_openings, "
-        "region, note, counts, sources, geo, as_of, created_at) "
-        "values (?,?,?,?,?,?,?,?,?,?,?)",
+        "region, note, counts, sources, geo, as_of, stream, created_at) "
+        "values (?,?,?,?,?,?,?,?,?,?,?,?)",
         (bid, data["month"], em, head,
          data.get("region", "Europe (remote)"), data.get("note", ""),
          counts_json, data.get("sources", ""), data.get("geo", ""),
-         data.get("as_of", ""), _now()))
+         data.get("as_of", ""), data.get("stream", "trends"), _now()))
     _audit("barometer", bid, "add", data)
     return bid
 

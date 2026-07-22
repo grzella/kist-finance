@@ -27,7 +27,7 @@ function marketBriefHtml(b, controls) {
     <div class="card" style="border-left:4px solid #4c8dff">
       <div class="row" style="justify-content:space-between;align-items:baseline">
         <h3 style="margin:0">🧭 Market brief</h3>${controls || ""}
-        <span class="muted" style="font-size:.82em">as of ${b.as_of || "—"}${b.generated_by ? ` · ${b.generated_by}` : ""}</span>
+        <span class="muted" style="font-size:.82em">quotes through <b>${b.data_through || "?"}</b> · analysis: ${b.as_of || "—"}${b.generated_by ? ` · ${b.generated_by}` : ""}${b.data_through && b.data_through < new Date().toISOString().slice(0,10) ? ' <span title="the price collector has not written today\'s session yet — insights are computed from the last available close">⏳</span>' : ""}</span>
       </div>
       ${b.regime ? `<div class="mt" style="font-weight:600;color:#ffd166">${b.regime}</div>` : ""}
       <div class="mt">${b.headline}</div>

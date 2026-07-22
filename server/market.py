@@ -1051,6 +1051,14 @@ def generate_brief(kind="daily"):
     if not data:
         return {"ok": False, "error": "AI offline — start llama-server (Control → AI mode)"}
     data["as_of"] = datetime.now().strftime("%Y-%m-%d, %H:%M")
+    # date of the actual data (last cached candle) — without it "as of" implies
+    # the insights include today's session even when the collector hasn't run yet
+    try:
+        with db.get_conn() as _c:
+            _row = _c.execute("select max(date) from market_prices_cache").fetchone()
+        data["data_through"] = _row[0] if _row and _row[0] else ""
+    except Exception:
+        data["data_through"] = ""
     data["kind"] = kind
     data["generated_by"] = by
     set_settings({BRIEF_KEYS[kind]: json.dumps(data, ensure_ascii=False)})

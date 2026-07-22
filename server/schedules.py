@@ -78,6 +78,14 @@ REGISTRY = [
      "kind": "app", "runner": _run_rag_reindex,
      "note": "keeps AI answers grounded in your latest data",
      "default": {"freq": "weekly", "day": 0, "hour": 7}},
+    {"id": "barometer_collect", "label": "Barometer: demand (Google Trends, monthly)",
+     "kind": "app", "runner": lambda: __import__("barometer_collect").collect(),
+     "note": "appends the last full month: demand for your roles from Google Trends (keyless)",
+     "default": {"freq": "monthly", "day": 2, "hour": 8}},
+    {"id": "barometer_openings", "label": "Barometer: real openings (JSearch, monthly)",
+     "kind": "app", "runner": lambda: __import__("barometer_collect").collect_openings(),
+     "note": "appends real posting counts from job boards — needs a RAPIDAPI_JSEARCH_KEY",
+     "default": {"freq": "monthly", "day": 2, "hour": 9}},
 ]
 
 EXTERNAL = [

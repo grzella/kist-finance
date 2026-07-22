@@ -113,7 +113,7 @@ async function renderOffers(el) {
   const bser = baro.series || {};
    const geoTxt = esc((baro.geo || []).join(", ")) || "—";
   const bdesc = document.getElementById("baroDesc");
-  if (bdesc) bdesc.innerHTML += ` <span class="muted">Geography: <b>${geoTxt}</b>.</span>`;
+  if (bdesc) bdesc.innerHTML += ` <span class="muted">Geography: <b>${geoTxt}</b>. Two series: <b>📈 demand</b> (Google Trends, with history) and <b>🎯 openings</b> (JSearch, real counts from now on — needs a key).</span>`;
 
   const cfgBtn = document.getElementById("baroCfg"); const cfgBox = document.getElementById("baroCfgBox");
   if (cfgBtn && cfgBox) cfgBtn.addEventListener("click", () => {
@@ -138,33 +138,45 @@ async function renderOffers(el) {
   });
 
   const btbl = document.getElementById("baroTable");
+  const months = baro.months || [];
   const readCls = (r) => /shrink/.test(r || "") ? "neg" : /grow/.test(r || "") ? "pos" : "muted";
+  const roleColor = {}; broles.forEach((r, i) => { roleColor[r.key] = [CHART_COLORS[0], CHART_COLORS[1], CHART_COLORS[4], CHART_COLORS[3]][i % 4]; });
+  const streamShort = { trends: "demand", openings: "openings" };
   if (bpts.length) {
-    const roleCols = broles.map((r) => {
-      const s = bser[r.key] || {};
-      const trend = s.reading ? ` <span class="${readCls(s.reading)}" style="font-size:.8em">${s.reading}${s.q_pct != null ? " " + (s.q_pct > 0 ? "+" : "") + s.q_pct + "%/3m" : ""}</span>` : "";
-      return `<th style="text-align:right" title="query: ${esc(r.query || r.label)}">${esc(r.label)}${trend}</th>`;
+    // per role×stream reading legend (direction + %/3m)
+    const legend = Object.values(bser).filter((s) => s.reading).map((s) => {
+      const r = broles.find((x) => x.key === s.role) || { label: s.role };
+      return `<span style="margin-right:14px"><b style="color:${roleColor[s.role]}">${esc(r.label)}</b> · ${streamShort[s.stream] || s.stream}: <span class="${readCls(s.reading)}">${s.reading}${s.q_pct != null ? " " + (s.q_pct > 0 ? "+" : "") + s.q_pct + "%/3m" : ""}</span></span>`;
     }).join("");
-    btbl.innerHTML = `<table><thead><tr><th>Month</th>${roleCols}<th style="text-align:right">Your inbound</th><th>Source</th><th></th></tr></thead><tbody>` +
-      [...bpts].reverse().map((p) => `<tr><td>${p.month}</td>` +
+    // table: ONE row per data point (month × stream), columns = roles
+    btbl.innerHTML = (legend ? `<div class="muted" style="font-size:.85em;margin-bottom:6px">${legend}</div>` : "") +
+      `<div style="overflow-x:auto"><table><thead><tr><th>Month</th><th>Stream</th>` +
+      broles.map((r) => `<th style="text-align:right" title="query: ${esc(r.query || r.label)}">${esc(r.label)}</th>`).join("") +
+      `<th style="text-align:right">Your inbound</th><th>Source</th><th></th></tr></thead><tbody>` +
+      [...bpts].reverse().map((p) => `<tr><td>${p.month}</td>
+        <td class="muted" style="font-size:.85em">${p.stream === "openings" ? "🎯 openings" : "📈 demand"}</td>` +
         broles.map((r) => `<td style="text-align:right">${p.counts[r.key] != null ? fmt.grouped(p.counts[r.key]) : "—"}</td>`).join("") +
         `<td style="text-align:right">${p.my_inbound}</td>
-        <td class="muted" style="font-size:.82em" title="${p.geo ? "geo: " + esc(p.geo) + " · " : ""}${p.as_of ? "as of " + esc(p.as_of) : ""}">${/estimat|szacun/i.test(p.sources || p.note || "") ? "⚠️ estimate" : esc(p.sources || "—")}</td>
-        <td><button class="danger" data-bdel="${p.id}">✕</button></td></tr>`).join("") + "</tbody></table>";
+        <td class="muted" style="font-size:.82em" title="${p.geo ? "geo: " + esc(p.geo) + " · " : ""}${p.as_of ? "as of " + esc(p.as_of) : ""}">${esc(p.sources || "—")}</td>
+        <td><button class="danger" data-bdel="${p.id}">✕</button></td></tr>`).join("") + "</tbody></table></div>";
     btbl.querySelectorAll("[data-bdel]").forEach((b) =>
       b.addEventListener("click", async () => { await api.del("/api/market-barometer/" + b.dataset.bdel); route(); }));
-    const palette = [CHART_COLORS[0], CHART_COLORS[1], CHART_COLORS[4], CHART_COLORS[3]];
+    // chart: INDEX (base 100) — a line per role×stream (demand=solid, openings=dashed) vs inbound (bars)
+    const lines = Object.values(bser).filter((s) => (s.index || []).some((v) => v != null)).map((s) => {
+      const r = broles.find((x) => x.key === s.role) || { label: s.role };
+      const dashed = s.stream === "openings";
+      return { type: "line", label: `${r.label} · ${streamShort[s.stream] || s.stream}`,
+        data: s.index || [], _raw: s.counts || [], borderColor: roleColor[s.role],
+        backgroundColor: "transparent", borderDash: dashed ? [6, 4] : [], yAxisID: "y",
+        tension: 0.25, borderWidth: dashed ? 2 : 3, pointRadius: 3, spanGaps: true };
+    });
     trackChart(new Chart(document.getElementById("baroChart"), {
       data: {
-        labels: bpts.map((p) => p.month),
+        labels: months,
         datasets: [
-          { type: "bar", label: "Your inbound", data: bpts.map((p) => p.my_inbound),
+          { type: "bar", label: "Your inbound", data: baro.inbound || [],
             backgroundColor: "rgba(255,209,102,0.55)", yAxisID: "y1", order: 9, barPercentage: 0.5, categoryPercentage: 0.6 },
-          ...broles.map((r, i) => ({
-            type: "line", label: r.label + " (index)", data: (bser[r.key] || {}).index || [],
-            _raw: (bser[r.key] || {}).counts || [],
-            borderColor: palette[i % palette.length], backgroundColor: "transparent",
-            yAxisID: "y", tension: 0.25, borderWidth: 3, pointRadius: 3, order: i, spanGaps: true })),
+          ...lines,
         ],
       },
       options: {
@@ -172,17 +184,17 @@ async function renderOffers(el) {
         plugins: { tooltip: { callbacks: { label: (ctx) => {
           if (ctx.dataset.yAxisID === "y1") return `Your inbound: ${ctx.parsed.y}`;
           const raw = (ctx.dataset._raw || [])[ctx.dataIndex];
-          return `${ctx.dataset.label}: ${ctx.parsed.y}` + (raw != null ? ` (${raw} openings)` : "");
+          return `${ctx.dataset.label}: ${ctx.parsed.y}` + (raw != null ? ` (${raw})` : "");
         } } } },
         scales: {
-          y: { position: "left", beginAtZero: false, title: { display: true, text: "demand index (base 100)" } },
+          y: { position: "left", beginAtZero: false, title: { display: true, text: "index (base 100)" } },
           y1: { position: "right", beginAtZero: true, suggestedMax: 6, grid: { drawOnChartArea: false },
             ticks: { stepSize: 1 }, title: { display: true, text: "Your inbound" } },
         },
       },
     }));
   } else {
-    btbl.innerHTML = '<div class="empty">No data yet — point an n8n collector (JSearch/Apify) at <code>POST /api/market-barometer</code>, or add a row by hand. Set roles/geography with ⚙️.</div>';
+    btbl.innerHTML = '<div class="empty">No barometer data yet. Demand (Google Trends) is collected monthly by the app itself; real openings (JSearch) once you set <code>RAPIDAPI_JSEARCH_KEY</code>. External collectors can still <code>POST /api/market-barometer</code>. Set roles/geography with ⚙️.</div>';
   }
 
   document.getElementById("oAdd").addEventListener("click", async () => {
