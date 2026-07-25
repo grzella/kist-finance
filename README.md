@@ -171,3 +171,15 @@ Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the
 ## License
 
 MIT © Łukasz Grzella
+
+### Testing: mock BOTH local-model paths
+
+`_ai_answer` prefers tool-calling: when `db_tools.schema_summary()` returns a schema
+(almost always), it calls `llm_local.chat_with_tools`, not `llm_local.chat`. A test
+that mocks only `chat` **silently hits the real local model** — it passes in isolation
+(the model answers, ~35s) but fails in a full suite run when the model is busy, with
+a misleading `AI offline`.
+
+Found 2026-07-25 on two AI-pipeline tests: adding a `chat_with_tools` mock cut them
+from **130s to 4.3s** and made the result independent of load. When writing a test
+that touches AI, mock both functions — or mark it as an integration test on purpose.

@@ -32,6 +32,11 @@ def test_ai_pipeline_both_mode_synthesis(client, monkeypatch):
     import llm_local
     import llm_cloud
     monkeypatch.setattr(llm_local, "chat", lambda *a, **k: "local answer")
+    # _ai_answer prefers the tool-calling path (`chat_with_tools`) whenever db_tools
+    # returns a schema - which is almost always. Mocking `chat` alone was NOT enough:
+    # the test silently hit the REAL local model (~35s per test) and failed whenever
+    # the model was busy during a full suite run. Mock both paths.
+    monkeypatch.setattr(llm_local, "chat_with_tools", lambda *a, **k: "local answer")
     monkeypatch.setattr(llm_local, "status", lambda: {"online": True, "model": "fake-local"})
     monkeypatch.setattr(llm_cloud, "chat", lambda *a, **k: "cloud answer")
     monkeypatch.setattr(llm_cloud, "status", lambda: {"online": True, "model": "fake-cloud"})
@@ -47,6 +52,9 @@ def test_ai_pipeline_both_mode_synthesis(client, monkeypatch):
 def test_recommendation_ai_stores_opinion(client, monkeypatch):
     import llm_local
     monkeypatch.setattr(llm_local, "chat", lambda *a, **k: "solid recommendations; add an emergency-fund one")
+    # as above: without mocking `chat_with_tools` this test calls the real model
+    monkeypatch.setattr(llm_local, "chat_with_tools",
+                        lambda *a, **k: "solid recommendations; add an emergency-fund one")
     monkeypatch.setattr(llm_local, "status", lambda: {"online": True, "model": "fake-local"})
     d = client.post("/api/recommendation/ai").get_json()
     assert d.get("text") and d.get("at")
