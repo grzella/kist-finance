@@ -599,6 +599,19 @@ def _check_ai_tools():
         f("low", "warn", "AI SQL result cap is high",
           f"MAX_ROWS={db_tools.MAX_ROWS} — a single tool call can return a lot of rows",
           "Keep MAX_ROWS modest (tens) so one call can't dump the whole DB into the prompt")
+
+    # query execution-time bound: sqlite3 `timeout` is a lock busy-timeout,
+    # not a compute limit — an unbounded cartesian aggregate would freeze the worker.
+    qs = getattr(db_tools, "QUERY_SECONDS", None)
+    if isinstance(qs, (int, float)) and 0 < qs <= 10:
+        f("info", "pass", "AI SQL tool has an execution-time bound",
+          f"QUERY_SECONDS={qs}s via SQLite progress handler — a heavy JOIN/aggregate "
+          "is aborted instead of hanging the single Flask worker")
+    else:
+        f("med", "fail", "AI SQL tool has NO execution-time bound",
+          "a prompt-injected heavy query (cartesian aggregate) can hang the worker; "
+          f"QUERY_SECONDS={qs!r}",
+          "Set db_tools.QUERY_SECONDS and con.set_progress_handler(...) to abort long queries")
     return out
 
 

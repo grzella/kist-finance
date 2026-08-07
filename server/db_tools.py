@@ -8,10 +8,18 @@ Every tool round-trip ends up in the prompt log like any other AI call.
 """
 import re
 import sqlite3
+import time
 
 import db as _db
 
 MAX_ROWS = 40
+# Wall-clock budget for ONE SELECT. `sqlite3(timeout=...)` is only a busy-timeout
+# on LOCKS — it does NOT bound query compute time. Without this, the model (e.g.
+# steered by content injected via RAG/market text) could emit an unbounded
+# cartesian product / aggregate and freeze the single Flask worker.
+QUERY_SECONDS = 3.0
+# progress handler fires every N SQLite VM instructions; non-zero return aborts
+_PROGRESS_OPS = 10000
 
 _FORBID = re.compile(
     r"(?i)(^|[^a-z0-9_])(insert|update|delete|drop|alter|create|attach|detach"
@@ -53,8 +61,16 @@ def run_select(sql=""):
         return {"ok": False, "error": "write/DDL keywords are not allowed"}
     try:
         con = _connect()
-        rows = [dict(r) for r in con.execute(q).fetchmany(MAX_ROWS)]
-        con.close()
+        deadline = time.monotonic() + QUERY_SECONDS
+        # abort the query once it exceeds the time budget (guards against a DoS
+        # via a heavy JOIN/aggregate, which fetchmany() does not bound)
+        con.set_progress_handler(
+            lambda: 1 if time.monotonic() > deadline else 0, _PROGRESS_OPS)
+        try:
+            rows = [dict(r) for r in con.execute(q).fetchmany(MAX_ROWS)]
+        finally:
+            con.set_progress_handler(None, 0)
+            con.close()
         return {"ok": True, "rows": rows, "truncated": len(rows) == MAX_ROWS}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
