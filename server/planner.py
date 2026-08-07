@@ -57,6 +57,13 @@ def ensure_tables():
         eb._exec("alter table wealth_items add column linked_debt_id text")
     except Exception:
         pass  # column exists
+    # quote-based valuation: ticker (+ optional units; units NULL with a ticker
+    # matching the RSU grant = share count flows from rsu.json shares_held)
+    for col, typ in (("ticker", "text"), ("units", "real")):
+        try:
+            eb._exec("alter table wealth_items add column " + eb._ident(col) + " " + typ)
+        except Exception:
+            pass  # column exists
     try:
         eb._exec("alter table debt_meta add column fixed_until text")
     except Exception:
@@ -242,12 +249,50 @@ def wealth_summary():
         "select * from wealth_items where archived = 0 order by kind, name")
     debts = eb._rows("select id, name, balance from debts")
     debt_by_id = {d["id"]: d for d in debts}
+    live_px = {}
+
+    def _live_value(it):
+        """Valuation from the cached quote: units × close × FX→base. For the RSU
+        grant's ticker units=NULL takes shares_held from rsu.json — one source of
+        truth for the share count, no monthly value retyping."""
+        tk = (it.get("ticker") or "").upper()
+        if not tk:
+            return None
+        try:
+            import market as _mkt
+            if tk not in live_px:
+                px = _mkt.prices(tk, days=7)
+                live_px[tk] = px[-1] if px else None
+            row = live_px[tk]
+            if not row:
+                return None
+            units = it.get("units")
+            if units is None:
+                import json as _json
+                g = _json.loads(_mkt._rsu_path().read_text())
+                if (g.get("ticker") or "").upper() != tk:
+                    return None
+                units = g.get("shares_held") or 0
+            val = units * row["close"]
+            if (row.get("currency") or "USD") == "USD":
+                fx, _ = _mkt._usd_base_rate()
+                val *= fx or 0
+            return {"value": round(val, 2), "date": row["date"], "units": units}
+        except Exception:
+            return None
+
     for it in items:
         vals = eb._rows(
             "select date, value from wealth_values where item_id = ? "
             "order by date desc, created_at desc, rowid desc limit 1", (it["id"],))
         it["latest_value"] = vals[0]["value"] if vals else None
         it["latest_date"] = vals[0]["date"] if vals else None
+        lv = _live_value(it)
+        if lv:
+            it["latest_value"] = lv["value"]
+            it["latest_date"] = lv["date"]
+            it["live"] = True
+            it["live_units"] = lv["units"]
         linked = debt_by_id.get(it.get("linked_debt_id"))
         it["debt_name"] = linked["name"] if linked else None
         it["debt_balance"] = linked["balance"] if linked else None
@@ -299,7 +344,7 @@ def add_wealth_item(data):
 def update_wealth_item(item_id, data):
     cols, params = [], []
     for k in ("name", "kind", "owner", "currency", "notes", "archived",
-              "linked_debt_id"):
+              "linked_debt_id", "ticker", "units"):
         if k in data:
             cols.append(k); params.append(data[k])
     if cols:
@@ -1621,6 +1666,8 @@ def freshness():
         # change only when tenants/contracts change, not monthly
         if it.get("kind") == "income" or "kaucj" in n or "deposit" in n:
             continue
+        if it.get("live"):
+            continue  # valued from the quote — refreshes itself, never nags
         cls = _alloc_class(it.get("name", "")) or ""
         need = 3 if cls in ("real_estate", "car") else 1
         last = it.get("latest_date")
@@ -1646,17 +1693,21 @@ def freshness():
             label=f"RSU: book the {vy:04d}-{vmo:02d} vest (shares_held)",
             group="RSU", last=mdate.isoformat() if mdate else None,
             days=(today - mdate).days if mdate else None, minutes=1,
-            cadence="each vest month", action={"type": "link", "view": "rsu"})
+            cadence="each vest month", value_hint=g.get("shares_held"), always_show=True,
+            action={"type": "rsu_shares", "view": "rsu"})
     except Exception:
         pass
 
     try:
-        r = eb._rows("select max(substr(updated_at,1,10)) d from goals")
-        last = r[0]["d"] if r and r[0]["d"] else None
-        stale = last is None or _months_between(last, iso) >= 1
-        put(stale, key="goals", label="Goals: amounts saved so far", group="Goals",
-            last=last, days=age(last or ""), minutes=1, cadence="monthly",
-            action={"type": "link", "view": "goals"})
+        for g in eb._rows("select id, name, current_amount, "
+                          "substr(updated_at,1,10) d from goals "
+                          "where coalesce(status,'') != 'done'"):
+            last = g.get("d")
+            stale = last is None or _months_between(last, iso) >= 1
+            put(stale, key="goal:" + g["id"], label=f"Goal: {g['name']} — saved so far",
+                group="Goals", last=last, days=age(last or ""), minutes=1,
+                cadence="monthly", value_hint=g.get("current_amount"),
+                action={"type": "goal_amount", "goal_id": g["id"], "view": "goals"})
     except Exception:
         pass
 
@@ -1666,7 +1717,7 @@ def freshness():
         stale = last is None or _months_between(last, iso) >= 1
         put(stale, key="business", label="Business: this month's income/costs",
             group="Business", last=last, days=age(last or ""), minutes=2,
-            cadence="monthly", action={"type": "link", "view": "business"})
+            cadence="monthly", action={"type": "biz_month", "view": "business"})
     except Exception:
         pass
 
@@ -1679,7 +1730,8 @@ def freshness():
             put(stale, key="debt:" + d["id"],
                 label=f"{d['name']}: reconcile balance with the bank statement",
                 group="Debts", last=last, days=age(last or ""), minutes=1,
-                cadence="quarterly", action={"type": "link", "view": "debts"})
+                cadence="quarterly", value_hint=d.get("balance"),
+                action={"type": "debt_balance", "debt_id": d["id"], "view": "debts"})
     except Exception:
         pass
 

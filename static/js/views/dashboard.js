@@ -22,15 +22,16 @@ async function renderDashboard(el) {
         <button class="primary" id="freshOpen">Update →</button>
       </div>
       <div id="freshFlow" style="display:none" class="mt">
-        ${fresh.due.map((e) => `<div class="row mt" style="align-items:center;gap:8px" data-fresh-row>
+        ${[...fresh.due, ...fresh.ok.filter((e) => e.always_show)].map((e) => `<div class="row mt" style="align-items:center;gap:8px" data-fresh-row>
           <span style="flex:1">${e.label} <span class="muted">(${e.cadence}${e.last ? ", last " + e.last : ", never"})</span></span>
-          ${e.action.type === "wealth_value"
-            ? `<input type="text" inputmode="decimal" placeholder="${e.value_hint != null ? e.value_hint : "value"}" data-fresh-item="${e.action.item_id}" style="width:130px"> <span class="muted">${e.currency || ""}</span>`
-            : `<a href="#${e.action.view}" style="text-decoration:none;padding:3px 10px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">open the tab →</a>`}
+          ${e.action.type === "biz_month"
+            ? `<input type="text" inputmode="decimal" placeholder="revenue" data-fresh-biz="revenue" style="width:100px">
+               <input type="text" inputmode="decimal" placeholder="costs" data-fresh-biz="cost" style="width:100px">`
+            : `<input type="text" inputmode="decimal" placeholder="${e.value_hint != null ? e.value_hint : (e.action.type === "rsu_shares" ? "share count" : "value")}" data-fresh-act="${e.action.type}" data-fresh-id="${e.action.item_id || e.action.goal_id || e.action.debt_id || ""}" style="width:130px"> <span class="muted">${e.action.type === "rsu_shares" ? "shares" : (e.currency || "")}</span>`}
         </div>`).join("")}
         <div class="row mt" style="gap:8px;align-items:center">
           <button class="primary" id="freshSave">Save entered values</button>
-          <span class="muted">Empty fields are skipped; linked items are updated in their own tabs.</span>
+          <span class="muted">Empty fields are skipped — enter only what changed.</span>
         </div>
       </div>
     </div>` : fresh && fresh.complete ? `<div class="muted" style="margin:4px 0 8px">✅ ${fresh.month}: data complete — next ritual in a month.</div>` : ""}
@@ -141,13 +142,27 @@ async function renderDashboard(el) {
   });
   const fs = el.querySelector("#freshSave");
   if (fs) fs.addEventListener("click", async () => {
-    const inputs = [...el.querySelectorAll("[data-fresh-item]")]
+    const acts = [...el.querySelectorAll("[data-fresh-act]")]
       .filter((i) => i.value.trim() !== "");
-    if (!inputs.length) return;
+    const biz = [...el.querySelectorAll("[data-fresh-biz]")]
+      .filter((i) => i.value.trim() !== "");
+    if (!acts.length && !biz.length) return;
     fs.disabled = true;
-    for (const i of inputs) {
-      await api.post(`/api/wealth/items/${i.dataset.freshItem}/values`,
-        { value: parseNum(i.value) });
+    for (const i of acts) {
+      const v = parseNum(i.value);
+      const id = i.dataset.freshId;
+      if (i.dataset.freshAct === "wealth_value") {
+        await api.post(`/api/wealth/items/${id}/values`, { value: v });
+      } else if (i.dataset.freshAct === "goal_amount") {
+        await api.put(`/api/goals/${id}`, { current_amount: v });
+      } else if (i.dataset.freshAct === "debt_balance") {
+        await api.put(`/api/debts/${id}`, { balance: v });
+      } else if (i.dataset.freshAct === "rsu_shares") {
+        await api.put("/api/rsu", { shares_held: v });
+      }
+    }
+    for (const i of biz) {
+      await api.post("/api/business", { kind: i.dataset.freshBiz, amount: parseNum(i.value) });
     }
     location.reload();
   });

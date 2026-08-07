@@ -56,7 +56,7 @@ async function renderWealth(el) {
       </select></td>
       <td style="text-align:right" class="${i.equity != null ? (i.equity >= 0 ? "pos" : "neg") : ""}">${i.equity != null ? fmt.pln(i.equity) : "—"}</td>
       <td class="muted">${i.latest_date || "—"}</td>
-      <td><button data-upd="${i.id}">Update</button></td>
+      <td>${i.live ? `<span class="muted" title="valued from the cached quote (${i.live_units} shares) — updates itself">🔄 auto</span>` : `<button data-upd="${i.id}">Update</button>`}</td>
       <td><button class="danger" data-del="${i.id}">✕</button></td>
     </tr>`).join("") + "</tbody></table>";
   }
