@@ -34,7 +34,7 @@ def test_ticker_item_valued_live_and_skipped_in_rhythm(client):
     assert r.status_code in (200, 201)
     items = client.get("/api/wealth/summary").get_json()["items"]
     it = next(i for i in items if i["name"] == "Test ETF (auto)")
-    # kurs do cache przez API modułu market (test-DB), potem link tickera
+    # seed a quote into the cache (test DB), then link the ticker
     import market
     with __import__("db").get_conn() as con:
         con.execute("insert or replace into market_prices_cache "
