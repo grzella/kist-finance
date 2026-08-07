@@ -317,9 +317,9 @@ _RSU_DEFAULT = {
     "shares_held": 0,                  # shares already held (after vests)
     "shares_next_vest": 0,             # how many shares vest next
     "vest_months": [2, 5, 8, 11],      # Feb, May, Aug, Nov
-    "target_bear": 75,                 # lower analyst target / 52w low
-    "target_bull": 115,                # upper analyst target
-    "analyst_target_mid": 145,         # consensus (median of targets)
+    "target_bear": None,               # lower analyst target; None -> 0.65x spot
+    "target_bull": None,               # upper analyst target; None -> 1.30x spot
+    "analyst_target_mid": None,        # consensus; None -> current price (no view)
     "mc_drift_annual": 0.08,           # dryf w symulacji Monte Carlo (roczny)
     "mc_sims": 1500,                   # number of MC paths
     "perf_equity_multiplier": 1.5,     # 150% akcji rocznie (Twoja ocena Exceeds/Greatly)
@@ -397,17 +397,23 @@ def _rsu_holdings(grant, last, usdpln):
         out["held_value_pln"] = round(held * last * usdpln, 0)
         out["next_vest_value_pln"] = round(nxt * last * usdpln, 0)
         out["after_vest_value_pln"] = round((held + nxt) * last * usdpln, 0)
+        # scenario ladder is DYNAMIC around the current price (rounded to $5)
+        # — a static list goes stale the moment the stock re-rates sharply
+        ladder = sorted({max(5.0, round(last * mult / 5) * 5)
+                         for mult in (0.5, 0.7, 0.85, 1.0, 1.15, 1.35)})
         out["scenarios"] = [
             {"price": pr,
              "next_vest_pln": round(nxt * pr * usdpln, 0),
              "total_pln": round((held + nxt) * pr * usdpln, 0)}
-            for pr in (70, 80, 90, 100, 110, 120)]
+            for pr in ladder]
         # timeline: cumulative cash across the next 8 vest windows.
         # base = FLAT at today's price; bear/bull drift linearly to analyst
         # low/high targets (configurable in rsu.json)
-        targets = {"bear": grant.get("target_bear") or 75,
+        # bear/bull fallbacks derived from spot, not hardcoded — fixed anchors
+        # written at one price level end up BOTH below spot after a big rally
+        targets = {"bear": grant.get("target_bear") or round(last * 0.65 / 5) * 5,
                    "base": last,
-                   "bull": grant.get("target_bull") or 115}
+                   "bull": grant.get("target_bull") or round(last * 1.30 / 5) * 5}
         horizon = 8
         vm = sorted(grant.get("vest_months") or [2, 5, 8, 11])
         y, m = today.year, today.month
@@ -717,9 +723,9 @@ def rsu_advanced():
             row[tag] = round(shares_base * price * usdpln, 0)
             row[tag + "_perf"] = round(shares_perf * price * usdpln, 0)
         # analyst anchors (discrete fundamental view, not vol-driven)
-        for tag, tprice in (("bear", grant.get("target_bear", 75)),
-                            ("mid", grant.get("analyst_target_mid", 145)),
-                            ("bull", grant.get("target_bull", 115))):
+        for tag, tprice in (("bear", grant.get("target_bear") or round(last * 0.65 / 5) * 5),
+                            ("mid", grant.get("analyst_target_mid") or last),
+                            ("bull", grant.get("target_bull") or round(last * 1.30 / 5) * 5)):
             # linear drift from today to target over 12 months, capped at window
             frac = min(1.0, w["months_ahead"] / 12.0)
             aprice = last + (tprice - last) * frac
@@ -753,8 +759,9 @@ def rsu_advanced():
         "drift_annual_pct": round(drift * 100, 1),
         "sims": sims,
         "prob_above_current_1y_pct": prob_above_current,
-        "analyst": {"bear": grant.get("target_bear"), "mid": grant.get("analyst_target_mid"),
-                    "bull": grant.get("target_bull")},
+        "analyst": {"bear": grant.get("target_bear") or round(last * 0.65 / 5) * 5,
+                    "mid": grant.get("analyst_target_mid") or last,
+                    "bull": grant.get("target_bull") or round(last * 1.30 / 5) * 5},
         "perf_equity_multiplier": perf,
         "perf_base_raise_annual": grant.get("perf_base_raise_annual"),
         "shares_held": held,
