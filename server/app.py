@@ -795,6 +795,11 @@ def barometer_delete(bid):
     return jsonify({"ok": True})
 
 
+@app.get("/api/freshness")
+def freshness_get():
+    return jsonify(planner.freshness())
+
+
 @app.get("/api/reminders")
 def reminders_list():
     return jsonify(planner.list_reminders())

@@ -11,9 +11,29 @@ async function renderDashboard(el) {
     api.get("/api/business").catch(() => null),
     api.get("/api/business/marketing").catch(() => ({ error: 1 })),
   ]);
+  const fresh = await api.get("/api/freshness").catch(() => null);
 
   el.innerHTML = `
     <h2>Dashboard — ${sum.month}</h2>
+    ${fresh && !fresh.complete ? `<div class="card" style="border-left:4px solid #e0a030">
+      <div class="row" style="align-items:center;gap:10px">
+        <b>📋 ${fresh.month}: ${fresh.due.length} item${fresh.due.length === 1 ? "" : "s"} to refresh (~${fresh.total_minutes} min)</b>
+        <span class="muted" style="flex:1">${fresh.due.slice(0, 4).map((e) => e.label.split(":")[0]).join(" · ")}${fresh.due.length > 4 ? " · …" : ""}</span>
+        <button class="primary" id="freshOpen">Update →</button>
+      </div>
+      <div id="freshFlow" style="display:none" class="mt">
+        ${fresh.due.map((e) => `<div class="row mt" style="align-items:center;gap:8px" data-fresh-row>
+          <span style="flex:1">${e.label} <span class="muted">(${e.cadence}${e.last ? ", last " + e.last : ", never"})</span></span>
+          ${e.action.type === "wealth_value"
+            ? `<input type="text" inputmode="decimal" placeholder="${e.value_hint != null ? e.value_hint : "value"}" data-fresh-item="${e.action.item_id}" style="width:130px"> <span class="muted">${e.currency || ""}</span>`
+            : `<a href="#${e.action.view}" style="text-decoration:none;padding:3px 10px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">open the tab →</a>`}
+        </div>`).join("")}
+        <div class="row mt" style="gap:8px;align-items:center">
+          <button class="primary" id="freshSave">Save entered values</button>
+          <span class="muted">Empty fields are skipped; linked items are updated in their own tabs.</span>
+        </div>
+      </div>
+    </div>` : fresh && fresh.complete ? `<div class="muted" style="margin:4px 0 8px">✅ ${fresh.month}: data complete — next ritual in a month.</div>` : ""}
     <details class="card" style="border-left:4px solid ${CHART_COLORS[2]}">
       <summary style="cursor:pointer"><b>💡 ${rec.headline.length > 140 ? rec.headline.slice(0, 140) + "…" : rec.headline}</b>
         <span class="muted">(${rec.items.length} recommendations — expand / full list in the Recommendations tab)</span></summary>
@@ -112,4 +132,23 @@ async function renderDashboard(el) {
   }));
 
 
+
+  // freshness guided flow: expand, save entered values, reload the view
+  const fo = el.querySelector("#freshOpen");
+  if (fo) fo.addEventListener("click", () => {
+    const ff = el.querySelector("#freshFlow");
+    ff.style.display = ff.style.display === "none" ? "" : "none";
+  });
+  const fs = el.querySelector("#freshSave");
+  if (fs) fs.addEventListener("click", async () => {
+    const inputs = [...el.querySelectorAll("[data-fresh-item]")]
+      .filter((i) => i.value.trim() !== "");
+    if (!inputs.length) return;
+    fs.disabled = true;
+    for (const i of inputs) {
+      await api.post(`/api/wealth/items/${i.dataset.freshItem}/values`,
+        { value: parseNum(i.value) });
+    }
+    location.reload();
+  });
 }

@@ -1583,6 +1583,111 @@ def allocation():
             "targets_customized": customized}
 
 
+# ---------- data freshness (monthly update rhythm) ----------
+
+def _months_between(a, b):
+    """Whole calendar months between ISO dates (a <= b)."""
+    return (int(b[:4]) - int(a[:4])) * 12 + (int(b[5:7]) - int(a[5:7]))
+
+
+def freshness():
+    """What needs a refresh NOW — derived from data timestamps, not from a
+    calendar in the user's head. Feeds the dashboard strip, the guided
+    update flow and the reminders view. Cadences: cash/investments monthly,
+    real estate / car quarterly (valuations do not move monthly), income
+    items event-driven (never nag), RSU after each vest month, debts a
+    quarterly statement reconciliation (installments auto-post)."""
+    from datetime import date as _date
+    import market as _mkt
+    today = _date.today()
+    iso = today.isoformat()
+
+    def age(d):
+        try:
+            y, m, dd = map(int, d[:10].split("-"))
+            return (today - _date(y, m, dd)).days
+        except Exception:
+            return None
+
+    due, ok = [], []
+
+    def put(stale, **e):
+        e["status"] = "due" if stale else "ok"
+        (due if stale else ok).append(e)
+
+    for it in wealth_summary()["items"]:
+        n = (it.get("name") or "").lower()
+        # event-driven: income (rent/salary are fixed) and deposits — they
+        # change only when tenants/contracts change, not monthly
+        if it.get("kind") == "income" or "kaucj" in n or "deposit" in n:
+            continue
+        cls = _alloc_class(it.get("name", "")) or ""
+        need = 3 if cls in ("real_estate", "car") else 1
+        last = it.get("latest_date")
+        stale = last is None or _months_between(last, iso) >= need
+        put(stale, key="wealth:" + it["id"], label=it["name"], group="Wealth",
+            last=last, days=age(last or ""), minutes=1,
+            cadence="quarterly" if need == 3 else "monthly",
+            value_hint=it.get("latest_value"), currency=it.get("currency"),
+            action={"type": "wealth_value", "item_id": it["id"], "view": "wealth"})
+
+    # RSU: rsu.json mtime older than the start of the last vest month = vest not booked
+    try:
+        p = _mkt._rsu_path()
+        import json as _json
+        g = _json.loads(p.read_text()) if p.exists() else {}
+        vm = sorted(g.get("vest_months") or [2, 5, 8, 11])
+        past = [(today.year, m) for m in vm if m <= today.month]
+        vy, vmo = past[-1] if past else (today.year - 1, vm[-1])
+        vstart = _date(vy, vmo, 1)
+        mdate = _date.fromtimestamp(p.stat().st_mtime) if p.exists() else None
+        stale = mdate is None or mdate < vstart
+        put(stale, key="rsu_shares",
+            label=f"RSU: book the {vy:04d}-{vmo:02d} vest (shares_held)",
+            group="RSU", last=mdate.isoformat() if mdate else None,
+            days=(today - mdate).days if mdate else None, minutes=1,
+            cadence="each vest month", action={"type": "link", "view": "rsu"})
+    except Exception:
+        pass
+
+    try:
+        r = eb._rows("select max(substr(updated_at,1,10)) d from goals")
+        last = r[0]["d"] if r and r[0]["d"] else None
+        stale = last is None or _months_between(last, iso) >= 1
+        put(stale, key="goals", label="Goals: amounts saved so far", group="Goals",
+            last=last, days=age(last or ""), minutes=1, cadence="monthly",
+            action={"type": "link", "view": "goals"})
+    except Exception:
+        pass
+
+    try:
+        r = eb._rows("select max(substr(created_at,1,10)) d from biz_entries")
+        last = r[0]["d"] if r and r[0]["d"] else None
+        stale = last is None or _months_between(last, iso) >= 1
+        put(stale, key="business", label="Business: this month's income/costs",
+            group="Business", last=last, days=age(last or ""), minutes=2,
+            cadence="monthly", action={"type": "link", "view": "business"})
+    except Exception:
+        pass
+
+    try:
+        for d in list_debts()["debts"]:
+            hist = [h for h in (d.get("history") or [])
+                    if "auto" not in (h.get("note") or "")]
+            last = (hist[-1]["month"] + "-01") if hist else None
+            stale = last is None or _months_between(last, iso) >= 3
+            put(stale, key="debt:" + d["id"],
+                label=f"{d['name']}: reconcile balance with the bank statement",
+                group="Debts", last=last, days=age(last or ""), minutes=1,
+                cadence="quarterly", action={"type": "link", "view": "debts"})
+    except Exception:
+        pass
+
+    due.sort(key=lambda e: -(e.get("days") if e.get("days") is not None else 10**6))
+    return {"month": iso[:7], "due": due, "ok": ok, "complete": not due,
+            "total_minutes": sum(e.get("minutes", 1) for e in due)}
+
+
 # ---------- reminders ----------
 
 def _auto_reminders():
@@ -1630,6 +1735,15 @@ def _auto_reminders():
             if fu and days_to(fu) is not None:
                 out.append({"title": f"{d['name']}: fixed rate ends — time for an annex/refinancing",
                             "due_date": fu, "auto": True, "kind": "Loan"})
+    except Exception:
+        pass
+    # monthly data refresh (freshness engine) — one aggregate entry
+    try:
+        fr = freshness()
+        if fr["due"]:
+            out.append({"title": f"Data refresh: {len(fr['due'])} items "
+                        f"(~{fr['total_minutes']} min) — see the dashboard strip",
+                        "due_date": today.isoformat(), "auto": True, "kind": "Data"})
     except Exception:
         pass
     # RSU stock near/above target
