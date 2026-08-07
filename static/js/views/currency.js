@@ -20,7 +20,7 @@ async function renderCurrency(el) {
     if (["income", "savings"].includes(it.kind)) return;
     const v = it.equity != null ? it.equity : (it.latest_value || 0);
     const n = (it.name || "").toLowerCase();
-    if (n.includes("usd") || n.includes("rsu") || n.includes("team")) exp.USD += v;
+    if (n.includes("usd") || n.includes("rsu") || n.includes("espp")) exp.USD += v;
     else if (n.includes("vwce") || n.includes("eur") || n.includes("world")) exp.EUR += v;
     else exp.PLN += v;
   });

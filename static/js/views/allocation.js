@@ -7,7 +7,7 @@ async function renderAllocation(el) {
       This tab compares how your wealth is split (<b>Share</b>) against a target split (<b>Target</b>).
       ${d.targets_customized
         ? "Your targets are set — the <b>Drift</b> is how far each class is from where you want it."
-        : `The targets start from a <b>📐 Model</b> — a textbook diversified allocation (e.g. real estate ~${d.rows.find((r) => r.key === "nieruchomosci") ? (d.rows.find((r) => r.key === "nieruchomosci").model) : 55}%, stocks/ETF ~${(d.rows.find((r) => r.key === "etf") || {}).model || 22}%), <b>not your own choice yet</b>. So the initial <b>Drift</b> is measured against that model. Edit the <b>Target</b> cells and Save to make them yours.`}
+        : `The targets start from a <b>📐 Model</b> — a textbook diversified allocation (e.g. real estate ~${d.rows.find((r) => r.key === "real_estate") ? (d.rows.find((r) => r.key === "real_estate").model) : 55}%, stocks/ETF ~${(d.rows.find((r) => r.key === "etf") || {}).model || 22}%), <b>not your own choice yet</b>. So the initial <b>Drift</b> is measured against that model. Edit the <b>Target</b> cells and Save to make them yours.`}
       Flags follow the 5/25 rule (rebalance at ±5pp absolute or 25% relative drift) and feed the Recommendations tab.
     </div>
     <div class="muted" style="margin-bottom:12px">Net wealth ${fmt.pln(d.total)} (real estate counted as equity net of loans).</div>

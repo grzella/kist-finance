@@ -309,7 +309,7 @@ def _rsu_path():
 
 _RSU_DEFAULT = {
     "ticker": "AAPL",
-    "grant_value_usd": 100000,     # generyczne — realne w rsu.json (gitignored)
+    "grant_value_usd": 100000,     # placeholder — real values live in rsu.json (gitignored)
     "pricing_window": "2026-08",       # average of this month's closes
     "grant_month": "2026-09",
     "vesting_years": 4,
@@ -320,9 +320,9 @@ _RSU_DEFAULT = {
     "target_bear": None,               # lower analyst target; None -> 0.65x spot
     "target_bull": None,               # upper analyst target; None -> 1.30x spot
     "analyst_target_mid": None,        # consensus; None -> current price (no view)
-    "mc_drift_annual": 0.08,           # dryf w symulacji Monte Carlo (roczny)
+    "mc_drift_annual": 0.08,           # annual drift for the Monte Carlo simulation
     "mc_sims": 1500,                   # number of MC paths
-    "perf_equity_multiplier": 1.5,     # 150% akcji rocznie (Twoja ocena Exceeds/Greatly)
+    "perf_equity_multiplier": 1.5,     # yearly refresh-grant uplift at a strong company performance rating
     "perf_base_raise_annual": 0.08,    # ~8% base raise per year
 }
 

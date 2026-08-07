@@ -1493,31 +1493,34 @@ def tax_summary():
 
 # ---------- asset allocation ----------
 
-ALLOC_TARGETS = {  # docelowe % netto (edytowalne)
-    "nieruchomosci": 55, "etf": 22, "team": 4,
-    "gotowka": 8, "emerytalne": 5, "auto": 6,
+ALLOC_TARGETS = {  # target % of net wealth (UI-editable model)
+    "real_estate": 55, "etf": 22, "rsu": 4,
+    "cash": 8, "retirement": 5, "car": 6,
 }
 ALLOC_LABELS = {
-    "nieruchomosci": "🏠 Real estate (equity)", "etf": "🌍 Stocks/ETF (brokerage)",
-    "team": "💎 RSU shares", "gotowka": "💵 Cash", "emerytalne": "🏦 Retirement (pension accounts)",
-    "auto": "🚗 Car (consumable)",
+    "real_estate": "🏠 Real estate (equity)", "etf": "🌍 Stocks/ETF (brokerage)",
+    "rsu": "💎 RSU shares", "cash": "💵 Cash", "retirement": "🏦 Retirement (pension accounts)",
+    "car": "🚗 Car (consumable)",
 }
+# saved alloc_targets may predate the key rename — accept old keys on read
+_ALLOC_LEGACY = {"nieruchomosci": "real_estate", "team": "rsu", "gotowka": "cash",
+                 "emerytalne": "retirement", "auto": "car"}
 
 
 def _alloc_class(name):
     n = name.lower()
-    if "mieszkan" in n or "dom" in n or "nieruchom" in n:
-        return "nieruchomosci"
-    if "xtb" in n or "etf" in n:
+    if "mieszkan" in n or "dom" in n or "nieruchom" in n or "estate" in n or "apartment" in n:
+        return "real_estate"
+    if "xtb" in n or "etf" in n or "broker" in n:
         return "etf"
-    if "rsu" in n or "team" in n:
-        return "team"
-    if "ikze" in n or "ike" in n or "ppk" in n or "emerytal" in n:
-        return "emerytalne"
+    if "rsu" in n or "espp" in n or "stock grant" in n:
+        return "rsu"
+    if "ikze" in n or "ike" in n or "ppk" in n or "emerytal" in n or "pension" in n or "401k" in n:
+        return "retirement"
     if "cash" in n or "checking" in n or "account" in n or "saving" in n:
-        return "gotowka"
-    if "kia" in n or " ev" in n or "auto" in n or "samoch" in n:
-        return "auto"
+        return "cash"
+    if " ev" in n or "auto" in n or "samoch" in n or "car" in n or "vehicle" in n:
+        return "car"
     return None
 
 
@@ -1530,6 +1533,7 @@ def alloc_targets():
     if raw:
         try:
             for k, v in _json.loads(raw).items():
+                k = _ALLOC_LEGACY.get(k, k)
                 if k in t and _num(v) is not None:
                     t[k] = float(v)
         except ValueError:
@@ -1566,15 +1570,15 @@ def allocation():
     rows.sort(key=lambda r: -r["value"])
     customized = bool(get_setting("alloc_targets"))
     hints = []
-    re_row = next(r for r in rows if r["key"] == "nieruchomosci")
+    re_row = next(r for r in rows if r["key"] == "real_estate")
     if re_row["pct"] > 65:
         hints.append(f"Real estate is {re_row['pct']}% of wealth — heavy concentration. After the loan is paid off, direct surpluses into liquid assets (VWCE), not more concrete.")
     etf_row = next(r for r in rows if r["key"] == "etf")
     if etf_row["pct"] < 15:
-        hints.append(f"Stocks/ETF only {etf_row['pct']}% — the main direction for new contributions (Core VWCE plan) to diversify away from real estate and the employer.")
-    team_row = next(r for r in rows if r["key"] == "team")
-    if team_row["pct"] > 4:
-        hints.append(f"RSU shares {team_row['pct']}% — plus future vests. Sell at vest, do not accumulate (risk: salary+bonus+shares in one company).")
+        hints.append(f"Stocks/ETF only {etf_row['pct']}% — the main direction for new contributions (e.g. a broad index ETF such as VWCE) to diversify away from real estate and the employer.")
+    rsu_row = next(r for r in rows if r["key"] == "rsu")
+    if rsu_row["pct"] > 4:
+        hints.append(f"RSU shares {rsu_row['pct']}% — plus future vests. Sell at vest, do not accumulate (risk: salary+bonus+shares in one company).")
     return {"rows": rows, "total": round(total, 0), "hints": hints,
             "targets_customized": customized}
 
@@ -2381,7 +2385,7 @@ def _liquid_now():
     """Liquid portfolio = ETF + RSU shares + cash + pension (excluding real estate)."""
     try:
         a = allocation()
-        keys = {"etf", "team", "gotowka", "emerytalne"}
+        keys = {"etf", "rsu", "cash", "retirement"}
         return round(sum(r["value"] for r in a["rows"] if r["key"] in keys), 0)
     except Exception:
         return None

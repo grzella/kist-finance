@@ -94,6 +94,7 @@ _PERSONAL_MARKERS = [
     ("private repo name", r"private-lab"),
     ("personal goal geo",  r"W\u0142och|Wloch\b|Hiszpan"),
     ("employer ticker",    r"\"TEAM\""),
+    ("employer perf-rating vocab", r"Exceeds/Greatly"),
 ]
 
 # Excludes for content scans (docs / vendored / sample data are not code).
