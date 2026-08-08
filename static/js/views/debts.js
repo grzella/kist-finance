@@ -75,6 +75,10 @@ async function renderDebts(el) {
           ${d.insurance_repayment ? `+ repayment insurance ${fmt.pln(d.insurance_repayment)}` : ""}
           ${d.insurance_property ? `+ property insurance ${fmt.pln(d.insurance_property)}` : ""}
           ${d.extra_monthly ? `+ other ${fmt.pln(d.extra_monthly)}` : ""}</div>
+        ${d.pace && !d.pace.insufficient ? `<div class="muted mt">📉 Overpayment pace: balance <b class="${d.pace.ahead_pln >= 0 ? "pos" : "neg"}">${fmt.pln(Math.abs(d.pace.ahead_pln))} ${d.pace.ahead_pln >= 0 ? "BELOW" : "ABOVE"}</b> schedule
+          · avg ${fmt.pln(d.pace.pace_monthly)}/mo${d.pace.months_saved ? ` · payoff ~<b>${d.pace.months_saved} months earlier</b>` : ""}
+          <span title="model = the clean schedule from the first known balance (minimum payment); actual = entries from the strip/corrections">ⓘ</span></div>`
+          : `<div class="muted mt">📉 Overpayment pace: enter the balance monthly in the dashboard strip — the history builds up.</div>`}
         <canvas id="dChart${idx}" height="60" class="mt"></canvas>
         <div class="row mt">
           <input data-num data-dover-in="${d.id}" placeholder="overpayment amount" style="width:160px">
@@ -101,10 +105,18 @@ async function renderDebts(el) {
         type: "line",
         data: {
           labels: d.history.map((h) => h.month),
-          datasets: [{ label: "Balance", data: d.history.map((h) => h.balance),
-            borderColor: CHART_COLORS[3], backgroundColor: "transparent", tension: 0.25 }],
+          datasets: [{ label: "Balance (actual)", data: d.history.map((h) => h.balance),
+            borderColor: CHART_COLORS[3], backgroundColor: "transparent", tension: 0.25 },
+          ...(d.pace && d.pace.points && d.pace.points.length > 1 ? [{
+            label: "Model (no overpayments)",
+            data: d.history.map((h) => {
+              const p = d.pace.points.find((x) => x.month === h.month);
+              return p ? p.model : null;
+            }),
+            borderColor: "#8a8fa8", borderDash: [6, 4], backgroundColor: "transparent",
+            tension: 0.25, pointRadius: 0 }] : [])],
         },
-        options: { plugins: { legend: { display: false } } },
+        options: { plugins: { legend: { display: d.pace && !d.pace.insufficient } } },
       }));
     });
   }

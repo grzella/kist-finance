@@ -46,3 +46,14 @@ def test_ticker_item_valued_live_and_skipped_in_rhythm(client):
     assert it2.get("live") and it2["latest_value"] == 50.0
     fresh = client.get("/api/freshness").get_json()
     assert not any(e["key"] == "wealth:" + it["id"] for e in fresh["due"])
+
+
+def test_debt_pace_contract(client):
+    """Every debt carries pace: model vs actual balance + overpayment pace."""
+    for d in client.get("/api/debts").get_json()["debts"]:
+        p = d["pace"]
+        assert "points" in p
+        if not p.get("insufficient"):
+            assert {"ahead_pln", "pace_monthly", "n_months"} <= set(p)
+            for pt in p["points"]:
+                assert {"month", "actual", "model"} <= set(pt)

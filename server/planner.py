@@ -662,6 +662,50 @@ def _save_debt_meta(debt_id, data):
         (debt_id, *vals))
 
 
+def _debt_pace(d, history):
+    """Am I overpaying — and how fast. Model = the clean schedule from the
+    first known balance (minimum payment, interest per rate); actual = the
+    recorded history (auto rows + bank corrections + overpayments). A positive
+    difference means you are AHEAD of schedule."""
+    if not history:
+        return {"insufficient": True, "points": []}
+    by_month = {}
+    for h in history:
+        by_month[h["month"]] = h["balance"]  # last entry of a month wins
+    months = sorted(by_month)
+    r = (d.get("effective_rate") or d.get("interest_rate") or 0) / 100 / 12
+    rata = d.get("minimum_payment") or 0
+    model_b = by_month[months[0]]
+    points = [{"month": months[0], "actual": by_month[months[0]],
+               "model": round(model_b, 2)}]
+    y, m = int(months[0][:4]), int(months[0][5:7])
+    last = months[-1]
+    while f"{y:04d}-{m:02d}" < last:
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+        mk = f"{y:04d}-{m:02d}"
+        model_b = max(0.0, model_b + model_b * r - rata)
+        if mk in by_month:
+            points.append({"month": mk, "actual": by_month[mk],
+                           "model": round(model_b, 2)})
+    if len(points) < 2:
+        return {"insufficient": True, "points": points}
+    ahead = round(points[-1]["model"] - points[-1]["actual"], 2)
+    span = max(1, _months_between(points[0]["month"] + "-01",
+                                  points[-1]["month"] + "-01"))
+    pace = round(ahead / span, 2)
+    saved = None
+    if rata > 0:
+        a = _amortize(points[-1]["actual"], d.get("effective_rate") or 0, rata)
+        b = _amortize(points[-1]["model"], d.get("effective_rate") or 0, rata)
+        if a["months"] is not None and b["months"] is not None:
+            saved = b["months"] - a["months"]
+    return {"insufficient": False, "points": points, "ahead_pln": ahead,
+            "pace_monthly": pace, "months_saved": saved,
+            "n_months": span + 1}
+
+
 def list_debts():
     debts = eb._rows("select * from debts order by balance desc")
     for d in debts:
@@ -683,6 +727,10 @@ def list_debts():
             (d["minimum_payment"] or 0) + (d["extra_monthly"] or 0)
             + (d["insurance_repayment"] or 0) + (d["insurance_property"] or 0), 2)
         d["variable_projection"] = _variable_projection(d)
+        hist = eb._rows(
+            "select month, balance, note from debt_values where debt_id = ? "
+            "order by month, created_at", (d["id"],))
+        d["pace"] = _debt_pace(d, hist)
         d["history"] = eb._rows(
             "select month, balance, principal_paid, interest_paid, note "
             "from debt_values where debt_id = ? order by month", (d["id"],))
@@ -1726,11 +1774,11 @@ def freshness():
             hist = [h for h in (d.get("history") or [])
                     if "auto" not in (h.get("note") or "")]
             last = (hist[-1]["month"] + "-01") if hist else None
-            stale = last is None or _months_between(last, iso) >= 3
+            stale = last is None or _months_between(last, iso) >= 1
             put(stale, key="debt:" + d["id"],
-                label=f"{d['name']}: reconcile balance with the bank statement",
+                label=f"{d['name']}: current balance per the bank",
                 group="Debts", last=last, days=age(last or ""), minutes=1,
-                cadence="quarterly", value_hint=d.get("balance"),
+                cadence="monthly", value_hint=d.get("balance"),
                 action={"type": "debt_balance", "debt_id": d["id"], "view": "debts"})
     except Exception:
         pass
