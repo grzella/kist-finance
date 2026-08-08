@@ -65,3 +65,20 @@ def test_allocation_leverage_contract(client):
     assert {"debt_total", "assets_total", "debt_to_assets_pct", "ltv_pct", "trend"} <= set(lv)
     for t in lv["trend"]:
         assert {"month", "debt", "assets", "pct"} <= set(t)
+
+
+def test_cushion_alert_reacts_to_expenses(client):
+    """Cushion alert: present with inflated expenses, gone with negligible ones.
+    Creates an explicit cash item — the seed may have none (then cash=0 and
+    the alert rightly stays on forever)."""
+    client.post("/api/wealth/items", json={
+        "name": "Cash buffer (test)", "kind": "cushion", "currency": "PLN"})
+    items = client.get("/api/wealth/summary").get_json()["items"]
+    it = next(i for i in items if i["name"] == "Cash buffer (test)")
+    client.post(f"/api/wealth/items/{it['id']}/values", json={"value": 1000000})
+    client.put("/api/settings", json={"monthly_expenses": "999999999"})
+    kinds = [r.get("kind") for r in client.get("/api/reminders").get_json()["reminders"]]
+    assert "Cushion" in kinds
+    client.put("/api/settings", json={"monthly_expenses": "1"})
+    kinds = [r.get("kind") for r in client.get("/api/reminders").get_json()["reminders"]]
+    assert "Cushion" not in kinds

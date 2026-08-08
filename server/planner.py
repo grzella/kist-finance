@@ -1953,6 +1953,26 @@ def _auto_reminders():
                             "due_date": fu, "auto": True, "kind": "Loan"})
     except Exception:
         pass
+    # cushion: cash < 3 months of FULL costs (monthly_expenses setting + live
+    # debt service) — the threshold shrinks by itself as debts get paid off
+    try:
+        expenses = float(get_setting("monthly_expenses") or 0)
+        if expenses > 0:
+            w = wealth_summary()
+            cash = sum((it.get("latest_value") or 0) for it in w["items"]
+                       if _alloc_class(it.get("name", "")) == "cash"
+                       and (it.get("latest_value") or 0) > 0)
+            service = sum((d.get("monthly_cost_total") or 0)
+                          for d in list_debts()["debts"])
+            burn = expenses + service
+            months = cash / burn if burn else None
+            if months is not None and months < 3:
+                out.append({"title": f"Cushion: {months:.1f} months of full costs "
+                            f"({_zl(cash)} / {_zl(burn)}/mo) — below the 3-month target",
+                            "due_date": today.isoformat(), "auto": True,
+                            "kind": "Cushion"})
+    except Exception:
+        pass
     # monthly data refresh (freshness engine) — one aggregate entry
     try:
         fr = freshness()
