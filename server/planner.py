@@ -287,6 +287,18 @@ def wealth_summary():
             "order by date desc, created_at desc, rowid desc limit 1", (it["id"],))
         it["latest_value"] = vals[0]["value"] if vals else None
         it["latest_date"] = vals[0]["date"] if vals else None
+        # USD items: values are STORED in USD and converted to PLN with the
+        # cached rate for totals/allocation/trend (entry stays in dollars)
+        if (it.get("currency") or "PLN") == "USD" and it["latest_value"] is not None:
+            try:
+                import market as _mkt
+                fx, _ = _mkt._usd_base_rate()
+                if fx:
+                    it["value_ccy"] = it["latest_value"]
+                    it["latest_value"] = round(it["latest_value"] * fx, 2)
+                    it["fx_rate"] = round(fx, 4)
+            except Exception:
+                pass
         lv = _live_value(it)
         if lv:
             it["latest_value"] = lv["value"]
@@ -303,14 +315,25 @@ def wealth_summary():
         by_kind[it["kind"]] += it["latest_value"] or 0
     # trend: sum of latest values per month across items
     history = eb._rows(
-        "select substr(v.date,1,7) month, v.item_id, v.value, v.date "
+        "select substr(v.date,1,7) month, v.item_id, v.value, v.date, i.currency "
         "from wealth_values v join wealth_items i on i.id = v.item_id "
         "where i.archived = 0 order by v.date, v.rowid")
+    _fx = None
     monthly = {}
     latest_in_month = {}
     for row in history:
+        v = row["value"]
+        if (row.get("currency") or "PLN") == "USD":
+            if _fx is None:
+                try:
+                    import market as _mkt
+                    _fx, _ = _mkt._usd_base_rate()
+                except Exception:
+                    _fx = 0
+            if _fx:
+                v = v * _fx
         key = (row["month"], row["item_id"])
-        latest_in_month[key] = row["value"]
+        latest_in_month[key] = v
     for (month, _item), value in latest_in_month.items():
         monthly.setdefault(month, 0)
         monthly[month] += value
@@ -1723,25 +1746,22 @@ def freshness():
         put(stale, key="wealth:" + it["id"], label=it["name"], group="Wealth",
             last=last, days=age(last or ""), minutes=1,
             cadence="quarterly" if need == 3 else "monthly",
-            value_hint=it.get("latest_value"), currency=it.get("currency"),
+            value_hint=it.get("value_ccy", it.get("latest_value")),
+            currency=it.get("currency"),
             action={"type": "wealth_value", "item_id": it["id"], "view": "wealth"})
 
-    # RSU: rsu.json mtime older than the start of the last vest month = vest not booked
+    # RSU: a simple monthly "how many shares do you hold" — the app infers vest
+    # inflows vs sales from the delta and the vest calendar (rsu_shares_history)
     try:
-        p = _mkt._rsu_path()
         import json as _json
+        p = _mkt._rsu_path()
         g = _json.loads(p.read_text()) if p.exists() else {}
-        vm = sorted(g.get("vest_months") or [2, 5, 8, 11])
-        past = [(today.year, m) for m in vm if m <= today.month]
-        vy, vmo = past[-1] if past else (today.year - 1, vm[-1])
-        vstart = _date(vy, vmo, 1)
-        mdate = _date.fromtimestamp(p.stat().st_mtime) if p.exists() else None
-        stale = mdate is None or mdate < vstart
-        put(stale, key="rsu_shares",
-            label=f"RSU: book the {vy:04d}-{vmo:02d} vest (shares_held)",
-            group="RSU", last=mdate.isoformat() if mdate else None,
-            days=(today - mdate).days if mdate else None, minutes=1,
-            cadence="each vest month", value_hint=g.get("shares_held"), always_show=True,
+        log = _mkt.rsu_shares_history(g)
+        last = (log[-1]["month"] + "-01") if log else None
+        stale = last is None or _months_between(last, iso) >= 1
+        put(stale, key="rsu_shares", label="RSU: shares held right now",
+            group="RSU", last=last, days=age(last or ""), minutes=1,
+            cadence="monthly", value_hint=g.get("shares_held"), always_show=True,
             action={"type": "rsu_shares", "view": "rsu"})
     except Exception:
         pass

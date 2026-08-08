@@ -438,6 +438,49 @@ def _rsu_holdings(grant, last, usdpln):
     return out
 
 
+def _log_rsu_shares(shares):
+    # state log: the user reports HOW MANY shares they hold each month; the
+    # app infers vest inflows vs sales from the delta and the vest calendar
+    _ensure_cache()
+    with db.get_conn() as conn:
+        conn.execute("""create table if not exists rsu_shares_log (
+            month text primary key, shares real not null, created_at text)""")
+        conn.execute("insert or replace into rsu_shares_log (month, shares, created_at) "
+                     "values (?,?,?)", (date.today().isoformat()[:7], shares,
+                                        datetime.now().isoformat(timespec="seconds")))
+        conn.commit()
+
+
+def rsu_shares_history(grant=None):
+    if grant is None:
+        p = _rsu_path()
+        grant = dict(_RSU_DEFAULT)
+        if p.exists():
+            grant.update(json.loads(p.read_text()))
+    _ensure_cache()
+    with db.get_conn() as conn:
+        try:
+            rows = [dict(r) for r in conn.execute(
+                "select month, shares from rsu_shares_log order by month")]
+        except Exception:
+            rows = []
+    vm = set(grant.get("vest_months") or [2, 5, 8, 11])
+    nxt = grant.get("shares_next_vest") or 0
+    out = []
+    prev = None
+    for r in rows:
+        entry = {"month": r["month"], "shares": r["shares"]}
+        if prev is not None:
+            delta = r["shares"] - prev
+            vest_in = nxt if int(r["month"][5:7]) in vm else 0
+            entry["delta"] = round(delta, 0)
+            entry["vest_in"] = vest_in
+            entry["sold_est"] = round(max(0, prev + vest_in - r["shares"]), 0)
+        prev = r["shares"]
+        out.append(entry)
+    return out
+
+
 def update_rsu(data):
     p = _rsu_path()
     grant = dict(_RSU_DEFAULT)
@@ -447,6 +490,11 @@ def update_rsu(data):
         if k in data:
             grant[k] = data[k]
     p.write_text(json.dumps(grant, indent=2))
+    if "shares_held" in data:
+        try:
+            _log_rsu_shares(float(data["shares_held"]))
+        except Exception:
+            pass
     return get_rsu()
 
 

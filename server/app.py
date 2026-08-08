@@ -910,7 +910,9 @@ def settings_put():
 
 @app.get("/api/rsu")
 def rsu_get():
-    return jsonify(market.get_rsu())
+    out = market.get_rsu()
+    out["shares_history"] = market.rsu_shares_history()
+    return jsonify(out)
 
 
 @app.put("/api/rsu")

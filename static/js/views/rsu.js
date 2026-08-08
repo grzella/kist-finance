@@ -57,6 +57,21 @@ async function renderRsu(el) {
         <div class="sub">close ${r.last_close_date || "—"}${r.usdpln !== 1 ? ` · USD/${window.APP_CURRENCY || "PLN"} ${r.usdpln ? fmt.num(r.usdpln, 3) : "—"} (${r.usdpln_date || "—"})` : ""}<br>
           new quotes daily ~22:35 (n8n) · sync: ${r.cache_synced ? r.cache_synced.slice(0, 16).replace("T", " ") : "—"}</div></div>
     </div>
+    ${(r.shares_history || []).length ? `<div class="card mt">
+      <h3 style="margin-top:0">🧾 Share-count history (from the strip, monthly)</h3>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Month</th><th style="text-align:right">Shares</th><th style="text-align:right">Δ</th><th>Reading</th></tr></thead>
+        <tbody>${r.shares_history.slice(-12).map((h) => `<tr>
+          <td>${h.month}</td>
+          <td style="text-align:right">${fmt.num(h.shares, 0)}</td>
+          <td style="text-align:right">${h.delta != null ? (h.delta >= 0 ? "+" : "") + fmt.num(h.delta, 0) : "—"}</td>
+          <td class="muted">${h.delta == null ? "starting point"
+            : (h.vest_in ? `vest +${fmt.num(h.vest_in, 0)}` : "no vest")
+              + (h.sold_est > 0 ? ` · <b class="neg">sold ~${fmt.num(h.sold_est, 0)}</b>` : h.delta >= 0 ? " · no sales" : "")}</td>
+        </tr>`).join("")}</tbody>
+      </table></div>
+      <div class="muted mt">You only report the current count — vests and sales are inferred from the delta and the vest calendar.</div>
+    </div>` : ""}
     <div class="card mt" style="border-left:4px solid #ffd166">
       <h3 style="margin-top:0">💡 Recommendation</h3>
       <div>${rec}</div>
