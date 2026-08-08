@@ -57,3 +57,11 @@ def test_debt_pace_contract(client):
             assert {"ahead_pln", "pace_monthly", "n_months"} <= set(p)
             for pt in p["points"]:
                 assert {"month", "actual", "model"} <= set(pt)
+
+
+def test_allocation_leverage_contract(client):
+    """Allocation carries leverage: debt/assets, LTV and the debt-decline trend."""
+    lv = client.get("/api/allocation").get_json()["leverage"]
+    assert {"debt_total", "assets_total", "debt_to_assets_pct", "ltv_pct", "trend"} <= set(lv)
+    for t in lv["trend"]:
+        assert {"month", "debt", "assets", "pct"} <= set(t)

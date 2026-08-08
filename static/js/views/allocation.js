@@ -12,6 +12,17 @@ async function renderAllocation(el) {
     </div>
     <div class="muted" style="margin-bottom:12px">Net wealth ${fmt.pln(d.total)} (real estate counted as equity net of loans).</div>
 
+    ${d.leverage ? `<div class="card" style="margin-bottom:12px">
+      <h3 style="margin-top:0">🏦 Debt vs value</h3>
+      <div class="row" style="gap:24px;flex-wrap:wrap">
+        <div><div class="muted">Debt / assets</div><div class="value">${d.leverage.debt_to_assets_pct}%</div>
+          <div class="muted">${fmt.pln(d.leverage.debt_total)} / ${fmt.pln(d.leverage.assets_total)}</div></div>
+        <div><div class="muted" title="mortgage balances / property values">Real-estate LTV</div><div class="value">${d.leverage.ltv_pct}%</div>
+          <div class="muted">${fmt.pln(d.leverage.debt_total)} / ${fmt.pln(d.leverage.re_value)}</div></div>
+        <div style="flex:1;min-width:260px"><canvas id="levChart" height="70"></canvas></div>
+      </div>
+      <div class="muted mt">A falling line = debt shrinking relative to wealth. Enter debt balances monthly in the strip — each entry adds a point.</div>
+    </div>` : ""}
     <div class="grid cols-2">
       <div class="card"><h3>Wealth structure</h3><canvas id="allocChart" height="220"></canvas></div>
       <div class="card">
@@ -50,6 +61,19 @@ async function renderAllocation(el) {
     },
     options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } } },
   }));
+
+  if (d.leverage && d.leverage.trend && d.leverage.trend.length > 1) {
+    trackChart(new Chart(document.getElementById("levChart"), {
+      type: "line",
+      data: {
+        labels: d.leverage.trend.map((t) => t.month),
+        datasets: [{ label: "Debt / assets %", data: d.leverage.trend.map((t) => t.pct),
+          borderColor: "#e0a030", backgroundColor: "transparent", tension: 0.25 }],
+      },
+      options: { plugins: { legend: { display: false } },
+        scales: { y: { ticks: { callback: (v) => v + "%" } } } },
+    }));
+  }
 
   document.getElementById("tgtSave").addEventListener("click", async () => {
     const t = {};

@@ -1677,6 +1677,52 @@ def alloc_targets():
     return t
 
 
+def _leverage(w):
+    """Leverage: debt/assets + real-estate LTV + a monthly trend, so that
+    falling debt is VISIBLE. Series use carry-forward: debt balances from
+    debt_values, assets from the wealth trend."""
+    debts = w.get("debts") or []
+    debt_total = w.get("debt_total") or 0
+    assets = w.get("total") or 0
+    re_val = 0.0
+    for it in w.get("items", []):
+        if _alloc_class(it.get("name", "")) == "real_estate" \
+                and (it.get("latest_value") or 0) > 0:
+            re_val += it["latest_value"]
+    mort = sum(d["balance"] for d in debts) if debts else 0
+    out = {
+        "debt_total": round(debt_total, 0),
+        "assets_total": round(assets, 0),
+        "debt_to_assets_pct": round(100 * debt_total / assets, 1) if assets else None,
+        "ltv_pct": round(100 * mort / re_val, 1) if re_val else None,
+        "re_value": round(re_val, 0),
+    }
+    # trend: saldo długu carry-forward per kredyt + aktywa z trendu majątku
+    rows = eb._rows("select debt_id, month, balance from debt_values "
+                    "order by month, created_at")
+    per_debt = {}
+    for r in rows:
+        per_debt.setdefault(r["debt_id"], []).append((r["month"], r["balance"]))
+    asset_by_month = {t["month"]: t["total"] for t in (w.get("trend") or [])}
+    months = sorted(set(asset_by_month)
+                    | {m for srs in per_debt.values() for m, _ in srs})
+    trend = []
+    prev_assets = None
+    for m in months:
+        dtot = 0.0
+        for srs in per_debt.values():
+            past = [v for (mm, v) in srs if mm <= m]
+            if past:
+                dtot += past[-1]
+        a = asset_by_month.get(m, prev_assets)
+        prev_assets = a
+        trend.append({"month": m, "debt": round(dtot, 0),
+                      "assets": round(a, 0) if a else None,
+                      "pct": round(100 * dtot / a, 1) if a else None})
+    out["trend"] = trend
+    return out
+
+
 def allocation():
     w = wealth_summary()
     targets = alloc_targets()
@@ -1716,7 +1762,7 @@ def allocation():
     if rsu_row["pct"] > 4:
         hints.append(f"RSU shares {rsu_row['pct']}% — plus future vests. Sell at vest, do not accumulate (risk: salary+bonus+shares in one company).")
     return {"rows": rows, "total": round(total, 0), "hints": hints,
-            "targets_customized": customized}
+            "targets_customized": customized, "leverage": _leverage(w)}
 
 
 def refresh_derived():
