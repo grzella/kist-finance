@@ -1697,7 +1697,7 @@ def _leverage(w):
         "ltv_pct": round(100 * mort / re_val, 1) if re_val else None,
         "re_value": round(re_val, 0),
     }
-    # trend: saldo długu carry-forward per kredyt + aktywa z trendu majątku
+    # trend: debt balance carried forward per debt + assets from the wealth trend
     rows = eb._rows("select debt_id, month, balance from debt_values "
                     "order by month, created_at")
     per_debt = {}
