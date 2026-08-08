@@ -800,6 +800,11 @@ def freshness_get():
     return jsonify(planner.freshness())
 
 
+@app.post("/api/freshness/derived")
+def freshness_derived():
+    return jsonify(planner.refresh_derived())
+
+
 @app.get("/api/reminders")
 def reminders_list():
     return jsonify(planner.list_reminders())

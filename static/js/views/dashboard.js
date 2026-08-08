@@ -164,6 +164,7 @@ async function renderDashboard(el) {
     for (const i of biz) {
       await api.post("/api/business", { kind: i.dataset.freshBiz, amount: parseNum(i.value) });
     }
+    await api.post("/api/freshness/derived", {});
     location.reload();
   });
 }

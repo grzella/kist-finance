@@ -318,25 +318,45 @@ def wealth_summary():
         "select substr(v.date,1,7) month, v.item_id, v.value, v.date, i.currency "
         "from wealth_values v join wealth_items i on i.id = v.item_id "
         "where i.archived = 0 order by v.date, v.rowid")
+    # CARRY-FORWARD: a monthly point = the sum of the LAST KNOWN value of every
+    # item (not just entries made that month). With mixed strip cadences
+    # (real estate quarterly, live items with no rows) per-month summing
+    # collapsed the chart. Live items contribute their current valuation in
+    # the current month.
     _fx = None
-    monthly = {}
-    latest_in_month = {}
+
+    def _to_base(v, ccy):
+        nonlocal _fx
+        if (ccy or "PLN") != "USD":
+            return v
+        if _fx is None:
+            try:
+                import market as _mkt
+                _fx, _ = _mkt._usd_base_rate()
+            except Exception:
+                _fx = 0
+        return v * _fx if _fx else v
+
+    per_item = {}
     for row in history:
-        v = row["value"]
-        if (row.get("currency") or "PLN") == "USD":
-            if _fx is None:
-                try:
-                    import market as _mkt
-                    _fx, _ = _mkt._usd_base_rate()
-                except Exception:
-                    _fx = 0
-            if _fx:
-                v = v * _fx
-        key = (row["month"], row["item_id"])
-        latest_in_month[key] = v
-    for (month, _item), value in latest_in_month.items():
-        monthly.setdefault(month, 0)
-        monthly[month] += value
+        per_item.setdefault(row["item_id"], []).append(
+            (row["month"], _to_base(row["value"], row.get("currency"))))
+    cur_month = date.today().strftime("%Y-%m")
+    all_months = sorted({m for series in per_item.values() for m, _ in series}
+                        | ({cur_month} if per_item else set()))
+    live_by_id = {it["id"]: it["latest_value"] for it in items if it.get("live")}
+    monthly = {}
+    for m in all_months:
+        total = 0.0
+        for iid, series in per_item.items():
+            if m == cur_month and iid in live_by_id:
+                continue  # live wins over the carried-forward stored value
+            past = [v for (mm, v) in series if mm <= m]
+            if past:
+                total += past[-1]
+        if m == cur_month:
+            total += sum(v for v in live_by_id.values() if v is not None)
+        monthly[m] = total
     trend = [{"month": m, "total": round(t, 2)} for m, t in sorted(monthly.items())]
     debt_total = eb._rows("select coalesce(sum(balance),0) s from debts")[0]["s"]
     return {
@@ -1697,6 +1717,36 @@ def allocation():
         hints.append(f"RSU shares {rsu_row['pct']}% — plus future vests. Sell at vest, do not accumulate (risk: salary+bonus+shares in one company).")
     return {"rows": rows, "total": round(total, 0), "hints": hints,
             "targets_customized": customized}
+
+
+def refresh_derived():
+    """After a manual data entry: recompute derived layers — this month's net
+    worth and FIRE snapshots (replace, not ensure), a risk-radar snapshot and
+    the RSU prediction tracker. Called after a freshness-strip save."""
+    out = {}
+    month = date.today().strftime("%Y-%m")
+    try:
+        eb._exec("delete from snapshots where type='net_worth' and date like ?",
+                 (month + "%",))
+        eb._exec("delete from fire_snapshots where month=?", (month,))
+        ensure_monthly_snapshot()
+        record_fire_snapshot()
+        out["snapshots"] = "ok"
+    except Exception as e:
+        out["snapshots"] = str(e)[:80]
+    try:
+        import risk_radar
+        risk_radar.snapshot()
+        out["risk_radar"] = "ok"
+    except Exception as e:
+        out["risk_radar"] = str(e)[:80]
+    try:
+        import market as _mkt
+        _mkt.rsu_accuracy()
+        out["rsu_tracker"] = "ok"
+    except Exception as e:
+        out["rsu_tracker"] = str(e)[:80]
+    return out
 
 
 # ---------- data freshness (monthly update rhythm) ----------
