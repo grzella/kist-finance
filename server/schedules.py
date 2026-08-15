@@ -14,6 +14,7 @@ Config lives in app_settings: `schedules` = {task_id: {freq, day, hour}} and
 `sched_last.<id>` = period key of the last run.
 """
 import json
+import os
 from datetime import datetime
 
 import planner
@@ -155,8 +156,28 @@ def _is_due(cfg, last_period, now):
     return d > cfg["day"] or (d == cfg["day"] and now.hour >= cfg["hour"])
 
 
+def _succeeded(result):
+    """Did the runner actually succeed?
+
+    This used to be a bare `if result:`, which treated ANY non-empty dict as
+    success — so `{"ok": False, "error": "..."}` recorded the task as done and a
+    monthly job silently lost the whole period. Collectors return a dict with an
+    "ok" key; honour it.
+    """
+    if isinstance(result, dict):
+        return bool(result.get("ok", True))
+    return bool(result)
+
+
 def run_due(now=None):
-    """Run every due 'app' task once. Called from /api/health (best-effort)."""
+    """Run every due 'app' task once. Called from /api/health (best-effort).
+
+    Disabled in tests via KIST_NO_SCHEDULED_TASKS=1 — otherwise /api/health hits
+    Google Trends live and appends barometer points to the throwaway test DB,
+    making unrelated tests depend on network state.
+    """
+    if os.environ.get("KIST_NO_SCHEDULED_TASKS") == "1":
+        return []
     now = now or datetime.now()
     cfgs = _cfgs()
     ran = []
@@ -166,10 +187,12 @@ def run_due(now=None):
         if not _is_due(cfg, planner.get_setting(key), now):
             continue
         try:
-            ok = t["runner"]()
+            result = t["runner"]()
         except Exception:
-            ok = False
-        if ok:
+            result = False
+        # Success -> record the period. Failure -> do NOT, so the next app open
+        # retries within the same period.
+        if _succeeded(result):
             planner.set_settings({key: _period_key(cfg, now)})
             ran.append(t["id"])
     return ran

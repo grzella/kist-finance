@@ -16,15 +16,41 @@ _SOURCE = "Google Trends (search interest)"
 _GEO_LABEL = "global (remote proxy)"
 
 
+HISTORY_START = "2026-01"  # first month of barometer history
+
+
 def _last_full_month():
     t = date.today()
     y, m = (t.year, t.month - 1) if t.month > 1 else (t.year - 1, 12)
     return f"{y:04d}-{m:02d}"
 
 
+def _full_months_since(start):
+    """Months 'YYYY-MM' from `start` through the last FULL month, inclusive.
+
+    The current month is always skipped — Trends would report a deflated average
+    for it and opening counts would be partial. It lands on a run next month.
+    """
+    y, m = int(start[:4]), int(start[5:7])
+    last = _last_full_month()
+    out = []
+    while f"{y:04d}-{m:02d}" <= last:
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
+
 def collect():
-    """Appends the last full month for the configured roles. Best-effort — Trends
-    rate-limits; on error it returns ok:False without breaking anything."""
+    """Fills in EVERY missing full month of the 'trends' stream.
+
+    Not just the latest one: a single Trends query already returns the whole
+    range since HISTORY_START, so each run also patches older gaps. An app left
+    unopened for months catches up by itself, and one failed attempt (rate limit)
+    no longer loses a month permanently.
+
+    Best-effort — on error it returns ok:False and changes nothing; the scheduler
+    then does NOT record a run and retries (see schedules._succeeded).
+    """
     import planner
     try:
         from pytrends.request import TrendReq
@@ -34,27 +60,45 @@ def collect():
     cfg = planner.barometer_config()
     roles = cfg["roles"]
     queries = [r["query"] for r in roles][:5]  # Trends: max 5 terms at once
-    target = _last_full_month()
-    if target in {p["month"] for p in planner.list_barometer()["points"]}:
-        return {"ok": True, "skipped": target}
+
+    # Own stream only — an 'openings' point must not block a 'trends' write.
+    have = {p["month"] for p in planner.list_barometer()["points"]
+            if p.get("stream") == "trends"}
+    wanted = [m for m in _full_months_since(HISTORY_START) if m not in have]
+    if not wanted:
+        return {"ok": True, "added": [], "up_to_date": _last_full_month()}
 
     try:
         tr = TrendReq(hl="en-US", tz=0)
-        tr.build_payload(queries, timeframe=f"2026-01-01 {date.today().isoformat()}", geo=GEO)
+        tr.build_payload(queries, timeframe=f"{HISTORY_START}-01 {date.today().isoformat()}", geo=GEO)
         df = tr.interest_over_time()
         if "isPartial" in df:
             df = df.drop(columns=["isPartial"])
         monthly = df.resample("MS").mean().round(1)
-        row = monthly[monthly.index.strftime("%Y-%m") == target]
-        if row.empty:
-            return {"ok": False, "error": f"no Trends data for {target}"}
-        counts = {roles[i]["key"]: float(row[queries[i]].iloc[0]) for i in range(len(roles))}
-        planner.add_barometer_point({
-            "month": target, "counts": counts, "stream": "trends",
-            "sources": _SOURCE, "geo": _GEO_LABEL, "as_of": date.today().isoformat()})
-        return {"ok": True, "added": target, "counts": counts}
     except Exception as e:
         return {"ok": False, "error": str(e)[:140]}
+
+    added, missing = [], []
+    for month in wanted:
+        row = monthly[monthly.index.strftime("%Y-%m") == month]
+        if row.empty:
+            missing.append(month)
+            continue
+        counts = {roles[i]["key"]: float(row[queries[i]].iloc[0]) for i in range(len(roles))}
+        planner.add_barometer_point({
+            "month": month, "counts": counts, "stream": "trends",
+            "sources": _SOURCE, "geo": _GEO_LABEL, "as_of": date.today().isoformat()})
+        added.append(month)
+
+    # Success only if the last full month is now covered; otherwise stay ok:False
+    # so the next app open retries within the same period.
+    done = _last_full_month() in (have | set(added))
+    out = {"ok": done, "added": added}
+    if missing:
+        out["no_trends_data"] = missing
+    if not done:
+        out["error"] = f"could not complete {_last_full_month()}"
+    return out
 
 
 def collect_openings():

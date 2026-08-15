@@ -321,3 +321,42 @@ def test_view_js_global_helpers_are_defined():
     # any view calling esc( must have esc defined (the exact regression)
     if any("esc(" in v.read_text() for v in views):
         assert "function esc" in defined, "views call esc() but api.js/app.js has no `function esc`"
+
+
+def test_scheduler_does_not_burn_period_on_failed_runner():
+    """Regression (the barometer silently lost July 2026): run_due did `if ok:`
+    while collectors return a dict — so {"ok": False, "error": ...} was truthy and
+    a monthly task recorded itself as done, losing the period until the next one."""
+    import schedules
+    assert schedules._succeeded({"ok": False, "error": "rate limited"}) is False
+    assert schedules._succeeded({"ok": False}) is False
+    assert schedules._succeeded({"ok": True, "added": []}) is True
+    assert schedules._succeeded({"added": ["2026-07"]}) is True  # no "ok" key = success
+    assert schedules._succeeded(True) is True
+    assert schedules._succeeded(False) is False
+    assert schedules._succeeded(None) is False
+
+
+def test_barometer_full_months_skips_current_and_covers_gaps():
+    """The collector must fill EVERY missing full month, not only the latest —
+    otherwise an app left unopened for months keeps those gaps forever. The current
+    month is always skipped (Trends would report a deflated average)."""
+    import barometer_collect as bc
+    from datetime import date
+
+    class _FakeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 8, 15)
+
+    orig = bc.date
+    bc.date = _FakeDate
+    try:
+        assert bc._last_full_month() == "2026-07"
+        months = bc._full_months_since("2026-01")
+        assert months == ["2026-01", "2026-02", "2026-03", "2026-04",
+                          "2026-05", "2026-06", "2026-07"]
+        assert "2026-08" not in months  # never the current month
+        assert bc._full_months_since("2025-11")[:3] == ["2025-11", "2025-12", "2026-01"]
+    finally:
+        bc.date = orig

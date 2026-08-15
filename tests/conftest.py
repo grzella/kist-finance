@@ -18,6 +18,10 @@ sys.path.insert(0, str(ROOT / "server"))
 
 @pytest.fixture(scope="session")
 def data_dir():
+    # Scheduled tasks (Google Trends, JSearch) must NOT run in tests — /api/health
+    # called run_due, which hit the network live and appended barometer points to
+    # the throwaway DB, making unrelated tests depend on network state.
+    os.environ["KIST_NO_SCHEDULED_TASKS"] = "1"
     tmp = tempfile.mkdtemp(prefix="kist-test-")
     env = dict(os.environ, FINANCE_PROJECT_DIR=tmp)
     subprocess.run([sys.executable, str(ROOT / "seed.py")],

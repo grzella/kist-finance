@@ -183,9 +183,16 @@ def test_schedules_is_due_logic():
 def test_schedules_run_due_records_period(client, monkeypatch):
     import schedules as sc
     import planner
+    # this test WANTS run_due to actually run — lift the conftest kill switch
+    monkeypatch.delenv("KIST_NO_SCHEDULED_TASKS", raising=False)
     ran = {"n": 0}
-    task = next(t for t in sc.REGISTRY if t["kind"] == "app")
-    monkeypatch.setitem(task, "runner", lambda: ran.__setitem__("n", ran["n"] + 1) or True)
+    task = dict(next(t for t in sc.REGISTRY if t["kind"] == "app"))
+    task["runner"] = lambda: ran.__setitem__("n", ran["n"] + 1) or True
+    # REGISTRY narrowed to this one task. Previously the test stubbed only the
+    # first task's runner while run_due still executed ALL the others — including
+    # the real collectors (Google Trends, JSearch). That meant live network calls
+    # during tests and barometer points written into the throwaway DB.
+    monkeypatch.setattr(sc, "REGISTRY", [task])
     planner.set_settings({f"sched_last.{task['id']}": ""})
     from datetime import datetime
     out = sc.run_due(datetime(2026, 7, 13, 23, 0))
