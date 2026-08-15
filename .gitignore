@@ -11,3 +11,6 @@ __pycache__/
 .coverage
 .hypothesis/
 dist/
+
+# local test environment matched to CI (Python 3.12)
+.venv/
