@@ -2,7 +2,7 @@
 """Seed a FRESH database with obviously-fake sample data so a new clone
 shows a working app. Refuses to run if data already exists (protects real data).
 
-Usage:  python3 seed.py [--force]
+Usage:  python3 seed.py   (refuses to touch a database that already has data)
 """
 import sys
 from pathlib import Path
@@ -19,9 +19,12 @@ db.init_db()          # base tables (accounts, transactions, goals, debts…)
 planner.ensure_tables()
 
 existing = eb._rows("select count(*) c from wealth_items")
-if existing and existing[0]["c"] > 0 and "--force" not in sys.argv:
-    print("DB already has data — skipping seed. Use --force to add sample data anyway.")
-    sys.exit(0)
+if existing and existing[0]["c"] > 0:
+    # Seeding overwrites settings (fixed costs, salary, buffers) — never do that
+    # to a database that already holds data, even with --force.
+    print("DB already has data — refusing to seed over it (it would overwrite your settings).")
+    print("For a fresh demo, delete the database file and run seed.py again.")
+    sys.exit(1)
 
 print("Seeding sample data (fake persona: Alex Demo)…")
 
