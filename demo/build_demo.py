@@ -462,12 +462,26 @@ for t in TICKERS:
 # parametrized rules the crawl above can't enumerate
 paths += ["/api/analysis/career", "/api/analysis/contributions", "/api/analysis/property"]
 
+# Some endpoints report on the LOCAL MACHINE running this script (e.g. backup
+# destinations auto-detected from the filesystem: home dir, cloud-sync folder
+# names that embed the account's email). On a clean CI runner they're always
+# empty; run this script on your own laptop and they leak your real
+# username/email into the committed-nowhere-but-deployed static demo. Scrub
+# them unconditionally so the demo is safe regardless of where it's built.
+_SCRUB = {
+    "/api/backup/status": lambda d: {**d, "destinations": [], "dir": ""},
+}
+
 ok = fail = 0
 for p in paths:
     try:
         r = client.get(p)
         if r.status_code == 200 and r.is_json:
-            (snap_dir / fname(p)).write_text(json.dumps(r.get_json(), ensure_ascii=False))
+            payload = r.get_json()
+            scrub = _SCRUB.get(p.split("?")[0])
+            if scrub:
+                payload = scrub(payload)
+            (snap_dir / fname(p)).write_text(json.dumps(payload, ensure_ascii=False))
             ok += 1
         else:
             fail += 1
