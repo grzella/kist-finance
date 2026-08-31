@@ -81,6 +81,7 @@ def test_forecast_model_primitives():
 
 def test_backup_snapshot_is_consistent(client, tmp_path):
     import data_backup as backup
+    backup.planner.set_settings({"backup_allow_plaintext": "true"})  # no BACKUP_KEY in test env
     backup.set_destination(str(tmp_path))
     r = backup.create_backup()
     assert r["ok"] and r["size_kb"] > 0
@@ -88,6 +89,7 @@ def test_backup_snapshot_is_consistent(client, tmp_path):
 
 def test_backup_restore_reverts_changes(client, tmp_path):
     import data_backup as backup
+    backup.planner.set_settings({"backup_allow_plaintext": "true"})  # no BACKUP_KEY in test env
     backup.set_destination(str(tmp_path))
     before = len(client.get("/api/goals").get_json())
     snap = backup.create_backup()["file"]

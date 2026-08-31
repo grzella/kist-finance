@@ -22,6 +22,16 @@ import planner
 KEEP = 14              # how many recent backups to keep
 SUBDIR = "kist-backups"
 
+# Backup encryption format. `KISTB2` = versioned header + random per-file salt +
+# Fernet token. Legacy files (unsalted sha256, pre-hardening) still decrypt.
+_MAGIC = b"KISTB2\n"
+_SALT_LEN = 16
+PBKDF2_ITERS = 600_000  # OWASP 2023 baseline for PBKDF2-HMAC-SHA256
+
+
+class BackupError(Exception):
+    pass
+
 
 def _db_path():
     for r in eb._rows("PRAGMA database_list"):
@@ -62,19 +72,45 @@ def _folder():
     return os.path.join(d, SUBDIR) if d else None
 
 
+def _derive_key(passphrase: str, salt: bytes) -> bytes:
+    """PBKDF2-HMAC-SHA256(passphrase, salt) -> Fernet key (urlsafe-b64, 32 B).
+    Salted and costly, so offline brute-force from a stolen .enc is expensive."""
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt,
+                     iterations=PBKDF2_ITERS)
+    return base64.urlsafe_b64encode(kdf.derive(passphrase.encode()))
+
+
 def _maybe_encrypt(path):
-    """Encrypt with Fernet if cryptography is available and BACKUP_KEY is set."""
+    """Encrypt with Fernet (PBKDF2, versioned header + salt).
+
+    FAIL-CLOSED: the backup lands in a cloud-synced folder, so we never silently
+    drop a plaintext finance DB there. If BACKUP_KEY is set but `cryptography` is
+    missing -> error (the user asked for encryption and didn't get it). If no key
+    -> error, unless `backup_allow_plaintext` is explicitly enabled.
+    """
     key = os.environ.get("BACKUP_KEY", "")
     if not key:
-        return path, False
+        # settings are stored as str(v), so `False` reads back as truthy "False";
+        # parse to a real bool explicitly, otherwise this fails OPEN.
+        allow = str(planner.get_setting("backup_allow_plaintext") or "").strip().lower()
+        if allow in ("1", "true", "yes", "on"):
+            return path, False
+        raise BackupError(
+            "unencrypted cloud backup blocked — set BACKUP_KEY in .env or "
+            "explicitly enable plaintext backup (backup_allow_plaintext) in settings")
     try:
         from cryptography.fernet import Fernet
     except Exception:
-        return path, False
-    fkey = base64.urlsafe_b64encode(hashlib.sha256(key.encode()).digest())
+        raise BackupError(
+            "BACKUP_KEY is set but the cryptography library is missing — "
+            "pip install cryptography (refusing to drop a plaintext DB to the cloud)")
+    salt = os.urandom(_SALT_LEN)
+    fkey = _derive_key(key, salt)
     data = Path(path).read_bytes()
     enc = path + ".enc"
-    Path(enc).write_bytes(Fernet(fkey).encrypt(data))
+    Path(enc).write_bytes(_MAGIC + salt + Fernet(fkey).encrypt(data))
     os.remove(path)
     return enc, True
 
@@ -110,7 +146,15 @@ def create_backup():
     finally:
         d.close()
         s.close()
-    final, encrypted = _maybe_encrypt(out)
+    try:
+        final, encrypted = _maybe_encrypt(out)
+    except BackupError as e:
+        # fail-closed: never leave the plaintext snapshot behind in the cloud folder
+        try:
+            os.remove(out)
+        except OSError:
+            pass
+        return {"ok": False, "error": str(e)}
     _prune(folder)
     size = os.path.getsize(final)
     return {"ok": True, "file": os.path.basename(final), "dir": folder,
@@ -133,8 +177,16 @@ def list_backups():
 
 def _decrypt_to(src, dst):
     from cryptography.fernet import Fernet
-    fkey = base64.urlsafe_b64encode(hashlib.sha256(os.environ["BACKUP_KEY"].encode()).digest())
-    Path(dst).write_bytes(Fernet(fkey).decrypt(Path(src).read_bytes()))
+    key = os.environ["BACKUP_KEY"]
+    blob = Path(src).read_bytes()
+    if blob.startswith(_MAGIC):                 # KISTB2: header + salt + token
+        salt = blob[len(_MAGIC):len(_MAGIC) + _SALT_LEN]
+        token = blob[len(_MAGIC) + _SALT_LEN:]
+        fkey = _derive_key(key, salt)
+    else:                                       # legacy: unsalted sha256 (pre-hardening)
+        fkey = base64.urlsafe_b64encode(hashlib.sha256(key.encode()).digest())
+        token = blob
+    Path(dst).write_bytes(Fernet(fkey).decrypt(token))
 
 
 def restore(filename):

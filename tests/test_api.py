@@ -128,6 +128,8 @@ def test_wealth_item_crud(client):
 
 
 def test_backup_roundtrip(client, tmp_path):
+    import data_backup as backup
+    backup.planner.set_settings({"backup_allow_plaintext": "true"})  # no BACKUP_KEY in test env
     st = client.get("/api/backup/status").get_json()
     assert "destinations" in st
     client.post("/api/backup/config", json={"dir": str(tmp_path)})
