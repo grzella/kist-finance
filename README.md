@@ -47,6 +47,7 @@ Core (always on):
 | 💸 Cash-flow | income vs. expenses, monthly surplus |
 | 💡 Recommendations | rule-engine guidance from your data (+ optional AI) |
 | 💎 Wealth | assets and net worth over time, with snapshots |
+| 🧾 Fixed Expenses | recurring costs grouped by entity (personal/business/rental…) and subscription type (work/entertainment), with month-to-month trend, an "invoiced" tag for expense/tax tracking, and rule-based cost-optimization hints — an item you don't touch just carries its last amount forward, so there's no monthly copy-paste |
 | 🥧 Allocation | portfolio breakdown vs. targets, 5/25 drift |
 | 🎯 Goals | savings goals with ETA as a range |
 | 🔮 Forecasts | range forecasts, FIRE crossover, stress test + guardrails |

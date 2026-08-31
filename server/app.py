@@ -135,28 +135,40 @@ def dashboard_summary():
     data["debt_total"] = w["debt_total"]
     data["net_worth"] = round(assets - w["debt_total"], 2)
     data["planned_income"] = round(w["totals"].get("income", 0), 2)
-    fc_raw = planner.get_setting("fixed_costs")
-    if fc_raw:
-        try:
-            fc = _json.loads(fc_raw)
-            data["planned_costs"] = fc.get("total_mine")
-            data["planned_essential"] = fc.get("essential_mine")
-        except ValueError:
-            pass
+    exp = planner.expense_summary()
+    if exp.get("items"):
+        # Fixed Expenses tab (new module) — totals always match the items,
+        # nothing to keep in sync by hand
+        data["planned_costs"] = exp["total_mine"] or None
+        data["planned_essential"] = exp["essential_mine"] or None
+        mine = sorted((i for i in exp["items"]
+                      if i.get("payer") == "me" and i.get("latest_amount")),
+                      key=lambda i: -i["latest_amount"])
+        top = mine[:8]
+        rest = sum(i["latest_amount"] for i in mine[8:])
+        data["planned_categories"] = (
+            [{"category": i["name"], "total": i["latest_amount"]} for i in top]
+            + ([{"category": "other", "total": round(rest, 2)}] if rest else []))
+    else:
+        # fallback: legacy fixed_costs blob, until the new list has items
+        fc_raw = planner.get_setting("fixed_costs")
+        if fc_raw:
+            try:
+                fc = _json.loads(fc_raw)
+                data["planned_costs"] = fc.get("total_mine")
+                data["planned_essential"] = fc.get("essential_mine")
+                items = fc.get("items", [])
+                mine = sorted((i for i in items if i.get("payer") == "me"),
+                              key=lambda i: -i["monthly"])
+                top = mine[:8]
+                rest = sum(i["monthly"] for i in mine[8:])
+                data["planned_categories"] = (
+                    [{"category": i["name"], "total": i["monthly"]} for i in top]
+                    + ([{"category": "other", "total": round(rest, 2)}] if rest else []))
+            except ValueError:
+                pass
     if data.get("planned_costs") and data["planned_income"]:
         data["planned_surplus"] = round(data["planned_income"] - data["planned_costs"], 2)
-    if fc_raw:
-        try:
-            items = _json.loads(fc_raw).get("items", [])
-            mine = sorted((i for i in items if i.get("payer") == "me"),
-                          key=lambda i: -i["monthly"])
-            top = mine[:8]
-            rest = sum(i["monthly"] for i in mine[8:])
-            data["planned_categories"] = (
-                [{"category": i["name"], "total": i["monthly"]} for i in top]
-                + ([{"category": "other", "total": round(rest, 2)}] if rest else []))
-        except ValueError:
-            pass
     planner.ensure_monthly_snapshot()
     return jsonify(data)
 
@@ -358,6 +370,44 @@ def wealth_value_add(item_id):
 @app.get("/api/wealth/items/<item_id>/history")
 def wealth_history(item_id):
     return jsonify(planner.wealth_item_history(item_id))
+
+
+# ---------- fixed expenses ----------
+
+@app.get("/api/expenses/summary")
+def expenses_summary():
+    return jsonify(planner.expense_summary())
+
+
+@app.post("/api/expenses/items")
+def expenses_item_add():
+    return jsonify({"id": planner.add_expense_item(request.get_json(force=True))}), 201
+
+
+@app.put("/api/expenses/items/<item_id>")
+def expenses_item_update(item_id):
+    planner.update_expense_item(item_id, request.get_json(force=True))
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/expenses/items/<item_id>")
+def expenses_item_delete(item_id):
+    planner.delete_expense_item(item_id)
+    return jsonify({"ok": True})
+
+
+@app.post("/api/expenses/items/<item_id>/values")
+def expenses_value_set(item_id):
+    from datetime import date as _date
+    body = request.get_json(force=True)
+    planner.set_expense_value(item_id, body.get("month") or _date.today().strftime("%Y-%m"),
+                              body["amount"])
+    return jsonify({"ok": True}), 201
+
+
+@app.get("/api/expenses/items/<item_id>/history")
+def expenses_item_history(item_id):
+    return jsonify(planner.expense_item_history(item_id))
 
 
 # ---------- goals ----------

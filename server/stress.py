@@ -29,6 +29,9 @@ def _essential_monthly():
     import json as _json
     d = planner.list_debts()
     monthly_debt = d.get("monthly_cost_total") or 0
+    exp_essential = planner.expense_summary().get("essential_mine")
+    if exp_essential:
+        return float(exp_essential), monthly_debt
     fc_raw = planner.get_setting("fixed_costs")
     if fc_raw:
         try:

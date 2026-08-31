@@ -48,6 +48,49 @@ planner.set_settings({
                    '{"name": "Auto-invest (ETF)", "monthly": 1000, "payer": "me", "essential": false}]}',
 })
 
+# --- fixed expenses (new module: entity grouping + subscriptions + invoices) ---
+from datetime import date  # noqa: E402
+
+
+def _months_back(n):
+    y, m = date.today().year, date.today().month - n
+    while m < 1:
+        m += 12; y -= 1
+    return f"{y:04d}-{m:02d}"
+
+
+_this_month = _months_back(0)
+_last_month = _months_back(1)
+_two_months_ago = _months_back(2)
+
+
+def _exp(name, amount, category="", entity="personal", essential=True, invoice=False,
+        history=None):
+    iid = planner.add_expense_item({
+        "name": name, "category": category, "entity": entity, "payer": "me",
+        "essential": essential, "invoice": invoice,
+    })
+    for month, amt in (history or {_this_month: amount}).items():
+        planner.set_expense_value(iid, month, amt)
+
+
+_exp("Mortgage (Sample City)", 3500, entity="personal",
+    history={_two_months_ago: 3500, _this_month: 3500})
+_exp("Groceries", 1500, entity="personal",
+    history={_two_months_ago: 1350, _last_month: 1420, _this_month: 1500})
+_exp("Utilities", 900, entity="personal")
+_exp("Transport", 700, entity="personal")
+_exp("Insurance", 400, entity="personal")
+_exp("Fun / misc", 700, entity="personal", essential=False)
+_exp("Netflix", 15.99, category="subscription-entertainment", essential=False)
+_exp("Spotify", 10.99, category="subscription-entertainment", essential=False)
+_exp("Cloud storage (2TB)", 9.99, category="subscription-work", essential=False, invoice=True)
+_exp("Dev tools (API + hosting)", 45, category="subscription-work", essential=False, invoice=True)
+_exp("Accounting software", 39, entity="business", invoice=True)
+_exp("Business insurance", 60, entity="business", invoice=True)
+_exp("Rental unit — HOA fee", 180, entity="rental")
+_exp("Rental unit — property tax", 45, entity="rental")
+
 # --- debt (sample mortgage) ---
 debt_id = planner.add_debt({
     "name": "Mortgage — Sample City apartment",
