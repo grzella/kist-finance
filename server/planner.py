@@ -215,7 +215,7 @@ MODULES = [
      "views": ["property"], "default": False},
 ]
 
-CORE_VIEWS = ["dashboard", "cashflow", "recs", "wealth", "allocation", "goals",
+CORE_VIEWS = ["dashboard", "cashflow", "recs", "wealth", "expenses", "allocation", "goals",
               "forecasts", "control", "reminders", "data", "wizard"]
 
 
