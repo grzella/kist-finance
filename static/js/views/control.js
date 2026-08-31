@@ -74,12 +74,10 @@ async function renderControl(el) {
         </div>
       </div>
       <div class="card" style="border-left:4px solid #4c8dff;margin:0">
-        <h3 style="margin-top:0">🌐 Language &amp; currency</h3>
+        <h3 style="margin-top:0">🌐 Currency</h3>
         <div class="row" style="align-items:center;gap:8px">
-          <button class="${langGet() === "pl" ? "primary" : ""}" id="langPl">🇵🇱 Polski</button>
-          <button class="${langGet() === "en" ? "primary" : ""}" id="langEn">🇬🇧 English</button>
           <span>💱 <select id="curSel">${["PLN","EUR","USD","GBP","CHF"].map((c) => `<option ${c === (window.APP_CURRENCY || "PLN") ? "selected" : ""}>${c}</option>`).join("")}</select></span>
-          <span class="muted" style="font-size:.85em">English is the native UI; Polish translates common labels (<code>?lang=pl</code>). The currency applies everywhere amounts are shown.</span>
+          <span class="muted" style="font-size:.85em">Applies everywhere amounts are shown. The app's UI is English-only.</span>
         </div>
       </div>
     </div>
@@ -203,8 +201,6 @@ async function renderControl(el) {
 
   document.getElementById("hRefresh").addEventListener("click", () => route());
   document.getElementById("demoToggle").addEventListener("click", () => toggleDemo(!demoOn()));
-  document.getElementById("langPl").addEventListener("click", () => langSet("pl"));
-  document.getElementById("langEn").addEventListener("click", () => langSet("en"));
   document.getElementById("wipeBtn").addEventListener("click", async () => {
     if (!confirm("Delete ALL local data (goals, wealth, settings…) and restart the wizard? Backups stay.")) return;
     await api.post("/api/data/wipe", { confirm: true });

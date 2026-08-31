@@ -10,6 +10,7 @@ const views = {
   data: renderData,
   recs: renderRecs,
   wealth: renderWealth,
+  expenses: renderExpenses,
   goals: renderGoals,
   property: renderProperty,
   career: renderCareer,
@@ -91,58 +92,6 @@ function maskSensitiveText(root) {
   });
 }
 
-// ---------- i18n: DOM translation layer (EN→PL, for the optional "pl" mode) ----------
-const _I18N_EXACT = {
-  "💧 Cash-flow": "💧 Płynność", "💡 Recommendations": "💡 Rekomendacje",
-  "🏦 Wealth": "🏦 Majątek", "🧩 Allocation": "🧩 Alokacja", "🎯 Goals": "🎯 Cele",
-  "💼 Career": "💼 Kariera", "🏠 Loans": "🏠 Kredyty", "🏛️ Taxes": "🏛️ Podatki",
-  "🚁 Business": "🚁 Firma", "📈 Market": "📈 Rynek", "💱 FX": "💱 Waluty",
-  "🔮 Forecasts": "🔮 Prognozy", "🛠️ Control": "🛠️ Control",
-  "🛠️ Control Center": "🛠️ Control Center", "🛠️ Automation & health": "🛠️ Automatyzacje & health",
-  "🔔 Reminders": "🔔 Przypomnienia", "📊 Data in the app": "📊 Dane w aplikacji",
-  "Tasks OK": "Zadania OK", "Warnings": "Ostrzeżenia", "Errors": "Błędy", "Refresh": "Odśwież",
-  "Check now": "Sprawdź teraz", "🔬 Demo mode": "🔬 Tryb demo",
-  "Enable demo mode": "Włącz tryb demo", "Disable demo mode": "Wyłącz tryb demo",
-  "🔐 Security & tests": "🔐 Bezpieczeństwo & testy",
-  "🔐 Run security & tests": "🔐 Uruchom security & testy",
-  "Task": "Zadanie", "Frequency": "Częstotliwość", "Last update": "Ostatni update",
-  "Status": "Status", "Details": "Szczegóły",
-  "Zero-effort sources": "Źródła bez pracy", "Maintained by Claude": "Utrzymuje Claude",
-  "Manual touchpoints / mo": "Ręczne punkty / mies.", "Manual time / mo": "Czas ręczny / mies.",
-  "Data": "Dane", "Mode": "Tryb", "Source": "Źródło", "Last upd.": "Ostatnia akt.",
-  "Net worth": "Wartość netto", "Income / mo": "Dochody / mies.", "Costs / mo": "Koszty / mies.",
-  "Surplus / mo": "Nadwyżka / mies.", "Shares held": "Posiadane akcje",
-  "Add": "Dodaj", "Save": "Zapisz", "Delete": "Usuń", "Filter": "Filtruj", "Overpay": "Nadpłać",
-  "all categories": "wszystkie kategorie", "Loading…": "Ładowanie…",
-};
-const _I18N_PHRASES = [
-  [/\bmonthly\b/g, "miesięcznie"], [/\bdaily\b/g, "codziennie"], [/\bweekly\b/g, "tygodniowo"],
-  [/\boccasionally\b/g, "okazjonalnie"], [/\bon demand\b/g, "na żądanie"], [/\brarely\b/g, "rzadko"],
-  [/\bzero effort\b/g, "zero pracy"],
-  [/last run:/g, "ostatni run:"], [/\bas of\b/g, "stan na"],
-];
-function translateDom(root) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const nodes = [];
-  while (walker.nextNode()) nodes.push(walker.currentNode);
-  nodes.forEach((n) => {
-    const raw = n.nodeValue;
-    const key = raw.trim();
-    if (!key) return;
-    let out = raw;
-    if (_I18N_EXACT[key]) {
-      out = raw.replace(key, _I18N_EXACT[key]);
-    } else {
-      _I18N_PHRASES.forEach(([re, rep]) => { out = out.replace(re, rep); });
-    }
-    if (out !== raw) n.nodeValue = out;
-  });
-}
-function applyLang() {
-  if (langGet() !== "pl") return;
-  document.documentElement.lang = "pl";
-  try { translateDom(document.getElementById("nav")); } catch (e) { /* noop */ }
-}
 
 let _appCfg = null;
 async function appCfg() {
@@ -193,13 +142,10 @@ async function route() {
       }
     } catch (e) { /* stamp is cosmetic */ }
     if (demoOn()) { try { maskSensitiveText(el); } catch (e) { console.error("mask", e); } }
-    if (langGet() === "pl") { try { translateDom(el); } catch (e) { console.error("i18n", e); } }
   } catch (e) {
     el.innerHTML = `<div class="card"><b>Error:</b> <span class="muted">${e.message}</span></div>`;
   }
 }
-
-applyLang();
 
 // mobile hamburger — the nav collapses under 860px
 const _navToggle = document.getElementById("navToggle");

@@ -99,16 +99,6 @@ function toggleDemo(on) {
   location.reload();
 }
 
-// ---------- LANGUAGE (en default, pl via toggle) ----------
-function langGet() {
-  const q = /[?&#]lang=(pl|en)\b/.exec(location.search + location.hash);
-  if (q) return q[1];
-  return localStorage.getItem("lang") === "pl" ? "pl" : "en";
-}
-function langSet(l) {
-  localStorage.setItem("lang", l === "pl" ? "pl" : "en");
-  location.reload();
-}
 function _maskInt(v) {
   const d = Math.max(1, String(Math.floor(Math.abs(Number(v) || 0))).length);
   let s = "";
