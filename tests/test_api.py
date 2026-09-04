@@ -277,7 +277,7 @@ def test_schedules_run_due_records_error_and_clears_on_success(client, monkeypat
     state["ok"] = True
     assert sc.run_due(datetime(2026, 9, 4, 23, 5)) == [task["id"]]
     t = next(x for x in client.get("/api/schedules").get_json()["tasks"] if x["id"] == task["id"])
-    assert t["last_error"] is None and t["last_run"]  # okres zapisany (klucz dzienny/tygodniowy/miesięczny wg zadania)
+    assert t["last_error"] is None and t["last_run"]  # period recorded (daily/weekly/monthly key depending on the task)
 
 
 def test_health_reports_code_stale_flag(client):
