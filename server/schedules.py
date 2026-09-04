@@ -110,8 +110,34 @@ def get_schedules():
         cfg = {**t["default"], **cfgs.get(t["id"], {})}
         out.append({"id": t["id"], "label": t["label"], "kind": t["kind"],
                     "note": t["note"], **cfg,
-                    "last_run": planner.get_setting(f"sched_last.{t['id']}") or None})
+                    "last_run": planner.get_setting(f"sched_last.{t['id']}") or None,
+                    "last_error": _last_error(t["id"])})
     return {"tasks": out, "external": EXTERNAL}
+
+
+def _last_error(task_id):
+    """Last FAILED attempt of a task: {"at": "...", "error": "..."} or None.
+    Written by run_due on failure, cleared on success."""
+    raw = planner.get_setting(f"sched_err.{task_id}")
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return {"at": "?", "error": raw[:160]}
+
+
+def failed_tasks():
+    """Tasks with a recorded error — surfaced in Control Center / health so a
+    failure is visible instead of a silent 'retry next period'."""
+    out = []
+    for t in REGISTRY:
+        if t.get("kind", "app") != "app":
+            continue
+        err = _last_error(t["id"])
+        if err:
+            out.append({"id": t["id"], "label": t["label"], **err})
+    return out
 
 
 def set_schedule(task_id, data):
@@ -188,11 +214,16 @@ def run_due(now=None):
             continue
         try:
             result = t["runner"]()
-        except Exception:
-            result = False
-        # Success -> record the period. Failure -> do NOT, so the next app open
-        # retries within the same period.
+        except Exception as e:
+            result = {"ok": False, "error": f"{type(e).__name__}: {str(e)[:140]}"}
+        # Success -> record the period and clear the error. Failure -> do NOT
+        # record the period (the next app open retries), but DO record the error —
+        # visible in Control Center, Data and next to the barometer.
         if _succeeded(result):
-            planner.set_settings({key: _period_key(cfg, now)})
+            planner.set_settings({key: _period_key(cfg, now), f"sched_err.{t['id']}": ""})
             ran.append(t["id"])
+        else:
+            err = (result.get("error") if isinstance(result, dict) else None) or "runner reported failure"
+            planner.set_settings({f"sched_err.{t['id']}": json.dumps(
+                {"at": now.strftime("%Y-%m-%d %H:%M"), "error": str(err)[:200]})})
     return ran

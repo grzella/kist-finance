@@ -108,6 +108,21 @@ async function renderOffers(el) {
 
   // --- market barometer (index + trend, roles from config) ---
   const baro = await api.get("/api/market-barometer").catch(() => ({ points: [], roles: [], series: {}, geo: [] }));
+  // Gap guard: the last FULL month must have a 'trends' point; if not, say so
+  // (with the collector's last error) instead of silently drawing a shorter line.
+  {
+    const t = new Date(); const lf = new Date(t.getFullYear(), t.getMonth() - 1, 1);
+    const lastFull = `${lf.getFullYear()}-${String(lf.getMonth() + 1).padStart(2, "0")}`;
+    const trendMonths = (baro.points || []).filter((p) => p.stream === "trends").map((p) => p.month);
+    if (!trendMonths.includes(lastFull)) {
+      const sched = await api.get("/api/schedules").catch(() => null);
+      const task = sched && sched.tasks.find((x) => x.id === "barometer_collect");
+      const err = task && task.last_error ? ` Last attempt ${task.last_error.at}: <i>${esc(task.last_error.error)}</i>.` : "";
+      const box = document.getElementById("baroDesc");
+      if (box) box.insertAdjacentHTML("beforebegin", `<div class="mt" style="padding:6px 10px;border-radius:6px;background:rgba(255,107,107,0.15);font-size:.88em">
+        ⚠️ <b>No demand point for ${lastFull}</b> (last full month).${err} The collector retries on the next app open; see Control Center → Schedules.</div>`);
+    }
+  }
   const bpts = baro.points || [];
   const broles = baro.roles || [];
   const bser = baro.series || {};

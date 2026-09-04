@@ -114,7 +114,9 @@ def collect_openings():
     import planner
     key = os.environ.get("RAPIDAPI_JSEARCH_KEY") or planner.get_setting("rapidapi_jsearch_key")
     if not key:
-        return {"ok": False, "error": "no key — set RAPIDAPI_JSEARCH_KEY (rapidapi.com → JSearch)"}
+        # No key = nothing to do (not a failure): mark the period done so it does not
+        # raise a permanent warning; the key state is exposed as openings_key_set.
+        return {"ok": True, "skipped": "no API key (RAPIDAPI_JSEARCH_KEY)"}
     PAGES = 3  # fixed depth — do NOT change (it breaks index comparability)
     cfg = planner.barometer_config()
     roles = cfg["roles"]

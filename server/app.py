@@ -523,6 +523,17 @@ def allocation():
     return jsonify(planner.allocation())
 
 
+def _code_mtime():
+    """Newest modification time of the server code (server/*.py)."""
+    try:
+        return max(f.stat().st_mtime for f in Path(__file__).resolve().parent.glob("*.py"))
+    except Exception:
+        return 0
+
+
+_CODE_MTIME_AT_START = _code_mtime()
+
+
 @app.get("/api/health")
 def health():
     try:  # scheduled tasks piggyback on health: run at first app-open past due
@@ -530,7 +541,27 @@ def health():
         schedules.run_due()
     except Exception:
         pass
-    return jsonify(planner.health())
+    out = planner.health()
+    # Scheduled tasks whose last attempt failed — explicit, as warn.
+    try:
+        import schedules
+        for f in schedules.failed_tasks():
+            out["tasks"].append({"name": f"Schedule: {f['label']}", "freq": "per schedule",
+                                 "last": f["at"], "status": "warn",
+                                 "detail": f"last attempt FAILED — {f['error']}"})
+    except Exception:
+        pass
+    # The server runs older code than what is on disk (git pull / edit without a
+    # restart): the browser gets the new JS, the backend the old API — "nothing works".
+    out["code_stale"] = _code_mtime() > _CODE_MTIME_AT_START + 1
+    if out["code_stale"]:
+        out["tasks"].append({"name": "App server", "freq": "—", "last": "—", "status": "warn",
+                             "detail": "server/ code changed after start — restart the app (./run.sh)"})
+    ts = out["tasks"]
+    out["summary"] = {"ok": sum(1 for t in ts if t["status"] == "ok"),
+                      "warn": sum(1 for t in ts if t["status"] == "warn"),
+                      "error": sum(1 for t in ts if t["status"] == "error"), "total": len(ts)}
+    return jsonify(out)
 
 
 @app.get("/api/schedules")

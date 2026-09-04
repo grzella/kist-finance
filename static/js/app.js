@@ -158,3 +158,11 @@ if (_navToggle) {
 
 window.addEventListener("hashchange", route);
 route();
+
+// Scheduled tasks (radar, brief, backup, forecast cycle, barometer) run via
+// schedules.run_due() piggybacked on /api/health — one ping at app start. The
+// response also says whether the backend runs older code than the frontend.
+fetch("/api/health").then((r) => r.json()).then((h) => {
+  const b = document.getElementById("staleBanner");
+  if (b && h && h.code_stale) b.style.display = "block";
+}).catch(() => {});   // fire-and-forget, offline is fine

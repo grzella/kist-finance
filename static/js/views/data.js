@@ -79,7 +79,7 @@ async function renderData(el) {
           <td><select data-f="hour">
             ${Array.from({length: 24}, (_, h) => `<option value="${h}" ${t.hour === h ? "selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("")}
           </select></td>
-          <td class="muted" style="font-size:.85em">${t.last_run || "—"}</td>
+          <td class="muted" style="font-size:.85em">${t.last_run || "—"}${t.last_error ? `<div class="neg" style="font-size:.9em" title="${(t.last_error.error || "").replace(/"/g, "&quot;")}">⚠️ failed ${t.last_error.at}</div>` : ""}</td>
           <td class="muted" style="font-size:.8em" data-st></td>
         </tr>`).join("")}
         ${sched.external.map((t) => `<tr>

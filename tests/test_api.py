@@ -250,3 +250,37 @@ def test_settings_endpoint_blocks_protected_keys(client):
     assert planner.get_setting("commit_repos") == before          # protected: unchanged
     assert planner.get_setting("ai_mode") != "both" or planner.get_setting("ai_mode") is None
     assert planner.get_setting("monthly_savings") == "4321"        # normal key: written
+
+
+
+def test_schedules_run_due_records_error_and_clears_on_success(client, monkeypatch):
+    """A failed task leaves a trace (sched_err.<id> -> last_error in /api/schedules
+    and a warn in /api/health); success clears it."""
+    import schedules as sc
+    import planner
+    monkeypatch.delenv("KIST_NO_SCHEDULED_TASKS", raising=False)
+    task = dict(next(t for t in sc.REGISTRY if t.get("kind", "app") == "app"))
+    state = {"ok": False}
+    task["runner"] = lambda: ({"ok": True, "added": ["2026-08"]} if state["ok"]
+                              else {"ok": False, "error": "pytrends not installed"})
+    monkeypatch.setattr(sc, "REGISTRY", [task])
+    planner.set_settings({f"sched_last.{task['id']}": "", f"sched_err.{task['id']}": ""})
+    from datetime import datetime
+    assert sc.run_due(datetime(2026, 9, 4, 23, 0)) == []
+    t = next(x for x in client.get("/api/schedules").get_json()["tasks"] if x["id"] == task["id"])
+    assert t["last_error"] and "pytrends" in t["last_error"]["error"]
+    assert not t["last_run"]
+    monkeypatch.setenv("KIST_NO_SCHEDULED_TASKS", "1")
+    h = client.get("/api/health").get_json()
+    assert any(x["status"] == "warn" and task["label"] in x["name"] for x in h["tasks"])
+    monkeypatch.delenv("KIST_NO_SCHEDULED_TASKS", raising=False)
+    state["ok"] = True
+    assert sc.run_due(datetime(2026, 9, 4, 23, 5)) == [task["id"]]
+    t = next(x for x in client.get("/api/schedules").get_json()["tasks"] if x["id"] == task["id"])
+    assert t["last_error"] is None and t["last_run"]  # okres zapisany (klucz dzienny/tygodniowy/miesięczny wg zadania)
+
+
+def test_health_reports_code_stale_flag(client):
+    h = client.get("/api/health").get_json()
+    assert h["code_stale"] is False
+    assert h["summary"]["total"] == len(h["tasks"])

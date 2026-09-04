@@ -21,7 +21,7 @@ function _row(i, cm) {
     <td>${i.essential ? "✓" : ""}</td>
     <td style="text-align:right">${fmt.usd(i.latest_amount)}</td>
     <td class="muted">${i.latest_month || "—"}${i.latest_amount != null && !i.current_month_set ? ' <span class="badge">carried over</span>' : ""}</td>
-    <td><button data-upd="${i.id}">${i.current_month_set ? "Update" : "Set for " + cm}</button></td>
+    <td><button data-upd="${i.id}" title="${i.current_month_set ? "amount for " + cm + " already entered — correct it" : "enter the new amount effective from " + cm}">Change amount</button></td>
     <td><button class="danger" data-del="${i.id}">✕</button></td>
   </tr>`;
 }
@@ -30,7 +30,7 @@ function _table(items, cm, emptyMsg) {
   if (!items.length) return `<div class="empty">${emptyMsg}</div>`;
   return `<table><thead><tr>
     <th>Name</th><th>Invoiced?</th><th>Billing</th><th>Payer</th><th>Essential</th>
-    <th style="text-align:right">Amount</th><th>Month</th><th></th><th></th>
+    <th style="text-align:right">Amount</th><th title="effective since">Since</th><th></th><th></th>
   </tr></thead><tbody>${items.map((i) => _row(i, cm)).join("")}</tbody></table>`;
 }
 
@@ -123,7 +123,7 @@ async function renderExpenses(el) {
 
   el.querySelectorAll("[data-upd]").forEach((b) =>
     b.addEventListener("click", async () => {
-      const v = prompt(`Amount for ${cm}:`);
+      const v = prompt(`New amount from ${cm} — it carries forward every month until you change it again:`);
       if (v === null || v === "" || isNaN(parseNum(v))) return;
       await api.post(`/api/expenses/items/${b.dataset.upd}/values`,
         { month: cm, amount: parseNum(v) });
