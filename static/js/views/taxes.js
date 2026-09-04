@@ -33,7 +33,7 @@ async function renderTaxes(el) {
       </table></div>
     </div>
 
-    <div class="card mt" style="border-left:4px solid #3ecf8e">
+    <div class="card mt" style="border-left:4px solid var(--pos)">
       <h3 style="margin-top:0">💡 Tax optimizations</h3>
       <ul style="padding-left:18px">${d.optimizations.map((o) => `<li class="mt" style="font-size:.92em">${o}</li>`).join("")}</ul>
     </div>

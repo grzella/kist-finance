@@ -63,7 +63,7 @@ async function renderDebts(el) {
         <div class="muted">Payoff: ${payoff}
           ${s.total_interest != null ? `· interest to maturity: ${fmt.pln(s.total_interest)}` : ""}
           ${d.months_left != null ? `· installments left per bank: ${d.months_left}` : ""}</div>
-        ${d.variable_projection ? `<div class="muted mt" style="border-left:3px solid #4c8dff;padding-left:8px">
+        ${d.variable_projection ? `<div class="muted mt" style="border-left:3px solid var(--accent);padding-left:8px">
           <b>After the fixed rate ends (${d.variable_projection.fixed_until})</b>, balance ~${fmt.pln(d.variable_projection.balance_at_switch)}:
           at today's WIBOR ${d.variable_projection.now.wibor}% + margin ${d.variable_projection.margin}% →
           installment <b>${fmt.pln(d.variable_projection.now.rata)}</b> (${fmt.pln(d.variable_projection.now.delta_vs_now)}/mo)

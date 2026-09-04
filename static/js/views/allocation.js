@@ -3,7 +3,7 @@ async function renderAllocation(el) {
   const flagCls = (f) => f === "too much" ? "neg" : f === "add more" ? "pos" : "muted";
   el.innerHTML = `
     <h2>📊 Asset allocation — structure and concentration</h2>
-    <div class="card" style="border-left:4px solid #4c8dff;margin-bottom:12px;font-size:.9em">
+    <div class="card" style="border-left:4px solid var(--accent);margin-bottom:12px;font-size:.9em">
       This tab compares how your wealth is split (<b>Share</b>) against a target split (<b>Target</b>).
       ${d.targets_customized
         ? "Your targets are set — the <b>Drift</b> is how far each class is from where you want it."
@@ -46,13 +46,13 @@ async function renderAllocation(el) {
       </div>
     </div>
 
-    <div class="card mt" style="border-left:4px solid #ffd166">
+    <div class="card mt" style="border-left:4px solid var(--warn)">
       <h3 style="margin-top:0">💡 Takeaways and rebalancing</h3>
       <ul style="padding-left:18px">${d.hints.map((h) => `<li class="mt" style="font-size:.93em">${h}</li>`).join("")}</ul>
       <div class="muted mt" style="font-size:.85em">A vehicle counts as an asset here, but it is a consumable (it depreciates) — in reality "investment" wealth is usually more concentrated in real estate.</div>
     </div>`;
 
-  const palette = ["#4c8dff", "#3ecf8e", "#ffd166", "#ff6b6b", "#a78bfa", "#f59e0b"];
+  const palette = ["var(--accent)", "var(--pos)", "var(--warn)", "var(--neg)", "var(--violet)", "#f59e0b"];
   trackChart(new Chart(document.getElementById("allocChart"), {
     type: "doughnut",
     data: {
@@ -68,7 +68,7 @@ async function renderAllocation(el) {
       data: {
         labels: d.leverage.trend.map((t) => t.month),
         datasets: [{ label: "Debt / assets %", data: d.leverage.trend.map((t) => t.pct),
-          borderColor: "#e0a030", backgroundColor: "transparent", tension: 0.25 }],
+          borderColor: "var(--amber)", backgroundColor: "transparent", tension: 0.25 }],
       },
       options: { plugins: { legend: { display: false } },
         scales: { y: { ticks: { callback: (v) => v + "%" } } } },

@@ -5,16 +5,16 @@ function securityReviewHtml(rev) {
       personal-data audit, connection configuration, functional tests).</div>`;
   }
   const SEV = {
-    critical: "#ff5c5c", high: "#ff8f3f", medium: "#ffd166", low: "#4c8dff", info: "#8a90a6",
+    critical: "var(--neg)", high: "#ff8f3f", medium: "var(--warn)", low: "var(--accent)", info: "var(--muted)",
   };
-  const STAT = { pass: ["✓", "#3ecf8e"], warn: ["!", "#ffd166"], fail: ["✗", "#ff5c5c"] };
+  const STAT = { pass: ["✓", "var(--pos)"], warn: ["!", "var(--warn)"], fail: ["✗", "var(--neg)"] };
   const row = (i) => {
-    const [ic, col] = STAT[i.status] || ["·", "#8a90a6"];
+    const [ic, col] = STAT[i.status] || ["·", "var(--muted)"];
     return `<tr>
       <td style="color:${col};font-weight:700;text-align:center">${ic}</td>
       <td><span class="badge" style="background:${SEV[i.severity]}22;color:${SEV[i.severity]}">${i.severity}</span></td>
       <td><b>${i.title}</b>${i.status !== "pass" && i.detail ? `<div class="muted" style="font-size:.82em">${i.detail}</div>` : ""}
-        ${i.status !== "pass" && i.fix ? `<div style="font-size:.82em;color:#ffd166">🔧 ${i.fix}</div>` : ""}</td>
+        ${i.status !== "pass" && i.fix ? `<div style="font-size:.82em;color:var(--warn)">🔧 ${i.fix}</div>` : ""}</td>
     </tr>`;
   };
   const area = (a) => `<div class="mt"><div style="font-weight:600;margin-bottom:4px">${a.area}</div>
@@ -39,8 +39,8 @@ async function renderControl(el) {
   ]);
   const esc = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const s = d.summary;
-  const vColor = { ok: "#3ecf8e", warn: "#ffd166", error: "#ff5c5c" };
-  const secColor = vColor[rev && rev.verdict] || "#8a90a6";
+  const vColor = { ok: "var(--pos)", warn: "var(--warn)", error: "var(--neg)" };
+  const secColor = vColor[rev && rev.verdict] || "var(--muted)";
   const badge = (st) => {
     const m = { ok: ["✅", "pos"], warn: ["⚠️", ""], error: ["🛑", "neg"], info: ["ℹ️", "muted"] };
     const [ic, cls] = m[st] || ["·", "muted"];
@@ -50,22 +50,22 @@ async function renderControl(el) {
     <h2>🛠️ Control Center</h2>
     <div class="row" style="gap:8px;margin-bottom:12px">
       <a href="#control" style="text-decoration:none;padding:5px 12px;border-radius:6px;background:${CHART_COLORS[0]};color:#fff">🛠️ Automation &amp; health</a>
-      <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">🔔 Reminders</a>
-      <a href="#data" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">📊 Data in the app</a>
+      <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid var(--border);color:var(--text)">🔔 Reminders</a>
+      <a href="#data" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid var(--border);color:var(--text)">📊 Data in the app</a>
     </div>
     <div class="muted" style="margin-bottom:12px">Everything that should happen automatically: frequency, last update (date+time) and status.
       Checked: ${d.checked_at}.</div>
 
     <div class="grid cols-4">
       <div class="card kpi"><div class="label">Tasks OK</div><div class="value pos">${s.ok}</div><div class="sub">of ${s.total}</div></div>
-      <div class="card kpi"><div class="label">Warnings</div><div class="value ${s.warn ? "" : "muted"}"${" style=\"color:#ffd166\"".repeat(s.warn ? 1 : 0)}>${s.warn}</div><div class="sub">stale / offline</div></div>
+      <div class="card kpi"><div class="label">Warnings</div><div class="value ${s.warn ? "" : "muted"}"${" style=\"color:var(--warn)\"".repeat(s.warn ? 1 : 0)}>${s.warn}</div><div class="sub">stale / offline</div></div>
       <div class="card kpi"><div class="label">Errors</div><div class="value ${s.error ? "neg" : "muted"}">${s.error}</div><div class="sub">need action</div></div>
       <div class="card kpi"><div class="label">Refresh</div>
         <div class="value"><button class="primary" id="hRefresh" style="font-size:.5em;padding:8px 14px">Check now</button></div></div>
     </div>
 
     <div class="grid cols-2 mt">
-      <div class="card" style="border-left:4px solid #ffd166;margin:0">
+      <div class="card" style="border-left:4px solid var(--warn);margin:0">
         <h3 style="margin-top:0">🔬 Demo mode</h3>
         <div class="row" style="align-items:center;gap:12px">
           <button class="${demoOn() ? "danger" : "primary"}" id="demoToggle">${demoOn() ? "Disable demo mode" : "Enable demo mode"}</button>
@@ -73,7 +73,7 @@ async function renderControl(el) {
             Status: <b class="${demoOn() ? "neg" : "pos"}">${demoOn() ? "ON" : "off"}</b>. Also via <code>?demo</code>.</span>
         </div>
       </div>
-      <div class="card" style="border-left:4px solid #4c8dff;margin:0">
+      <div class="card" style="border-left:4px solid var(--accent);margin:0">
         <h3 style="margin-top:0">🌐 Currency</h3>
         <div class="row" style="align-items:center;gap:8px">
           <span>💱 <select id="curSel">${["PLN","EUR","USD","GBP","CHF"].map((c) => `<option ${c === (window.APP_CURRENCY || "PLN") ? "selected" : ""}>${c}</option>`).join("")}</select></span>
@@ -82,9 +82,9 @@ async function renderControl(el) {
       </div>
     </div>
 
-    ${ai ? `<div class="card mt" style="border-left:4px solid ${ai.ai_mode === "both" ? "#b78cff" : "#3ecf8e"}">
+    ${ai ? `<div class="card mt" style="border-left:4px solid ${ai.ai_mode === "both" ? "#b78cff" : "var(--pos)"}">
       <h3 style="margin-top:0">🤖 AI mode
-        <span class="badge" style="background:${ai.ai_mode === "both" ? "#b78cff22;color:#b78cff" : "#3ecf8e22;color:#3ecf8e"}">${ai.ai_mode === "both" ? "local + cloud" : "local only"}</span></h3>
+        <span class="badge" style="background:${ai.ai_mode === "both" ? "#b78cff22;color:#b78cff" : "var(--pos)22;color:var(--pos)"}">${ai.ai_mode === "both" ? "local + cloud" : "local only"}</span></h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">This mode governs <b>every AI feature in the app</b>:
         the "AI second opinion" on Recommendations, forecast narration and questions typed below. The default is local only —
         nothing leaves your machine. "Local + cloud" asks BOTH engines and synthesizes one verdict (usually the best result),
@@ -130,9 +130,9 @@ async function renderControl(el) {
       </details>
     </div>` : ""}
 
-    ${bk ? `<div class="card mt" style="border-left:4px solid #4c8dff">
+    ${bk ? `<div class="card mt" style="border-left:4px solid var(--accent)">
       <h3 style="margin-top:0">💾 Data backup
-        <span class="badge" style="background:${bk.configured ? "#3ecf8e22;color:#3ecf8e" : "#ffd16622;color:#ffd166"}">${bk.configured ? "configured" : "not set"}</span></h3>
+        <span class="badge" style="background:${bk.configured ? "var(--pos)22;color:var(--pos)" : "var(--warn)22;color:var(--warn)"}">${bk.configured ? "configured" : "not set"}</span></h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">Writes a consistent snapshot of the database into a folder your
         Google Drive / Dropbox / iCloud client already syncs. No API keys — your desktop client pushes the file to the cloud.</div>
       <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
@@ -156,7 +156,7 @@ async function renderControl(el) {
       <div id="bkOut" class="mt"></div>
     </div>` : ""}
 
-    <div class="card mt" style="border-left:4px solid #ff5c5c">
+    <div class="card mt" style="border-left:4px solid var(--neg)">
       <h3 style="margin-top:0">🧨 Data — fresh start</h3>
       <div class="row" style="align-items:center;gap:12px;flex-wrap:wrap">
         <button class="danger" id="wipeBtn">Wipe all data</button>
@@ -225,11 +225,11 @@ async function renderControl(el) {
         const card = (label, res, col) => res ? `<div class="card" style="border-left:3px solid ${col};margin:0">
           <div style="font-weight:600;font-size:.85em">${label}</div>
           <div style="white-space:pre-wrap;font-size:.9em">${res.ok ? res.text : '<span class="neg">offline / no answer</span>'}</div></div>` : "";
-        const syn = r.synthesis && r.synthesis.ok ? `<div class="card" style="border-left:4px solid #ffd166;margin:0 0 10px">
+        const syn = r.synthesis && r.synthesis.ok ? `<div class="card" style="border-left:4px solid var(--warn);margin:0 0 10px">
           <div style="font-weight:600;font-size:.85em">🧭 Verdict — synthesis of both models <span class="muted">(${r.synthesis.by === "cloud" ? "Claude" : "local"})</span></div>
           <div style="white-space:pre-wrap;font-size:.9em">${r.synthesis.text}</div></div>` : "";
         out.innerHTML = syn + `<div class="grid ${r.cloud ? "cols-2" : ""}">
-          ${card("🔒 " + (r.local.label || "local"), r.local, "#3ecf8e")}
+          ${card("🔒 " + (r.local.label || "local"), r.local, "var(--pos)")}
           ${r.cloud ? card("☁️ " + (r.cloud.label || "Claude"), r.cloud, "#b78cff") : ""}</div>`;
       } catch (e) { out.innerHTML = `<div class="neg">Error: ${e.message}</div>`; }
       finally { aiAsk.disabled = false; }
@@ -313,7 +313,7 @@ async function renderControl(el) {
       const fresh = await api.post("/api/security-review/run");
       body.innerHTML = securityReviewHtml(fresh);
       const card = btn.closest(".card");
-      const col = { ok: "#3ecf8e", warn: "#ffd166", error: "#ff5c5c" }[fresh.verdict] || "#8a90a6";
+      const col = { ok: "var(--pos)", warn: "var(--warn)", error: "var(--neg)" }[fresh.verdict] || "var(--muted)";
       if (card) card.style.borderLeftColor = col;
     } catch (err) {
       body.innerHTML = `<div class="neg">Scan error: ${err.message}</div>`;

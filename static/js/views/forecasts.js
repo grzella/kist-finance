@@ -67,7 +67,7 @@ async function renderForecasts(el) {
       ], "From this moment all surpluses build the goal contribution")}
     </div>
 
-    ${fire ? `<div class="card mt" style="border-left:4px solid #3ecf8e">
+    ${fire ? `<div class="card mt" style="border-left:4px solid var(--pos)">
       <h3 style="margin-top:0">🏁 Path to work-optional (${fmt.pln(fire.target)} liquid portfolio)</h3>
       <div class="muted" style="font-size:.88em;margin-bottom:8px">
         Liquid portfolio today ${fmt.pln(fire.start)} → target ${fmt.pln(fire.target)}. Contribution: ${fire.assumptions.contrib_note}.
@@ -89,7 +89,7 @@ async function renderForecasts(el) {
     </div>
 
     <div class="grid cols-2 mt">
-      ${fire.property ? `<div class="card" style="border-left:4px solid #e0a458">
+      ${fire.property ? `<div class="card" style="border-left:4px solid var(--amber)">
         <h3 style="margin-top:0">Goal contribution (house)</h3>
         <table>
           <tr><td>Down-payment target (50%)</td><td><b>${fmt.pln(fire.property.target)}</b></td></tr>
@@ -109,13 +109,13 @@ async function renderForecasts(el) {
           <div class="muted mt" style="font-size:.85em">${sc.detail}</div>
         </div>`).join("")}
       </div>
-      ${stress.policy ? `<div class="mt" style="padding:8px 12px;background:#00000022;border-radius:6px;font-size:.9em">
+      ${stress.policy ? `<div class="mt" style="padding:8px 12px;background:var(--inset);border-radius:6px;font-size:.9em">
         <b>🛡️ Withdrawal policy (Guyton-Klinger guardrails):</b> ${stress.policy.verdict}
         ${stress.policy.current_pct != null ? `<div class="muted mt" style="font-size:.9em">Start rate ${stress.policy.initial_pct}% · guardrails ${stress.policy.lower_pct}–${stress.policy.upper_pct}% · portfolio ${fmt.pln(stress.policy.portfolio)} · essential spend ${fmt.pln(stress.policy.annual_spend)}/yr${stress.policy.portfolio_needed ? ` · calm-start portfolio ${fmt.pln(stress.policy.portfolio_needed)}` : ""}</div>` : ""}
       </div>` : ""}
     </div>` : ""}
 
-      ${fire.tracking ? `<div class="card" style="border-left:4px solid #4c8dff">
+      ${fire.tracking ? `<div class="card" style="border-left:4px solid var(--accent)">
         <h3 style="margin-top:0">📡 Progress vs plan (learning every month)</h3>
         ${fire.tracking.status === "ok" ? `
           <div style="font-size:1.05em"><b class="${fire.tracking.cum_delta >= 0 ? "pos" : "neg"}">${fire.tracking.verdict}</b>

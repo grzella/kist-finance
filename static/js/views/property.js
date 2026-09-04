@@ -29,7 +29,7 @@ async function renderProperty(el) {
     <div class="muted" style="margin-bottom:4px"><a href="#goals" style="text-decoration:none">← Goals</a></div>
     <h2>🏡 Property purchase — analysis &amp; calculator</h2>
 
-    ${hasAnalysis ? `<div class="card" style="border-left:4px solid #3ecf8e">
+    ${hasAnalysis ? `<div class="card" style="border-left:4px solid var(--pos)">
       <div style="font-size:1.05em"><b>${a.headline}</b></div>
       <div class="muted mt" style="font-size:.85em">As of ${a.as_of}${a.budget_eur ? ` · budget ${fmt.eur ? fmt.eur(a.budget_eur) : "€" + fmt.grouped(a.budget_eur)}` : ""}
         ${propertyGoal ? ` · goal progress: ${fmt.pln(propertyGoal.current_amount)} / ${fmt.pln(propertyGoal.target_amount)}` : ""}</div>
@@ -47,7 +47,7 @@ async function renderProperty(el) {
       </details>
     </div>`}
 
-    <div class="card mt" style="border-left:4px solid #4c8dff">
+    <div class="card mt" style="border-left:4px solid var(--accent)">
       <h3 style="margin-top:0">🧮 Purchase calculator — real cost and balance</h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">Computed live. Amounts in € with a local-currency
         conversion alongside (EUR/PLN ${fmt.num(fx, 3)}, from Market). Inputs are saved in your browser.</div>
@@ -72,7 +72,7 @@ async function renderProperty(el) {
       </table></div>
     </div>` : ""}
 
-    ${hasAnalysis && a.recommendation ? `<div class="card mt" style="border-left:4px solid #ffd166">
+    ${hasAnalysis && a.recommendation ? `<div class="card mt" style="border-left:4px solid var(--warn)">
       <h3 style="margin-top:0">✅ Recommendation: ${a.recommendation.pick}</h3>
       <ul style="padding-left:18px">${(a.recommendation.why || []).map((w) => `<li class="mt">${w}</li>`).join("")}</ul>
       ${a.recommendation.runner_up ? `<div class="mt muted"><b>Runner-up:</b> ${a.recommendation.runner_up}</div>` : ""}

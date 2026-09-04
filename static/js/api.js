@@ -122,6 +122,34 @@ function _maskDec(n) { return n > 0 ? "01".repeat(Math.ceil(n / 2)).slice(0, n) 
   fmt.grouped = (v) => (v == null || v === "" || isNaN(Number(v))) ? "" : (demoOn() ? _maskInt(v) : o.grouped(v));
 })();
 
-const CHART_COLORS = ["#4c8dff", "#3ecf8e", "#ffd166", "#ff6b6b", "#b78cff", "#5bd1d7", "#ff9f6b", "#8b91a3"];
+const CHART_COLORS = ["#6ea8fe", "#35c98a", "#f2c74f", "#ff7b7b", "#a78bfa", "#5fd3d9", "#ff9f6b", "#98a1b3"];
+// Charts in the same "voice" as the rest of the UI: thin grids, no axis borders, 2px lines,
+// no points, point-style legend. Set once, globally — views need not repeat it.
+if (window.Chart) {
+  Chart.defaults.color = "#98a1b3";
+  Chart.defaults.borderColor = "rgba(255,255,255,0.06)";
+  Chart.defaults.font.family = '"Inter", "SF Pro Text", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+  Chart.defaults.font.size = 11.5;
+  Chart.defaults.elements.line.borderWidth = 2;
+  Chart.defaults.elements.line.tension = 0.3;
+  Chart.defaults.elements.point.radius = 0;
+  Chart.defaults.elements.point.hitRadius = 8;
+  Chart.defaults.elements.bar.borderRadius = 4;
+  Chart.defaults.plugins.legend.labels.usePointStyle = true;
+  Chart.defaults.plugins.legend.labels.boxWidth = 6;
+  Chart.defaults.plugins.legend.labels.padding = 14;
+  Chart.defaults.plugins.tooltip.backgroundColor = "#1e222c";
+  Chart.defaults.plugins.tooltip.titleColor = "#e8eaf0";
+  Chart.defaults.plugins.tooltip.bodyColor = "#e8eaf0";
+  Chart.defaults.plugins.tooltip.borderColor = "rgba(255,255,255,0.08)";
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.cornerRadius = 8;
+  Chart.defaults.plugins.tooltip.padding = 10;
+  Chart.defaults.scale.grid.color = "rgba(255,255,255,0.05)";
+  Chart.defaults.scale.grid.drawBorder = false;
+  Chart.defaults.scale.border = { display: false };
+  Chart.defaults.scale.ticks.padding = 6;
+}
+
 Chart.defaults.color = "#8b91a3";
 Chart.defaults.borderColor = "#2c3040";

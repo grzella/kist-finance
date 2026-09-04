@@ -15,7 +15,7 @@ async function renderDashboard(el) {
 
   el.innerHTML = `
     <h2>Dashboard — ${sum.month}</h2>
-    ${fresh && !fresh.complete ? `<div class="card" style="border-left:4px solid #e0a030">
+    ${fresh && !fresh.complete ? `<div class="card" style="border-left:4px solid var(--amber)">
       <div class="row" style="align-items:center;gap:10px">
         <b>📋 ${fresh.month}: ${fresh.due.length} item${fresh.due.length === 1 ? "" : "s"} to refresh (~${fresh.total_minutes} min)</b>
         <span class="muted" style="flex:1">${fresh.due.slice(0, 4).map((e) => e.label.split(":")[0]).join(" · ")}${fresh.due.length > 4 ? " · …" : ""}</span>
@@ -125,9 +125,9 @@ async function renderDashboard(el) {
       labels: months,
       datasets: [
         { label: "Assets", data: months.map((m) => wByMonth[m] ?? null),
-          borderColor: "#3ecf8e", backgroundColor: "transparent", tension: 0.25, pointRadius: 3 },
+          borderColor: "var(--pos)", backgroundColor: "transparent", tension: 0.25, pointRadius: 3 },
         { label: "Net (after loans)", data: months.map((m) => nwByMonth[m] ?? null),
-          borderColor: "#4c8dff", backgroundColor: "transparent", tension: 0.25, pointRadius: 3, borderWidth: 3 },
+          borderColor: "var(--accent)", backgroundColor: "transparent", tension: 0.25, pointRadius: 3, borderWidth: 3 },
       ],
     },
   }));

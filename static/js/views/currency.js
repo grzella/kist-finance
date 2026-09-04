@@ -35,7 +35,7 @@ async function renderCurrency(el) {
     return `<div class="card">
       <h3 style="margin-top:0">${p.title} <span class="muted" style="font-weight:normal;font-size:.6em">${p.conv}</span></h3>
       <div class="value" style="font-size:1.5em"><b>${fmt.num(p.last, 3)}</b></div>
-      <div class="mt" style="padding:6px 10px;border-radius:6px;background:#00000022">
+      <div class="mt" style="padding:6px 10px;border-radius:6px;background:var(--inset)">
         <b class="${p.vcls}">${p.verdict}</b></div>
       ${(() => { const b = bandsByPair[p.pair]; if (!b || !b.horizons) return ""; 
         const h1 = b.horizons.find((h) => h.days === 21), h3 = b.horizons.find((h) => h.days === 63);

@@ -5,10 +5,10 @@ async function renderData(el) {
   const s = d.summary;
 
   const MODE = {
-    auto: ["🟢 auto", "#3ecf8e"],
-    derived: ["🔵 derived", "#4c8dff"],
+    auto: ["🟢 auto", "var(--pos)"],
+    derived: ["🔵 derived", "var(--accent)"],
     claude: ["🟣 AI notes", "#b78cff"],
-    manual: ["🟡 manual", "#ffd166"],
+    manual: ["🟡 manual", "var(--warn)"],
   };
   const modeBadge = (m) => {
     const [label, color] = MODE[m] || ["·", "#9aa"];
@@ -25,7 +25,7 @@ async function renderData(el) {
           <th>Last upd.</th><th style="text-align:right">Recs</th><th style="text-align:right">min/mo</th></tr></thead>
         <tbody>${g.items.map((i) => `<tr>
           <td><b>${i.name}</b>${i.note ? `<div class="muted" style="font-size:.82em">${i.note}</div>` : ""}
-            ${i.suggest ? `<div style="font-size:.82em;color:#ffd166">💡 ${i.suggest}</div>` : ""}</td>
+            ${i.suggest ? `<div style="font-size:.82em;color:var(--warn)">💡 ${i.suggest}</div>` : ""}</td>
           <td>${modeBadge(i.mode)}</td>
           <td class="muted" style="font-size:.85em">${i.source}</td>
           <td class="muted" style="font-size:.85em;white-space:nowrap">${i.freq}</td>
@@ -39,8 +39,8 @@ async function renderData(el) {
   el.innerHTML = `
     <h2>🛠️ Control Center</h2>
     <div class="row" style="gap:8px;margin-bottom:12px">
-      <a href="#control" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">🛠️ Automation &amp; health</a>
-      <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid #4a4f66;color:#e8e8ee">🔔 Reminders</a>
+      <a href="#control" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid var(--border);color:var(--text)">🛠️ Automation &amp; health</a>
+      <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid var(--border);color:var(--text)">🔔 Reminders</a>
       <a href="#data" style="text-decoration:none;padding:5px 12px;border-radius:6px;background:${CHART_COLORS[0]};color:#fff">📊 Data in the app</a>
     </div>
     <div class="muted" style="margin-bottom:12px">What is pulled in automatically, what you have to enter yourself and how often.
@@ -51,13 +51,13 @@ async function renderData(el) {
         <div class="sub">auto + derived by the app</div></div>
       <div class="card kpi"><div class="label">AI research notes</div><div class="value" style="color:#b78cff">${s.claude}</div>
         <div class="sub">monthly / on demand</div></div>
-      <div class="card kpi"><div class="label">Manual touchpoints / mo</div><div class="value" style="color:#ffd166">${s.manual_touchpoints}</div>
+      <div class="card kpi"><div class="label">Manual touchpoints / mo</div><div class="value" style="color:var(--warn)">${s.manual_touchpoints}</div>
         <div class="sub">+ ${s.manual_rare} rare/event-driven</div></div>
       <div class="card kpi"><div class="label">Manual time / mo</div><div class="value">~${s.manual_minutes} min</div>
         <div class="sub">target after automation: ~3 min</div></div>
     </div>
 
-    ${sched ? `<div class="card mt" style="border-left:4px solid #4c8dff">
+    ${sched ? `<div class="card mt" style="border-left:4px solid var(--accent)">
       <h3 style="margin-top:0">⏰ Schedules — when things run</h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">Change frequency, day and hour — saved instantly. 'app' tasks run at the first app-open past the chosen time; external ones are read-only.</div>
       <div style="overflow-x:auto"><table>
@@ -92,7 +92,7 @@ async function renderData(el) {
 
     ${d.groups.map(groupCard).join("")}
 
-    <div class="card mt" style="border-left:4px solid #ffd166">
+    <div class="card mt" style="border-left:4px solid var(--warn)">
       <h3 style="margin-top:0">🚀 Automation roadmap — getting down to the minimum</h3>
       <div class="muted" style="margin:-4px 0 10px;font-size:.9em">Priority: eliminate monthly data entry.
         Ordered by impact-to-effort ratio.</div>

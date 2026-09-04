@@ -23,7 +23,7 @@ async function renderOffers(el) {
     </div>` : "";
   el.innerHTML = `
     <h2>💼 Career — offers, market, growth</h2>
-    <details style="margin:6px 0 12px;padding:8px 12px;background:#4c8dff14;border-radius:8px">
+    <details style="margin:6px 0 12px;padding:8px 12px;background:var(--accent)14;border-radius:8px">
       <summary style="cursor:pointer;font-size:.9em"><b>👀 What this tab is (and is not)</b> — market monitoring, not job hunting <span class="muted" style="font-weight:normal">· click for details</span></summary>
       <div class="muted" style="font-size:.87em;margin-top:6px">This tab watches the <b>job market as a signal</b>, the same way the Market tab watches stock prices:
         what is the sentiment around your role, how many offers reach you <i>without applying anywhere</i>, and how demand shifts over time —
@@ -35,7 +35,7 @@ async function renderOffers(el) {
         border:1px solid ${CHART_COLORS[1]};border-radius:6px;color:${CHART_COLORS[1]};font-size:.9em">
         🧭 Long-term career analysis →</a>
       <a href="#commits" style="text-decoration:none;display:inline-block;padding:6px 12px;margin-left:6px;
-        border:1px solid #3ecf8e;border-radius:6px;color:#3ecf8e;font-size:.9em">
+        border:1px solid var(--pos);border-radius:6px;color:var(--pos);font-size:.9em">
         🧑‍💻 Committing${gh ? ` — today ${gh.today}, streak ${gh.streak}🔥` : ""} →</a></div>
     ${statsBar}
     <div class="muted" style="margin:6px 0 12px;font-size:.88em">Reference point (auto): <b>${s ? fmt.pln(s.current) : "—"}</b>/mo —

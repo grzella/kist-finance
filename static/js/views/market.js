@@ -17,8 +17,8 @@ function marketBriefHtml(b, controls) {
   const geo = (b.geopolitics || []).map((g) => `<details class="mt">
       <summary style="cursor:pointer;font-weight:600">${g.title}</summary>
       <div class="muted mt" style="font-size:.92em">${g.text}</div></details>`).join("");
-  const stanceColor = (s) => /sell/i.test(s) ? "#3ecf8e" : /hold|core/i.test(s) ? "#4c8dff"
-    : /accumulate|dca|buduj|stopniowo/i.test(s) ? "#ffd166" : "#9aa";
+  const stanceColor = (s) => /sell/i.test(s) ? "var(--pos)" : /hold|core/i.test(s) ? "var(--accent)"
+    : /accumulate|dca|buduj|stopniowo/i.test(s) ? "var(--warn)" : "#9aa";
   const pos = (b.positions || []).map((p) => `<tr>
       <td><b>${p.ticker}</b></td>
       <td><span class="badge" style="background:${stanceColor(p.stance)}22;color:${stanceColor(p.stance)}">${p.stance}</span></td>
@@ -38,12 +38,12 @@ function marketBriefHtml(b, controls) {
     : "";
   return `
     ${staleBanner}
-    <div class="card" style="border-left:4px solid ${sd >= 2 ? "#e05a5a" : "#4c8dff"}">
+    <div class="card" style="border-left:4px solid ${sd >= 2 ? "#e05a5a" : "var(--accent)"}">
       <div class="row" style="justify-content:space-between;align-items:baseline">
         <h3 style="margin:0">🧭 Market brief</h3>${controls || ""}
         <span class="muted" style="font-size:.82em">quotes through <b>${b.data_through || "?"}</b> · analysis: ${b.as_of || "—"}${b.generated_by ? ` · ${b.generated_by}` : ""}${sd >= 1 && sd < 2 ? ' <span title="today\'s session not written yet">⏳</span>' : ""}</span>
       </div>
-      ${b.regime ? `<div class="mt" style="font-weight:600;color:#ffd166">${b.regime}</div>` : ""}
+      ${b.regime ? `<div class="mt" style="font-weight:600;color:var(--warn)">${b.regime}</div>` : ""}
       <div class="mt">${b.headline}</div>
     </div>
     ${hi ? `<div class="grid cols-4 mt">${hi}</div>` : ""}
@@ -51,7 +51,7 @@ function marketBriefHtml(b, controls) {
     ${pos ? `<div class="card mt"><h3 style="margin-top:0">🎯 What to do about it — per position</h3>
       <table><thead><tr><th>Ticker</th><th>Stance</th><th>Rationale</th></tr></thead>
       <tbody>${pos}</tbody></table>
-      ${b.fx_note ? `<div class="muted mt" style="border-left:3px solid #e0a458;padding-left:8px">💱 ${b.fx_note}</div>` : ""}</div>` : ""}
+      ${b.fx_note ? `<div class="muted mt" style="border-left:3px solid var(--amber);padding-left:8px">💱 ${b.fx_note}</div>` : ""}</div>` : ""}
     ${b.method_note ? `<div class="muted mt" style="font-size:.8em">${b.method_note}</div>` : ""}`;
 }
 
@@ -63,7 +63,7 @@ async function renderMarket(el) {
   ]);
   el.innerHTML = `
     <h2>Market</h2>
-    ${radar ? `<div class="card mt" style="border-left:4px solid ${radar.score >= 4 ? "#ff5c5c" : radar.score >= 2 ? "#ffd166" : "#3ecf8e"}">
+    ${radar ? `<div class="card mt" style="border-left:4px solid ${radar.score >= 4 ? "var(--neg)" : radar.score >= 2 ? "var(--warn)" : "var(--pos)"}">
       <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <h3 style="margin:0">🌍 Risk Radar <span class="badge" title="sum of the 4 component scores (0–2 each) — max ${radar.max_score}. E.g. 3/8 = three fear points total, not 3 of 8 components">${radar.state} · ${radar.score}/${radar.max_score} pts ⓘ</span></h3>
       </div>
@@ -126,11 +126,11 @@ async function renderMarket(el) {
       type: "line",
       data: { labels: radar.history.map((h) => h.date.slice(5)),
         datasets: [{ label: "score", data: radar.history.map((h) => h.score),
-          borderColor: "#ffd166", backgroundColor: "transparent", tension: 0.3, pointRadius: 2 },
+          borderColor: "var(--warn)", backgroundColor: "transparent", tension: 0.3, pointRadius: 2 },
           { label: "trend (7d)", data: radar.history.map((_, i, a) => {
               const w = a.slice(Math.max(0, i - 6), i + 1);
               return +(w.reduce((x, h) => x + h.score, 0) / w.length).toFixed(2);
-            }), borderColor: "#4c8dff", backgroundColor: "transparent",
+            }), borderColor: "var(--accent)", backgroundColor: "transparent",
             tension: 0.35, pointRadius: 0, borderDash: [5, 4] }] },
       options: { plugins: { legend: { display: false } },
         scales: { y: { min: 0, max: radar.max_score } } },
@@ -267,7 +267,7 @@ async function renderMarket(el) {
     const thin = range !== "Max" && shown.length < wantDays * 0.8;
     document.getElementById("chartMeta").innerHTML =
       `${shown.length} sessions · ${span}` +
-      (thin ? ` · <span style="color:#e0a458">only ${shown.length} in cache for this window — the sync/Yahoo has no more yet</span>` : "") +
+      (thin ? ` · <span style="color:var(--amber)">only ${shown.length} in cache for this window — the sync/Yahoo has no more yet</span>` : "") +
       ` · <span class="hint" title="Bollinger Bands: SMA20 ± 2σ. Price hugging the upper band = stretched high; lower = stretched low; wide bands = high volatility.">Bollinger 20</span> shown`;
 
     if (chart) chart.destroy();
@@ -276,10 +276,10 @@ async function renderMarket(el) {
       data: {
         labels: shown.map((h) => h.date),
         datasets: [
-          { label: "Bollinger upper", data: bUp, borderColor: "#3ecf8e55", borderDash: [2, 3], pointRadius: 0, fill: false },
-          { label: "Bollinger lower", data: bLow, borderColor: "#3ecf8e55", borderDash: [2, 3], pointRadius: 0, fill: "-1", backgroundColor: "#3ecf8e12" },
-          { label: ticker, data: closes, borderColor: "#4c8dff", tension: 0.2, pointRadius: 0 },
-          { label: "SMA50", data: smaShown(50), borderColor: "#ffd166", borderDash: [4, 4], pointRadius: 0 },
+          { label: "Bollinger upper", data: bUp, borderColor: "var(--pos)55", borderDash: [2, 3], pointRadius: 0, fill: false },
+          { label: "Bollinger lower", data: bLow, borderColor: "var(--pos)55", borderDash: [2, 3], pointRadius: 0, fill: "-1", backgroundColor: "var(--pos)12" },
+          { label: ticker, data: closes, borderColor: "var(--accent)", tension: 0.2, pointRadius: 0 },
+          { label: "SMA50", data: smaShown(50), borderColor: "var(--warn)", borderDash: [4, 4], pointRadius: 0 },
           { label: "SMA200", data: smaShown(200), borderColor: "#b78cff", borderDash: [4, 4], pointRadius: 0 },
         ],
       },
@@ -301,9 +301,9 @@ async function renderMarket(el) {
     rsiChart = trackChart(new Chart(rsiEl, {
       type: "line",
       data: { labels: shown.map((h) => h.date), datasets: [
-        { label: "RSI(14)", data: rsi, borderColor: "#e0a458", pointRadius: 0, tension: 0.2 },
-        { label: "70", data: shown.map(() => 70), borderColor: "#ff5c5c33", borderDash: [3, 3], pointRadius: 0 },
-        { label: "30", data: shown.map(() => 30), borderColor: "#3ecf8e33", borderDash: [3, 3], pointRadius: 0 },
+        { label: "RSI(14)", data: rsi, borderColor: "var(--amber)", pointRadius: 0, tension: 0.2 },
+        { label: "70", data: shown.map(() => 70), borderColor: "var(--neg)33", borderDash: [3, 3], pointRadius: 0 },
+        { label: "30", data: shown.map(() => 30), borderColor: "var(--pos)33", borderDash: [3, 3], pointRadius: 0 },
       ] },
       options: { interaction: { mode: "index", intersect: false }, scales: { y: { min: 0, max: 100 } },
         plugins: { legend: { labels: { filter: (i) => i.text === "RSI(14)" } } } },

@@ -72,11 +72,11 @@ async function renderRsu(el) {
       </table></div>
       <div class="muted mt">You only report the current count — vests and sales are inferred from the delta and the vest calendar.</div>
     </div>` : ""}
-    <div class="card mt" style="border-left:4px solid #ffd166">
+    <div class="card mt" style="border-left:4px solid var(--warn)">
       <h3 style="margin-top:0">💡 Recommendation</h3>
       <div>${rec}</div>
     </div>
-    ${deep.headline ? `<div class="card mt" style="border-left:4px solid #4c8dff">
+    ${deep.headline ? `<div class="card mt" style="border-left:4px solid var(--accent)">
       <h3 style="margin-top:0">🔬 Deep-dive analysis — ${deep.vest_month} vest
         <span class="muted" style="font-weight:normal;font-size:.75em">(as of ${deep.as_of}, price $${deep.price})</span></h3>
       <div><b>${deep.headline}</b></div>
@@ -88,7 +88,7 @@ async function renderRsu(el) {
         not computed automatically. To refresh: ask Claude to "refresh the vest analysis".
         ${(deep.sources || []).length ? `Sources: ${deep.sources.map((u, i) => `<a href="${u}" target="_blank">[${i + 1}]</a>`).join(" ")}` : ""}</div>
     </div>` : ""}
-    ${bands && bands.horizons ? `<div class="card mt" style="border-left:4px solid #4c8dff">
+    ${bands && bands.horizons ? `<div class="card mt" style="border-left:4px solid var(--accent)">
       <h3 style="margin-top:0">📏 Short horizon — range, not direction
         <span class="muted" style="font-weight:normal;font-size:.7em">(a single stock's direction cannot be predicted — we manage risk, not timing)</span></h3>
       <table><thead><tr><th>Window</th><th>Pessimistic (p10)</th><th>Middle</th><th>Optimistic (p90)</th><th>Model</th></tr></thead>
@@ -140,14 +140,14 @@ async function renderRsu(el) {
       const btRow = (h) => h ? `<tr><td>${h.horizon_days === 21 ? "~1 mo" : "~3 mo"}</td>
         <td class="${covCls(h.band_coverage_pct)}"><b>${h.band_coverage_pct}%</b> <span class="muted">(ideal ~80%)</span></td>
         <td>${h.directional_pct}%</td><td>${h.median_abs_err_pct}%</td><td class="muted">${h.n}</td></tr>` : "";
-      return `<div class="card mt" style="border-left:4px solid #ffd166">
+      return `<div class="card mt" style="border-left:4px solid var(--warn)">
       <h3 style="margin-top:0">🎯 How accurate my predictions are (learning from data)</h3>
       <div class="muted" style="font-size:.88em;margin-bottom:8px">Every day the stock price is fetched and the bands are scored.
         \"Calibration\" = how often the actual price fell inside my p10–p90 band (ideal ~80%).
         At ${adv.vol_annual_pct}% volatility the short-term move is almost random — so the honest measure is calibration, not \"hitting the price\".</div>
       <table><thead><tr><th>Horizon</th><th>Band calibration</th><th>Direction OK</th><th>Median error</th><th>Samples</th></tr></thead>
         <tbody>${btRow(bt.h21)}${btRow(bt.h63)}</tbody></table>
-      <div class="mt" style="font-size:.9em;padding:8px 12px;background:#00000022;border-radius:6px">
+      <div class="mt" style="font-size:.9em;padding:8px 12px;background:var(--inset);border-radius:6px">
         <b>Backtest takeaway (${bt.source}):</b> the bands hit ${bt.h21.band_coverage_pct}% instead of ~80% —
         i.e. <b>too narrow</b>; actual price moves were bigger. Realized drift in that period: <b class="neg">${bt.realized_drift_pct}%/yr</b>
         vs the assumed <b>+${bt.assumed_drift_pct}%</b> — the price was falling hard, so the median direction was often wrong.

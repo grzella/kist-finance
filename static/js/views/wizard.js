@@ -20,7 +20,7 @@ async function renderWizard(el) {
         your data stays in one file on this machine (<code>.finance/finance.db</code>).
         You can re-run this anytime by opening <code>#wizard</code>.</div>
 
-      <div class="card" style="border-left:4px solid #4c8dff">
+      <div class="card" style="border-left:4px solid var(--accent)">
         <h3 style="margin-top:0">1 · Which areas do you want to track?</h3>
         <div class="muted" style="font-size:.85em;margin-bottom:10px">Core (dashboard, cash-flow, wealth,
           goals, forecasts) is always on. Toggle the rest — you can change this later.</div>
@@ -29,7 +29,7 @@ async function renderWizard(el) {
         </div>
       </div>
 
-      <div class="card mt" style="border-left:4px solid #ffd166">
+      <div class="card mt" style="border-left:4px solid var(--warn)">
         <h3 style="margin-top:0">2 · Start with data</h3>
         ${cfg.has_data ? `
           <div class="muted">You already have data in the local database — skipping this step.</div>
@@ -47,8 +47,8 @@ async function renderWizard(el) {
             <input type="radio" name="wzData" value="ai">
             <b>Set it up with an AI assistant</b> <span class="muted">(get a ready-made prompt that interviews you and tells you exactly what to enter where)</span>
           </label>
-          <div id="wzAiBox" style="display:none;margin:10px 0 0 24px;padding:10px 12px;background:#4c8dff14;border-radius:8px;font-size:.88em">
-            <div style="padding:6px 10px;background:#ffd16622;border-radius:6px;margin-bottom:8px">⚠️ <b>Privacy note:</b> the app itself runs 100% on localhost, but anything you paste into a <b>cloud</b> assistant (ChatGPT, Claude web…) leaves your machine and is processed by that provider. For full privacy use a <b>local model</b> (Control Center → AI mode) or enter the numbers yourself.</div>
+          <div id="wzAiBox" style="display:none;margin:10px 0 0 24px;padding:10px 12px;background:var(--accent)14;border-radius:8px;font-size:.88em">
+            <div style="padding:6px 10px;background:var(--warn)22;border-radius:6px;margin-bottom:8px">⚠️ <b>Privacy note:</b> the app itself runs 100% on localhost, but anything you paste into a <b>cloud</b> assistant (ChatGPT, Claude web…) leaves your machine and is processed by that provider. For full privacy use a <b>local model</b> (Control Center → AI mode) or enter the numbers yourself.</div>
             How it works: 1) click the button and paste the prompt into any AI assistant · 2) answer its questions ·
             3) it hands you a tab-by-tab checklist (and ready JSON for the analysis boxes) · 4) finish this wizard with "Start empty" behavior and type the values in.
             <div class="row mt" style="gap:8px;align-items:center">
@@ -58,7 +58,7 @@ async function renderWizard(el) {
           </div>`}
       </div>
 
-      <div class="card mt" style="border-left:4px solid #3ecf8e">
+      <div class="card mt" style="border-left:4px solid var(--pos)">
         <h3 style="margin-top:0">3 · Optional integrations <span class="muted" style="font-weight:normal;font-size:.7em">— skip freely, the app is fully functional offline</span></h3>
         <div style="font-size:.9em">
           <p><b>📈 Live market data (Supabase)</b> — the Markets/FX/RSU tabs read daily quotes from a free
@@ -71,7 +71,7 @@ async function renderWizard(el) {
         </div>
       </div>
 
-            <div class="card mt" style="border-left:4px solid #4c8dff">
+            <div class="card mt" style="border-left:4px solid var(--accent)">
         <h3 style="margin-top:0">💱 Base currency</h3>
         <div class="row" style="align-items:center;gap:10px">
           <select id="wzCur">${["PLN","EUR","USD","GBP","CHF"].map((c) => `<option ${c === (cfg.currency || "PLN") ? "selected" : ""}>${c}</option>`).join("")}</select>

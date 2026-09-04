@@ -9,7 +9,7 @@ async function renderCommits(el) {
     <div class="muted" style="margin-bottom:4px"><a href="#offers" style="text-decoration:none">← Career</a></div>
     <h2>🧑‍💻 Committing — coding activity and open source</h2>
 
-    ${gh && !gh.configured ? `<div class="card" style="border-left:4px solid #4c8dff">
+    ${gh && !gh.configured ? `<div class="card" style="border-left:4px solid var(--accent)">
       <h3 style="margin-top:0">📊 Track your coding activity</h3>
       <div class="muted" style="font-size:.9em">Not set up yet — so nothing is counted. This tab turns daily commits into a streak and an "I code with AI" profile, once you point it at <b>your</b> data (two independent options, use either or both):</div>
       <ol style="padding-left:18px;font-size:.92em">
@@ -19,12 +19,12 @@ async function renderCommits(el) {
       <div class="muted" style="font-size:.82em">Deliberately empty until then: a fresh clone must never show commits scraped from whatever repos happen to sit in your home folder.</div>
     </div>` : ""}
 
-    ${gh && gh.configured ? `<div class="card" style="border-left:4px solid #3ecf8e">
+    ${gh && gh.configured ? `<div class="card" style="border-left:4px solid var(--pos)">
       <div class="muted" style="font-size:.85em;margin-bottom:8px">
         ${gh.github && gh.github.connected
           ? `<b class="pos">Full GitHub activity</b> (commits + PRs + issues + reviews, all repos — including merged contributions to other projects) merged with local repos (${gh.repos}) over ${gh.days} days. In window: ${gh.github.prs} PRs · ${gh.github.issues} issues · ${gh.github.reviews} reviews.`
           : `Your commits from local repos (${gh.repos}) over ${gh.days} days (GitHub offline — local only).`}
-        <div style="font-size:.82em;margin:4px 0;padding:6px 10px;background:#4c8dff18;border-radius:6px">⚠️ Whose data is this? Activity found on <b>this machine</b>: local git repos scanned here${gh.github && gh.github.connected && gh.github.login ? ` + the gh CLI account (<a href="https://github.com/${gh.github.login}" target="_blank">@${gh.github.login}</a>)` : ""}. If you cloned this app, these may be someone else's numbers — switch to yours: run <code>gh auth login</code> with your account and set <code>commit_repos</code> / <code>commit_author</code> in the Data tab → Settings.</div>
+        <div style="font-size:.82em;margin:4px 0;padding:6px 10px;background:var(--accent)18;border-radius:6px">⚠️ Whose data is this? Activity found on <b>this machine</b>: local git repos scanned here${gh.github && gh.github.connected && gh.github.login ? ` + the gh CLI account (<a href="https://github.com/${gh.github.login}" target="_blank">@${gh.github.login}</a>)` : ""}. If you cloned this app, these may be someone else's numbers — switch to yours: run <code>gh auth login</code> with your account and set <code>commit_repos</code> / <code>commit_author</code> in the Data tab → Settings.</div>
         Goal: coding activity every day — builds an AI-native, "I code with AI" profile. Status also in Control → Automation.</div>
       <div class="grid cols-4">
         <div class="card kpi"><div class="label">Today</div><div class="value ${gh.today > 0 ? "pos" : ""}">${gh.today}</div><div class="sub">contributions</div></div>
@@ -38,7 +38,7 @@ async function renderCommits(el) {
     </div>` : ""}
 
     ${c && c.goal ? `
-    <div class="card mt" style="border-left:4px solid #4c8dff">
+    <div class="card mt" style="border-left:4px solid var(--accent)">
       <h3 style="margin-top:0">🎯 Where to contribute (open source for the business)</h3>
       <div style="font-size:1.0em"><b>${c.goal}</b></div>
       <div class="muted mt" style="font-size:.85em">${c.method}</div>
@@ -76,7 +76,7 @@ async function renderCommits(el) {
       data: {
         labels: last.map((d) => d.date.slice(5)),
         datasets: [{ label: "commits/day", data: last.map((d) => d.count),
-          backgroundColor: last.map((d) => d.count > 0 ? "#3ecf8e" : "#2c3040") }],
+          backgroundColor: last.map((d) => d.count > 0 ? "var(--pos)" : "#2c3040") }],
       },
       options: {
         plugins: { legend: { display: false },
