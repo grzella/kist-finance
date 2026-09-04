@@ -106,7 +106,12 @@ def ensure_tables():
         payer text default 'me', essential integer default 1,
         currency text default 'USD', archived integer default 0,
         entity text default 'personal', invoice integer default 0,
+        billing text default 'monthly',
         created_at text not null)""")
+    try:  # databases created before the billing cadence existed
+        eb._exec("alter table expense_items add column billing text default 'monthly'")
+    except Exception:
+        pass
     eb._exec("""create table if not exists expense_values (
         id text primary key, item_id text not null, month text not null,
         amount real not null, created_at text not null)""")
@@ -433,11 +438,12 @@ def add_expense_item(data):
     item_id = str(uuid.uuid4())
     eb._exec(
         "insert into expense_items (id, name, category, payer, essential, "
-        "currency, entity, invoice, created_at) values (?,?,?,?,?,?,?,?,?)",
+        "currency, entity, invoice, billing, created_at) values (?,?,?,?,?,?,?,?,?,?)",
         (item_id, data["name"], data.get("category", ""),
          data.get("payer", "me"), 1 if data.get("essential", True) else 0,
          data.get("currency", "USD"), data.get("entity", "personal"),
-         1 if data.get("invoice") else 0, _now()))
+         1 if data.get("invoice") else 0,
+         "yearly" if data.get("billing") == "yearly" else "monthly", _now()))
     _audit("expense_item", item_id, "add", data)
     if data.get("amount") is not None:
         set_expense_value(item_id, data.get("month") or date.today().strftime("%Y-%m"),
@@ -447,11 +453,14 @@ def add_expense_item(data):
 
 def update_expense_item(item_id, data):
     cols, params = [], []
-    for k in ("name", "category", "payer", "essential", "currency", "archived", "entity", "invoice"):
+    for k in ("name", "category", "payer", "essential", "currency", "archived", "entity",
+              "invoice", "billing"):
         if k in data:
             v = data[k]
             if k in ("essential", "archived", "invoice"):
                 v = 1 if v else 0
+            if k == "billing":
+                v = "yearly" if v == "yearly" else "monthly"
             cols.append(k); params.append(v)
     if cols:
         params.append(item_id)
@@ -484,6 +493,7 @@ def expense_item_history(item_id):
 _SUB_CATEGORY_LABELS = {
     "subscription-work": "Subscriptions: work",
     "subscription-entertainment": "Subscriptions: entertainment",
+    "subscription-health": "Subscriptions: health / sport",
     "subscription-other": "Subscriptions: other",
 }
 
@@ -584,12 +594,20 @@ def _expense_optimizations(items, cur_month):
                              f"({round(s*12)}/yr). You rarely watch all of them at once — "
                              "consider rotating (keep 1–2 active, cycle the rest seasonally)."})
 
+    # annual billing where monthly (usually 15–20% cheaper). Source of truth is the
+    # `billing` field (toggle in the table), not a guess from the item name.
     monthly_subs = [i for i in active if (i.get("category") or "").startswith("subscription-")
-                    and "annual" not in i["name"].lower()]
+                    and (i.get("billing") or "monthly") != "yearly"]
     if monthly_subs:
-        tips.append({"kind": "annual", "severity": "info",
-                     "text": "Some subscriptions bill monthly — an annual plan is often "
-                             "15–20% cheaper. Worth checking at the next renewal."})
+        s = round(sum(i["latest_amount"] for i in monthly_subs), 2)
+        save_lo, save_hi = round(s * 12 * 0.15), round(s * 12 * 0.20)
+        tips.append({"kind": "annual", "severity": "info" if len(monthly_subs) < 4 else "warn",
+                     "text": f"{len(monthly_subs)} subscription(s) bill monthly ({s}/mo): "
+                             + ", ".join(i["name"] for i in monthly_subs[:6])
+                             + (", …" if len(monthly_subs) > 6 else "")
+                             + f". An annual plan is often 15–20% cheaper — roughly "
+                             f"{save_lo}–{save_hi}/yr. Check at the next renewal and flip "
+                             "the item to \"yearly\" in the table."})
 
     inv = [i for i in active if i.get("invoice")]
     if inv:

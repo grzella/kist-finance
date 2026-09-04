@@ -5,6 +5,7 @@ import json
 import math
 import os
 import random
+import re
 import urllib.request
 import urllib.parse
 from datetime import date, datetime
@@ -315,7 +316,10 @@ _RSU_DEFAULT = {
     "vesting_years": 4,
     "vests_per_year": 4,
     "shares_held": 0,                  # shares already held (after vests)
-    "shares_next_vest": 0,             # how many shares vest next
+    "shares_next_vest": 0,             # how many shares vest next (broker's number; wins over the model)
+    # optional in rsu.json: "legacy_shares_per_vest" (older grants still vesting),
+    # "extra_grants": [{"label", "value_usd", "pricing_window", "vesting_years", "note"}],
+    # "new_grants_vesting": true once the new grants start vesting (model replaces shares_next_vest)
     "vest_months": [2, 5, 8, 11],      # Feb, May, Aug, Nov
     "target_bear": None,               # lower analyst target; None -> 0.65x spot
     "target_bull": None,               # upper analyst target; None -> 1.30x spot
@@ -325,6 +329,58 @@ _RSU_DEFAULT = {
     "perf_equity_multiplier": 1.5,     # yearly refresh-grant uplift at a strong company performance rating
     "perf_base_raise_annual": 0.08,    # ~8% base raise per year
 }
+
+
+def _rsu_vest_stream(grant, hist):
+    """How many shares land in ONE quarterly vest: legacy grants + the main
+    grant + every extra grant. Returns (extras_computed, extras_per_vest, total).
+
+    Each grant has its own pricing window (a special grant priced in one month
+    is valued differently from the yearly refresh priced in another), so folding
+    them into a single `grant_value_usd` would give the wrong share count. One
+    place to compute it, because the same number feeds the RSU view, the
+    shares history (`sold_est`) and the Monte Carlo projection — a mismatch
+    between them under-projected by a whole grant.
+    """
+    last = hist[-1]["close"] if hist else None
+    n_vests = grant["vesting_years"] * grant["vests_per_year"]
+    window = [r for r in hist if r["date"].startswith(grant["pricing_window"])]
+    avg = round(mean([r["close"] for r in window]), 2) if window else None
+    eff_shares = (int(grant["grant_value_usd"] / avg) if avg
+                  else int(grant["grant_value_usd"] / last) if last else None)
+
+    extras, extras_sh_per_vest = [], 0.0
+    for g in grant.get("extra_grants") or []:
+        win = [r for r in hist if r["date"].startswith(g.get("pricing_window") or "")]
+        g_avg = round(mean([r["close"] for r in win]), 2) if win else None
+        px_used = g_avg or last
+        g_sh = int(g["value_usd"] / px_used) if px_used else None
+        g_vests = (g.get("vesting_years") or grant["vesting_years"]) * grant["vests_per_year"]
+        per_vest = round(g_sh / g_vests, 1) if g_sh else None
+        if per_vest:
+            extras_sh_per_vest += per_vest
+        extras.append({
+            **g, "priced_at": px_used, "window_average": g_avg,
+            "window_days_counted": len(win), "shares_total": g_sh,
+            "shares_per_vest": per_vest, "n_vests": g_vests,
+            "priced_from": "pricing window" if g_avg else "last close (window not started yet)",
+        })
+
+    total = (round(eff_shares / n_vests, 1) if eff_shares else 0) \
+        + extras_sh_per_vest + (grant.get("legacy_shares_per_vest") or 0)
+    return extras, extras_sh_per_vest, round(total, 1)
+
+
+def _shares_per_vest(grant, hist):
+    """Shares landing in the next vest. `shares_next_vest` in rsu.json wins
+    (the broker's number beats the model), but when it is missing — or once
+    the new grants have started vesting — compute the full stream, not just
+    the legacy grants."""
+    fixed = grant.get("shares_next_vest") or 0
+    if fixed and not grant.get("new_grants_vesting"):
+        return fixed
+    _, _, total = _rsu_vest_stream(grant, hist)
+    return int(round(total)) or fixed
 
 
 def get_rsu():
@@ -343,8 +399,16 @@ def get_rsu():
     last_close_date = hist[-1]["date"] if hist else None
     n_vests = grant["vesting_years"] * grant["vests_per_year"]
     eff_shares = shares or est_shares
+
+    extras, extras_sh_per_vest, total_per_vest = _rsu_vest_stream(grant, hist)
+    old_per_vest = grant.get("legacy_shares_per_vest") or 0
     return {
         **grant,
+        "extra_grants_computed": extras,
+        "legacy_shares_per_vest": old_per_vest,
+        "total_shares_per_vest": round(total_per_vest, 1),
+        "total_vest_value_pln": (round(total_per_vest * last * usdpln, 0)
+                                 if (last and usdpln) else None),
         "window_days_counted": len(window),
         "window_running_average": avg,
         "last_close": round(last, 2) if last is not None else None,
@@ -358,7 +422,8 @@ def get_rsu():
         "usdpln_date": usdpln_date,
         "cache_synced": last_sync(),
         "n_vests": n_vests,
-        **_rsu_holdings(grant, last, usdpln),
+        **_rsu_holdings({**grant, "_shares_next_vest": _shares_per_vest(grant, hist)},
+                        last, usdpln),
     }
 
 
@@ -381,7 +446,7 @@ def _rsu_holdings(grant, last, usdpln):
     """Holdings, next-vest projection and price-scenario simulation."""
     from datetime import date as _date
     held = grant.get("shares_held") or 0
-    nxt = grant.get("shares_next_vest") or 0
+    nxt = grant.get("_shares_next_vest", grant.get("shares_next_vest") or 0)
     months = sorted(grant.get("vest_months") or [2, 5, 8, 11])
     today = _date.today()
     next_vest = next((f"{today.year:04d}-{m:02d}" for m in months if m > today.month),
@@ -465,7 +530,7 @@ def rsu_shares_history(grant=None):
         except Exception:
             rows = []
     vm = set(grant.get("vest_months") or [2, 5, 8, 11])
-    nxt = grant.get("shares_next_vest") or 0
+    nxt = _shares_per_vest(grant, prices(grant["ticker"], days=400))
     out = []
     prev = None
     for r in rows:
@@ -705,7 +770,7 @@ def rsu_advanced():
     sma200 = _sma(closes, 200)
 
     held = grant.get("shares_held") or 0
-    nxt = grant.get("shares_next_vest") or 0
+    nxt = _shares_per_vest(grant, hist)
     vm = sorted(grant.get("vest_months") or [2, 5, 8, 11])
     today = date.today()
 
@@ -1184,15 +1249,42 @@ def get_briefs():
 
 
 
+# Closed set of ranges accepted by the Yahoo chart API plus a narrow allow-list
+# of ticker characters (letters/digits and `.-=^` from symbols like BTC-USD,
+# ^GSPC, EURUSD=X, CL=F). Both inputs (`ticker` from the path, `range_` from the
+# request body) are request-controlled — these two constants turn them into
+# closed enumerations so they cannot inject a foreign host, path or extra query
+# parameters into the outbound URL (SSRF / parameter smuggling).
+_YF_RANGES = frozenset(
+    {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"})
+_YF_TICKER_RE = re.compile(r"^[A-Za-z0-9.\-=^]{1,20}$")
+_YF_CHART_BASE = "https://query1.finance.yahoo.com/v8/finance/chart/"
+
+
+def _yf_chart_url(ticker, range_="1y"):
+    """Build the keyless Yahoo chart URL with ENFORCED invariants: fixed
+    scheme+host, ticker restricted to the character allow-list (no `/`, `@`,
+    `:`, CR/LF → no host/path injection), range restricted to Yahoo's closed set
+    (no query-param smuggling). A ticker outside the allow-list is rejected
+    (ValueError); an unknown `range_` silently falls back to the safe default `1y`."""
+    t = (ticker or "").strip().upper()
+    if not _YF_TICKER_RE.match(t):
+        raise ValueError("invalid ticker for Yahoo fetch: %r" % (ticker,))
+    r = range_ if range_ in _YF_RANGES else "1y"
+    return (_YF_CHART_BASE + urllib.parse.quote(t, safe="")
+            + f"?range={r}&interval=1d")
+
+
 def fetch_yahoo_history(ticker, range_="1y"):
     """Keyless Yahoo history for ANY ticker (public data) → market_prices_cache,
     so charts/indicators have depth even for symbols the nightly sync doesn't
     cover (e.g. the risk-radar commodities/FX). Returns the number of rows stored."""
     import json as _json
-    import urllib.parse
     import urllib.request
-    url = ("https://query1.finance.yahoo.com/v8/finance/chart/"
-           + urllib.parse.quote(ticker) + f"?range={range_}&interval=1d")
+    try:
+        url = _yf_chart_url(ticker, range_)
+    except ValueError:
+        return 0
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
         with urllib.request.urlopen(req, timeout=10) as r:

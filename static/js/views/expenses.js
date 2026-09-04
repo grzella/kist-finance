@@ -1,6 +1,7 @@
 const SUB_LABELS = {
   "subscription-work": "💼 Work / business",
   "subscription-entertainment": "🎬 Entertainment",
+  "subscription-health": "🚴 Health / sport",
   "subscription-other": "🔧 Other",
 };
 
@@ -8,9 +9,14 @@ function _row(i, cm) {
   const inv = i.invoice
     ? `<button data-inv="${i.id}" class="badge" style="cursor:pointer;background:#1f6f4a;color:#fff;border:none" title="click to unmark">📄 Invoiced</button>`
     : `<button data-inv="${i.id}" class="badge" style="cursor:pointer;opacity:.55" title="click to mark as a business expense with an invoice">no invoice</button>`;
+  const yearly = (i.billing || "monthly") === "yearly";
+  const bill = yearly
+    ? `<button data-bill="${i.id}" class="badge" style="cursor:pointer;background:#2b5f8f;color:#fff;border:none" title="billed yearly (amount = 1/12) — click to switch to monthly">📅 yearly</button>`
+    : `<button data-bill="${i.id}" class="badge" style="cursor:pointer;opacity:.7" title="billed monthly — an annual plan is often 15–20% cheaper; click once you switch">monthly</button>`;
   return `<tr>
     <td>${i.name}</td>
     <td>${inv}</td>
+    <td>${bill}</td>
     <td>${i.payer}</td>
     <td>${i.essential ? "✓" : ""}</td>
     <td style="text-align:right">${fmt.usd(i.latest_amount)}</td>
@@ -23,7 +29,7 @@ function _row(i, cm) {
 function _table(items, cm, emptyMsg) {
   if (!items.length) return `<div class="empty">${emptyMsg}</div>`;
   return `<table><thead><tr>
-    <th>Name</th><th>Invoiced?</th><th>Payer</th><th>Essential</th>
+    <th>Name</th><th>Invoiced?</th><th>Billing</th><th>Payer</th><th>Essential</th>
     <th style="text-align:right">Amount</th><th>Month</th><th></th><th></th>
   </tr></thead><tbody>${items.map((i) => _row(i, cm)).join("")}</tbody></table>`;
 }
@@ -78,7 +84,11 @@ async function renderExpenses(el) {
           <option value="">no category</option>
           <option value="subscription-work">Subscription — work</option>
           <option value="subscription-entertainment">Subscription — entertainment</option>
+          <option value="subscription-health">Subscription — health / sport</option>
           <option value="subscription-other">Subscription — other</option>
+        </select>
+        <select id="eBilling" title="how you pay: monthly, or once a year (enter the amount as 1/12)">
+          <option value="monthly" selected>monthly</option><option value="yearly">yearly</option>
         </select>
         <select id="ePayer"><option selected>me</option><option>partner</option><option>tenant</option></select>
         <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="eEssential" checked> essential</label>
@@ -131,6 +141,12 @@ async function renderExpenses(el) {
       await api.put("/api/expenses/items/" + btn.dataset.inv, { invoice: !on });
       route();
     }));
+  el.querySelectorAll("[data-bill]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const yearly = btn.textContent.includes("yearly");
+      await api.put("/api/expenses/items/" + btn.dataset.bill, { billing: yearly ? "monthly" : "yearly" });
+      route();
+    }));
 
   document.getElementById("eAdd").addEventListener("click", async () => {
     const name = document.getElementById("eName").value.trim();
@@ -143,6 +159,7 @@ async function renderExpenses(el) {
       payer: document.getElementById("ePayer").value,
       essential: document.getElementById("eEssential").checked,
       invoice: document.getElementById("eInvoice").checked,
+      billing: document.getElementById("eBilling").value,
       amount: isNaN(amount) ? undefined : amount,
       month: cm,
     });

@@ -705,6 +705,56 @@ def _check_web_guard():
     return out
 
 
+def _check_market_fetch():
+    """Convergence check: the keyless Yahoo fetch builds its outbound URL from
+    request-controlled `ticker` (path) and `range` (body). `market._yf_chart_url`
+    must pin host+scheme, reject tickers outside a narrow allow-list (no `/`,
+    `@`, `:`, CR/LF → no host/path injection) and clamp the range to Yahoo's
+    closed set (no query-param smuggling). Pure — no network."""
+    out = []
+
+    def f(sev, status, title, detail, fix=""):
+        out.append({"id": "marketfetch", "area": "OUTBOUND FETCH (SSRF/param-injection)",
+                    "severity": sev, "status": status, "title": title,
+                    "detail": detail, "fix": fix})
+
+    try:
+        import market
+        builder = market._yf_chart_url
+    except Exception as e:
+        f("med", "fail", "Yahoo fetch has no URL-hardening helper",
+          f"market._yf_chart_url missing ({str(e)[:60]})",
+          "Route fetch_yahoo_history through a validated _yf_chart_url")
+        return out
+
+    host = "https://query1.finance.yahoo.com/"
+    # 1) malicious range must NOT reach the URL (falls back to a safe default)
+    injected = builder("AAPL", "1y&interval=1d&crumb=x#")
+    range_ok = ("crumb" not in injected and "#" not in injected
+                and injected.startswith(host) and injected.count("?") == 1)
+    # 2) malicious tickers must be rejected outright
+    ticker_rejected = 0
+    for bad in ("../../etc/passwd", "AAPL/../v8", "evil.com/x", "a@b", "a\r\nb",
+                "x?foo=1", "a b"):
+        try:
+            builder(bad, "1y")
+        except ValueError:
+            ticker_rejected += 1
+    # 3) legit symbols still build a same-host URL
+    legit_ok = all(builder(t, "1y").startswith(host)
+                   for t in ("AAPL", "BTC-USD", "^GSPC", "EURUSD=X", "CL=F"))
+
+    if range_ok and ticker_rejected == 7 and legit_ok:
+        f("info", "pass", "Yahoo fetch URL is host-pinned + input-constrained",
+          "range clamped to Yahoo's closed set, ticker allow-listed "
+          "(7/7 injection tickers rejected), 5 legit symbols still resolve same-host")
+    else:
+        f("med", "fail", "Yahoo fetch URL not fully constrained",
+          f"range_ok={range_ok} ticker_rejected={ticker_rejected}/7 legit_ok={legit_ok}",
+          "Tighten market._yf_chart_url (allow-list ticker chars, clamp range)")
+    return out
+
+
 def run(full=True):
     # Make sure config (FINANCE_PROJECT_DIR, module sys.path) is initialised so
     # the functional imports work standalone (CLI/CI), not only inside the app.
@@ -727,6 +777,7 @@ def run(full=True):
         findings += _check_local_services()
         findings += _check_ai_tools()
         findings += _check_web_guard()
+        findings += _check_market_fetch()
 
     findings.sort(key=lambda x: (_SEV_RANK.get(x["severity"], 9),
                                  0 if x["status"] == "fail" else 1))

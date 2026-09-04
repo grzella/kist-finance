@@ -168,6 +168,36 @@ async function renderRsu(el) {
         <span class="muted">· quarterly tranche: ${r.shares_per_vest ?? "—"} shares</span>
       </div>
     </div>
+    ${(r.extra_grants_computed && r.extra_grants_computed.length) ? `<div class="card mt" style="border-left:4px solid ${CHART_COLORS[2]}">
+      <h3>⭐ Additional grants</h3>
+      <table><thead><tr><th>Grant</th><th style="text-align:right">Value</th>
+        <th style="text-align:right">Priced at</th><th style="text-align:right">Shares</th>
+        <th style="text-align:right">Per quarter</th></tr></thead><tbody>
+        ${r.extra_grants_computed.map((g) => `<tr>
+          <td>${g.label}${g.note ? `<br><span class="muted" style="font-size:.85em">${g.note}</span>` : ""}</td>
+          <td style="text-align:right">${fmt.usd(g.value_usd)}</td>
+          <td style="text-align:right">${g.priced_at ? fmt.usd(g.priced_at) : "—"}
+            <br><span class="muted" style="font-size:.8em">${g.priced_from}</span></td>
+          <td style="text-align:right">${g.shares_total ?? "—"}</td>
+          <td style="text-align:right"><b>${g.shares_per_vest ?? "—"}</b></td>
+        </tr>`).join("")}
+      </tbody></table>
+    </div>` : ""}
+    <div class="card mt" style="border-left:4px solid ${CHART_COLORS[1]}">
+      <h3>📦 Combined quarterly stream (all grants)</h3>
+      <div class="row">
+        <span class="muted">legacy grants:</span> <b>${r.legacy_shares_per_vest ?? 0}</b>
+        <span class="muted">+ grant ${r.grant_month}:</span> <b>${r.shares_per_vest ?? 0}</b>
+        ${(r.extra_grants_computed || []).map((g) => `<span class="muted">+ ${g.label}:</span> <b>${g.shares_per_vest ?? 0}</b>`).join("")}
+        <span class="muted">=</span>
+        <b style="font-size:1.15em">${r.total_shares_per_vest ?? "—"} shares / quarter</b>
+        <span class="muted">≈</span>
+        <b>${r.total_vest_value_pln ? fmt.pln(r.total_vest_value_pln) : "—"} gross</b>
+      </div>
+      <div class="muted mt">Extra grants and legacy tranches live in <code>rsu.json</code>
+        (<code>extra_grants</code>, <code>legacy_shares_per_vest</code>); once they start vesting set
+        <code>new_grants_vesting</code> so the model replaces the fixed "next vest" number.</div>
+    </div>
     <div class="card mt">
       <details><summary style="cursor:pointer"><b>⚙️ Grant parameters</b> <span class="muted" style="font-size:.85em">(rarely change — expand after a vest, or ask the AI to update them)</span></summary>
       <div class="row">
