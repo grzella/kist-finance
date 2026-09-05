@@ -130,6 +130,9 @@ function _maskDec(n) { return n > 0 ? "01".repeat(Math.ceil(n / 2)).slice(0, n) 
   fmt.grouped = (v) => (v == null || v === "" || isNaN(Number(v))) ? "" : (demoOn() ? _maskInt(v) : o.grouped(v));
 })();
 
+// Semantic colors as HEX for canvas/Chart.js — <canvas> cannot resolve CSS variables
+// (a "var(--pos)" fill silently paints black). Keep in sync with :root in app.css.
+const TOKENS = { pos: "#35c98a", neg: "#ff7b7b", warn: "#f2c74f", accent: "#6ea8fe", violet: "#a78bfa", amber: "#e0a458", muted: "#98a1b3", text: "#e8eaf0", inset: "rgba(255,255,255,0.05)", empty: "rgba(255,255,255,0.08)" };
 const CHART_COLORS = ["#6ea8fe", "#35c98a", "#f2c74f", "#ff7b7b", "#a78bfa", "#5fd3d9", "#ff9f6b", "#98a1b3"];
 // Charts in the same "voice" as the rest of the UI: thin grids, no axis borders, 2px lines,
 // no points, point-style legend. Set once, globally — views need not repeat it.

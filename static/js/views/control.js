@@ -5,11 +5,11 @@ function securityReviewHtml(rev) {
       personal-data audit, connection configuration, functional tests).</div>`;
   }
   const SEV = {
-    critical: "var(--neg)", high: "#ff8f3f", medium: "var(--warn)", low: "var(--accent)", info: "var(--muted)",
+    critical: TOKENS.neg, high: "#ff8f3f", medium: TOKENS.warn, low: TOKENS.accent, info: TOKENS.muted,
   };
-  const STAT = { pass: ["✓", "var(--pos)"], warn: ["!", "var(--warn)"], fail: ["✗", "var(--neg)"] };
+  const STAT = { pass: ["✓", TOKENS.pos], warn: ["!", TOKENS.warn], fail: ["✗", TOKENS.neg] };
   const row = (i) => {
-    const [ic, col] = STAT[i.status] || ["·", "var(--muted)"];
+    const [ic, col] = STAT[i.status] || ["·", TOKENS.muted];
     return `<tr>
       <td style="color:${col};font-weight:700;text-align:center">${ic}</td>
       <td><span class="badge" style="background:${SEV[i.severity]}22;color:${SEV[i.severity]}">${i.severity}</span></td>
@@ -39,8 +39,8 @@ async function renderControl(el) {
   ]);
   const esc = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const s = d.summary;
-  const vColor = { ok: "var(--pos)", warn: "var(--warn)", error: "var(--neg)" };
-  const secColor = vColor[rev && rev.verdict] || "var(--muted)";
+  const vColor = { ok: TOKENS.pos, warn: TOKENS.warn, error: TOKENS.neg };
+  const secColor = vColor[rev && rev.verdict] || TOKENS.muted;
   const badge = (st) => {
     const m = { ok: ["✅", "pos"], warn: ["⚠️", ""], error: ["🛑", "neg"], info: ["ℹ️", "muted"] };
     const [ic, cls] = m[st] || ["·", "muted"];
@@ -82,7 +82,7 @@ async function renderControl(el) {
       </div>
     </div>
 
-    ${ai ? `<div class="card mt" style="border-left:4px solid ${ai.ai_mode === "both" ? "#b78cff" : "var(--pos)"}">
+    ${ai ? `<div class="card mt" style="border-left:4px solid ${ai.ai_mode === "both" ? "#b78cff" : TOKENS.pos}">
       <h3 style="margin-top:0">🤖 AI mode
         <span class="badge" style="background:${ai.ai_mode === "both" ? "#b78cff22;color:#b78cff" : "var(--pos)22;color:var(--pos)"}">${ai.ai_mode === "both" ? "local + cloud" : "local only"}</span></h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">This mode governs <b>every AI feature in the app</b>:
@@ -229,7 +229,7 @@ async function renderControl(el) {
           <div style="font-weight:600;font-size:.85em">🧭 Verdict — synthesis of both models <span class="muted">(${r.synthesis.by === "cloud" ? "Claude" : "local"})</span></div>
           <div style="white-space:pre-wrap;font-size:.9em">${r.synthesis.text}</div></div>` : "";
         out.innerHTML = syn + `<div class="grid ${r.cloud ? "cols-2" : ""}">
-          ${card("🔒 " + (r.local.label || "local"), r.local, "var(--pos)")}
+          ${card("🔒 " + (r.local.label || "local"), r.local, TOKENS.pos)}
           ${r.cloud ? card("☁️ " + (r.cloud.label || "Claude"), r.cloud, "#b78cff") : ""}</div>`;
       } catch (e) { out.innerHTML = `<div class="neg">Error: ${e.message}</div>`; }
       finally { aiAsk.disabled = false; }
@@ -313,7 +313,7 @@ async function renderControl(el) {
       const fresh = await api.post("/api/security-review/run");
       body.innerHTML = securityReviewHtml(fresh);
       const card = btn.closest(".card");
-      const col = { ok: "var(--pos)", warn: "var(--warn)", error: "var(--neg)" }[fresh.verdict] || "var(--muted)";
+      const col = { ok: TOKENS.pos, warn: TOKENS.warn, error: TOKENS.neg }[fresh.verdict] || TOKENS.muted;
       if (card) card.style.borderLeftColor = col;
     } catch (err) {
       body.innerHTML = `<div class="neg">Scan error: ${err.message}</div>`;

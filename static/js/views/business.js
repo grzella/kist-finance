@@ -123,8 +123,8 @@ async function renderBusiness(el) {
       data: {
         labels: b.months.map((m) => m.month),
         datasets: [
-          { label: "Costs", data: b.months.map((m) => m.costs), backgroundColor: "var(--neg)" },
-          { label: "Revenue", data: b.months.map((m) => m.revenue), backgroundColor: "var(--pos)" },
+          { label: "Costs", data: b.months.map((m) => m.costs), backgroundColor: TOKENS.neg },
+          { label: "Revenue", data: b.months.map((m) => m.revenue), backgroundColor: TOKENS.pos },
         ],
       },
     }));

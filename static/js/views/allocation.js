@@ -52,7 +52,7 @@ async function renderAllocation(el) {
       <div class="muted mt" style="font-size:.85em">A vehicle counts as an asset here, but it is a consumable (it depreciates) — in reality "investment" wealth is usually more concentrated in real estate.</div>
     </div>`;
 
-  const palette = ["var(--accent)", "var(--pos)", "var(--warn)", "var(--neg)", "var(--violet)", "#f59e0b"];
+  const palette = [TOKENS.accent, TOKENS.pos, TOKENS.warn, TOKENS.neg, TOKENS.violet, "#f59e0b"];
   trackChart(new Chart(document.getElementById("allocChart"), {
     type: "doughnut",
     data: {
@@ -68,7 +68,7 @@ async function renderAllocation(el) {
       data: {
         labels: d.leverage.trend.map((t) => t.month),
         datasets: [{ label: "Debt / assets %", data: d.leverage.trend.map((t) => t.pct),
-          borderColor: "var(--amber)", backgroundColor: "transparent", tension: 0.25 }],
+          borderColor: TOKENS.amber, backgroundColor: "transparent", tension: 0.25 }],
       },
       options: { plugins: { legend: { display: false } },
         scales: { y: { ticks: { callback: (v) => v + "%" } } } },

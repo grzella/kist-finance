@@ -20,7 +20,7 @@ function _row(i, cm) {
     <td>${i.payer}</td>
     <td>${i.essential ? "✓" : ""}</td>
     <td style="text-align:right">${(i.currency || "USD") !== (window.APP_CURRENCY || "USD") ? `<span title="${i.fx_missing ? "no rate in the cache — amount not converted" : "rate " + fmt.num(i.fx_rate, 4)}">${fmt.num(i.latest_amount_ccy, 2)} ${i.currency} ${i.fx_missing ? "⚠️" : "≈ " + fmt.usd(i.latest_amount)}</span>` : fmt.usd(i.latest_amount)}</td>
-    <td class="muted">${i.latest_month || "—"}${i.latest_amount != null && !i.current_month_set ? ' <span class="badge">carried over</span>' : ""}</td>
+    <td class="muted">${i.latest_month || "—"}</td>
     <td><button data-upd="${i.id}" title="${i.current_month_set ? "amount for " + cm + " already entered — correct it" : "enter the new amount effective from " + cm}">Change amount</button></td>
     <td><button class="danger" data-del="${i.id}">✕</button></td>
   </tr>`;

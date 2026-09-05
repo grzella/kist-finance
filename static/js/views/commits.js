@@ -3,6 +3,11 @@ async function renderCommits(el) {
     api.get("/api/github-activity").catch(() => null),
     api.get("/api/analysis/contributions").catch(() => ({}))]);
 
+  // grouping: done/merged/closed at the bottom; fresh candidates on top
+  const GROUP_LABEL = { now: "Do now — verified (dedup, open issue)", ai: "AI / dev-tooling — new direction", reserve: "Reserve / watch", done: "Done, merged or closed" };
+  const grp = (r) => r.group || (/✅|MERGED|zmergowan|merged|zamknięt|closed/i.test(r.status || "") ? "done" : "now");
+  const GROUP_ORDER = ["now", "ai", "reserve", "done"];
+  const reposSorted = c && c.repos ? [...c.repos].sort((a, b) => GROUP_ORDER.indexOf(grp(a)) - GROUP_ORDER.indexOf(grp(b))) : [];
   const diffCls = (d) => /easy/i.test(d) ? "pos" : /hard/i.test(d) ? "neg" : "";
 
   el.innerHTML = `
@@ -33,6 +38,10 @@ async function renderCommits(el) {
         <div class="card kpi"><div class="label">Active days</div><div class="value">${gh.active_pct}%</div><div class="sub">${gh.active_days}/${gh.days} days · ${gh.total} contributions</div></div>
       </div>
       <canvas id="ghChart" height="60" class="mt"></canvas>
+      ${gh.github && gh.github.pr_list && gh.github.pr_list.length ? `<details class="mt"><summary class="muted" style="cursor:pointer">🟣 Pull requests in the window (${gh.github.pr_list.length}) — purple triangles above the bars</summary>
+        <table class="mt"><tbody>${gh.github.pr_list.slice(0, 30).map((p) => `<tr><td class="muted" style="width:100px">${p.date}</td>
+          <td><span class="badge ${p.state === "merged" ? "pos" : p.state === "open" ? "" : "neg"}">${p.state}</span></td>
+          <td class="muted" style="font-size:.9em">${p.repo}</td><td><a href="${p.url}" target="_blank">${p.title}</a></td></tr>`).join("")}</tbody></table></details>` : ""}
       <div class="muted mt" style="font-size:.82em">${gh.today > 0 ? "✅ You already committed today — the streak lives." : "⚠️ Still 0 commits today — a small commit will keep the streak alive."}
         Avg ${gh.avg_per_active} commits/active day. Even a tiny daily commit keeps the streak and the green square on GitHub.</div>
     </div>` : ""}
@@ -42,16 +51,21 @@ async function renderCommits(el) {
       <h3 style="margin-top:0">🎯 Where to contribute (open source for the business)</h3>
       <div style="font-size:1.0em"><b>${c.goal}</b></div>
       <div class="muted mt" style="font-size:.85em">${c.method}</div>
-      <div style="overflow-x:auto" class="mt"><table>
-        <thead><tr><th>Repo</th><th>Activity</th><th>Language</th><th>Difficulty</th><th>Why / first PR</th></tr></thead>
-        <tbody>${c.repos.map((r) => `<tr>
-          <td><b><a href="${r.url}" target="_blank">${r.name} ↗</a></b></td>
-          <td class="${/bardzo/.test(r.activity) ? "pos" : ""}" style="font-size:.85em">${r.activity}</td>
-          <td class="muted" style="font-size:.85em">${r.lang}</td>
-          <td><span class="badge ${diffCls(r.difficulty)}">${r.difficulty}</span></td>
-          <td style="font-size:.88em">${r.why}</td>
-        </tr>`).join("")}</tbody>
-      </table></div>
+      <div class="mt" style="display:grid;gap:10px">${reposSorted.map((r, i) => `
+        ${(i === 0 || grp(reposSorted[i - 1]) !== grp(r)) ? `<div style="margin-top:${i === 0 ? 0 : 10}px"><span class="badge ${grp(r) === "done" ? "pos" : grp(r) === "now" ? "warn" : ""}">${GROUP_LABEL[grp(r)]}</span></div>` : ""}
+        <div style="display:grid;grid-template-columns:minmax(260px,1.1fr) minmax(0,1.6fr);gap:14px;padding:12px 14px;border-radius:10px;background:var(--panel2);border:1px solid var(--hairline)">
+          <div style="min-width:0">
+            <div><b><a href="${r.url}" target="_blank">${r.name} ↗</a></b></div>
+            ${r.tag ? `<div class="muted" style="font-size:.85em;margin-top:2px">${r.tag}</div>` : ""}
+            <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">
+              <span class="badge ${/bardzo|very/.test(r.activity) ? "pos" : ""}" title="Activity">${r.activity}</span>
+              <span class="badge" title="Language">${r.lang}</span>
+              <span class="badge ${diffCls(r.difficulty)}" title="Difficulty">${r.difficulty}</span>
+            </div>
+            <div class="${/✅/.test(r.status || "") ? "pos" : /✗/.test(r.status || "") ? "neg" : "muted"}" style="font-size:.88em;margin-top:8px" title="Your status">${r.status || "—"}</div>
+          </div>
+          <div style="font-size:.93em">${r.why}</div>
+        </div>`).join("")}</div>
     </div>
 
     <div class="grid cols-2 mt">
@@ -71,12 +85,23 @@ async function renderCommits(el) {
 
   if (gh && document.getElementById("ghChart")) {
     const last = gh.series.slice(-60);
+    const maxY = Math.max(1, ...last.map((d) => d.count));
     trackChart(new Chart(document.getElementById("ghChart"), {
       type: "bar",
       data: {
         labels: last.map((d) => d.date.slice(5)),
-        datasets: [{ label: "commits/day", data: last.map((d) => d.count),
-          backgroundColor: last.map((d) => d.count > 0 ? "var(--pos)" : "#2c3040") }],
+        datasets: [
+          { label: "contributions/day", data: last.map((d) => d.count),
+            backgroundColor: last.map((d) => d.count >= 10 ? "#1f9d6a" : d.count >= 4 ? TOKENS.pos : d.count > 0 ? "#8fe3c2" : TOKENS.empty), order: 2 },
+          { label: "pull requests", type: "line", showLine: false, data: last.map((d) => d.prs ? d.count + Math.max(2, maxY * 0.08) : null),
+            pointStyle: "triangle", pointRadius: 8, pointHoverRadius: 10, backgroundColor: TOKENS.violet, borderColor: TOKENS.violet, order: 0,
+            prCounts: last.map((d) => d.prs || 0) },
+        ],
+      },
+      options: {
+        plugins: { legend: { display: true },
+          tooltip: { callbacks: { title: (i) => i[0].label, label: (x) => x.dataset.prCounts ? `${x.dataset.label}: ${x.dataset.prCounts[x.dataIndex]}` : `${x.dataset.label}: ${x.parsed.y}` } } },
+        scales: { x: { ticks: { maxTicksLimit: 12 } }, y: { ticks: { stepSize: 2 } } },
       },
       options: {
         plugins: { legend: { display: false },

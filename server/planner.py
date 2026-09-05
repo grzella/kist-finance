@@ -3308,6 +3308,8 @@ def _github_contribution_calendar(days=90):
         ' totalCommitContributions totalPullRequestContributions'
         ' totalIssueContributions totalPullRequestReviewContributions'
         ' contributionCalendar { weeks { contributionDays { date contributionCount } } }'
+        ' pullRequestContributions(first: 100, orderBy: {direction: DESC}) { nodes { occurredAt'
+        ' pullRequest { title url state merged mergedAt repository { nameWithOwner } } } }'
         ' } } }' % (frm, to))
     try:
         out = subprocess.run(["gh", "api", "graphql", "-f", f"query={query}"],
@@ -3320,7 +3322,18 @@ def _github_contribution_calendar(days=90):
     for week in data["contributionCalendar"]["weeks"]:
         for d in week["contributionDays"]:
             counts[d["date"]] = d["contributionCount"]
+    # PRs separately: per day (chart) + list (repo, title, state) for the view
+    prs_by_day, pr_list = {}, []
+    for n in (data.get("pullRequestContributions") or {}).get("nodes") or []:
+        pr = n.get("pullRequest") or {}
+        day = (n.get("occurredAt") or "")[:10]
+        if day:
+            prs_by_day[day] = prs_by_day.get(day, 0) + 1
+        pr_list.append({"date": day, "title": pr.get("title"), "url": pr.get("url"),
+                        "state": "merged" if pr.get("merged") else (pr.get("state") or "").lower(),
+                        "merged_at": (pr.get("mergedAt") or "")[:10], "repo": (pr.get("repository") or {}).get("nameWithOwner")})
     cache = {"at": datetime.now().isoformat(timespec="seconds"), "days": days,
+             "prs_by_day": prs_by_day, "pr_list": pr_list,
              "counts": counts,
              "totals": {"login": viewer.get("login"),
                         "commits": data["totalCommitContributions"],
@@ -3406,10 +3419,11 @@ def github_activity(days=90):
             "streak": 0, "best_streak": 0, "avg_per_active": 0, "active_pct": 0,
             "github": {"connected": False},
         }
+    prs_by_day = (gh_cal or {}).get("prs_by_day") or {}
     series = []
     for i in range(days - 1, -1, -1):
         dd = (today - timedelta(days=i)).isoformat()
-        series.append({"date": dd, "count": counts.get(dd, 0)})
+        series.append({"date": dd, "count": counts.get(dd, 0), "prs": prs_by_day.get(dd, 0)})
     total = sum(c["count"] for c in series)
     active_days = sum(1 for c in series if c["count"] > 0)
     streak = _commit_streak(counts, today)
@@ -3429,7 +3443,7 @@ def github_activity(days=90):
         "streak": streak, "best_streak": best,
         "avg_per_active": round(total / active_days, 1) if active_days else 0,
         "active_pct": round(100 * active_days / days),
-        "github": ({"connected": True, **gh_cal["totals"]} if gh_cal
+        "github": ({"connected": True, **gh_cal["totals"], "pr_list": gh_cal.get("pr_list") or []} if gh_cal
                    else {"connected": False}),
     }
 

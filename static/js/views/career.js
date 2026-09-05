@@ -61,7 +61,7 @@ async function renderCareer(el) {
     <div class="card mt">
       <h3>Where MORE money realistically comes from — 3 paths</h3>
       <div class="grid cols-3">
-        ${a.money_paths.map((p) => `<div class="card" style="margin:0;border-left:3px solid ${p.tag === "A" ? "var(--pos)" : p.tag === "B" ? "var(--accent)" : "var(--warn)"}">
+        ${a.money_paths.map((p) => `<div class="card" style="margin:0;border-left:3px solid ${p.tag === "A" ? TOKENS.pos : p.tag === "B" ? TOKENS.accent : TOKENS.warn}">
           <h4 style="margin:0 0 4px">${p.tag}. ${p.title}</h4>
           <div class="pos" style="font-size:.85em;margin-bottom:6px">${p.verdict}</div>
           <div style="font-size:.9em">${p.text}</div>

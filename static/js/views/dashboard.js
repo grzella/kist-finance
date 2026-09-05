@@ -125,9 +125,9 @@ async function renderDashboard(el) {
       labels: months,
       datasets: [
         { label: "Assets", data: months.map((m) => wByMonth[m] ?? null),
-          borderColor: "var(--pos)", backgroundColor: "transparent", tension: 0.25, pointRadius: 3 },
+          borderColor: TOKENS.pos, backgroundColor: "transparent", tension: 0.25, pointRadius: 3 },
         { label: "Net (after loans)", data: months.map((m) => nwByMonth[m] ?? null),
-          borderColor: "var(--accent)", backgroundColor: "transparent", tension: 0.25, pointRadius: 3, borderWidth: 3 },
+          borderColor: TOKENS.accent, backgroundColor: "transparent", tension: 0.25, pointRadius: 3, borderWidth: 3 },
       ],
     },
   }));

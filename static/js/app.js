@@ -125,9 +125,17 @@ async function route() {
   const banner = document.getElementById("demoBanner");
   if (banner) banner.style.display = demoOn() ? "block" : "none";
   const el = document.getElementById("view");
+  // Re-render of the SAME view (a toggle, a status change) must not jump to the top:
+  // keep the old height while loading and restore the scroll position afterwards.
+  const sameView = window._lastView === name;
+  const keepY = window.scrollY;
+  if (sameView) el.style.minHeight = el.offsetHeight + "px";
   el.innerHTML = '<div class="empty">Loading…</div>';
   try {
     await fn(el);
+    if (sameView) window.scrollTo(0, keepY);
+    el.style.minHeight = "";
+    window._lastView = name;
     try {  // freshness stamp under every view title
       const h2 = el.querySelector("h2");
       if (h2 && !el.querySelector("[data-fresh]")) {

@@ -17,8 +17,8 @@ function marketBriefHtml(b, controls) {
   const geo = (b.geopolitics || []).map((g) => `<details class="mt">
       <summary style="cursor:pointer;font-weight:600">${g.title}</summary>
       <div class="muted mt" style="font-size:.92em">${g.text}</div></details>`).join("");
-  const stanceColor = (s) => /sell/i.test(s) ? "var(--pos)" : /hold|core/i.test(s) ? "var(--accent)"
-    : /accumulate|dca|buduj|stopniowo/i.test(s) ? "var(--warn)" : "#9aa";
+  const stanceColor = (s) => /sell/i.test(s) ? TOKENS.pos : /hold|core/i.test(s) ? TOKENS.accent
+    : /accumulate|dca|buduj|stopniowo/i.test(s) ? TOKENS.warn : "#9aa";
   const pos = (b.positions || []).map((p) => `<tr>
       <td><b>${p.ticker}</b></td>
       <td><span class="badge" style="background:${stanceColor(p.stance)}22;color:${stanceColor(p.stance)}">${p.stance}</span></td>
@@ -38,7 +38,7 @@ function marketBriefHtml(b, controls) {
     : "";
   return `
     ${staleBanner}
-    <div class="card" style="border-left:4px solid ${sd >= 2 ? "#e05a5a" : "var(--accent)"}">
+    <div class="card" style="border-left:4px solid ${sd >= 2 ? "#e05a5a" : TOKENS.accent}">
       <div class="row" style="justify-content:space-between;align-items:baseline">
         <h3 style="margin:0">🧭 Market brief</h3>${controls || ""}
         <span class="muted" style="font-size:.82em">quotes through <b>${b.data_through || "?"}</b> · analysis: ${b.as_of || "—"}${b.generated_by ? ` · ${b.generated_by}` : ""}${sd >= 1 && sd < 2 ? ' <span title="today\'s session not written yet">⏳</span>' : ""}</span>
@@ -63,7 +63,7 @@ async function renderMarket(el) {
   ]);
   el.innerHTML = `
     <h2>Market</h2>
-    ${radar ? `<div class="card mt" style="border-left:4px solid ${radar.score >= 4 ? "var(--neg)" : radar.score >= 2 ? "var(--warn)" : "var(--pos)"}">
+    ${radar ? `<div class="card mt" style="border-left:4px solid ${radar.score >= 4 ? TOKENS.neg : radar.score >= 2 ? TOKENS.warn : TOKENS.pos}">
       <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <h3 style="margin:0">🌍 Risk Radar <span class="badge" title="sum of the 4 component scores (0–2 each) — max ${radar.max_score}. E.g. 3/8 = three fear points total, not 3 of 8 components">${radar.state} · ${radar.score}/${radar.max_score} pts ⓘ</span></h3>
       </div>
@@ -126,11 +126,11 @@ async function renderMarket(el) {
       type: "line",
       data: { labels: radar.history.map((h) => h.date.slice(5)),
         datasets: [{ label: "score", data: radar.history.map((h) => h.score),
-          borderColor: "var(--warn)", backgroundColor: "transparent", tension: 0.3, pointRadius: 2 },
+          borderColor: TOKENS.warn, backgroundColor: "transparent", tension: 0.3, pointRadius: 2 },
           { label: "trend (7d)", data: radar.history.map((_, i, a) => {
               const w = a.slice(Math.max(0, i - 6), i + 1);
               return +(w.reduce((x, h) => x + h.score, 0) / w.length).toFixed(2);
-            }), borderColor: "var(--accent)", backgroundColor: "transparent",
+            }), borderColor: TOKENS.accent, backgroundColor: "transparent",
             tension: 0.35, pointRadius: 0, borderDash: [5, 4] }] },
       options: { plugins: { legend: { display: false } },
         scales: { y: { min: 0, max: radar.max_score } } },
@@ -276,10 +276,10 @@ async function renderMarket(el) {
       data: {
         labels: shown.map((h) => h.date),
         datasets: [
-          { label: "Bollinger upper", data: bUp, borderColor: "var(--pos)55", borderDash: [2, 3], pointRadius: 0, fill: false },
-          { label: "Bollinger lower", data: bLow, borderColor: "var(--pos)55", borderDash: [2, 3], pointRadius: 0, fill: "-1", backgroundColor: "var(--pos)12" },
-          { label: ticker, data: closes, borderColor: "var(--accent)", tension: 0.2, pointRadius: 0 },
-          { label: "SMA50", data: smaShown(50), borderColor: "var(--warn)", borderDash: [4, 4], pointRadius: 0 },
+          { label: "Bollinger upper", data: bUp, borderColor: "#35c98a55", borderDash: [2, 3], pointRadius: 0, fill: false },
+          { label: "Bollinger lower", data: bLow, borderColor: "#35c98a55", borderDash: [2, 3], pointRadius: 0, fill: "-1", backgroundColor: "#35c98a12" },
+          { label: ticker, data: closes, borderColor: TOKENS.accent, tension: 0.2, pointRadius: 0 },
+          { label: "SMA50", data: smaShown(50), borderColor: TOKENS.warn, borderDash: [4, 4], pointRadius: 0 },
           { label: "SMA200", data: smaShown(200), borderColor: "#b78cff", borderDash: [4, 4], pointRadius: 0 },
         ],
       },
@@ -301,9 +301,9 @@ async function renderMarket(el) {
     rsiChart = trackChart(new Chart(rsiEl, {
       type: "line",
       data: { labels: shown.map((h) => h.date), datasets: [
-        { label: "RSI(14)", data: rsi, borderColor: "var(--amber)", pointRadius: 0, tension: 0.2 },
-        { label: "70", data: shown.map(() => 70), borderColor: "var(--neg)33", borderDash: [3, 3], pointRadius: 0 },
-        { label: "30", data: shown.map(() => 30), borderColor: "var(--pos)33", borderDash: [3, 3], pointRadius: 0 },
+        { label: "RSI(14)", data: rsi, borderColor: TOKENS.amber, pointRadius: 0, tension: 0.2 },
+        { label: "70", data: shown.map(() => 70), borderColor: "#ff7b7b33", borderDash: [3, 3], pointRadius: 0 },
+        { label: "30", data: shown.map(() => 30), borderColor: "#35c98a33", borderDash: [3, 3], pointRadius: 0 },
       ] },
       options: { interaction: { mode: "index", intersect: false }, scales: { y: { min: 0, max: 100 } },
         plugins: { legend: { labels: { filter: (i) => i.text === "RSI(14)" } } } },

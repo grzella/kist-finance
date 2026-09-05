@@ -5,10 +5,10 @@ async function renderData(el) {
   const s = d.summary;
 
   const MODE = {
-    auto: ["🟢 auto", "var(--pos)"],
-    derived: ["🔵 derived", "var(--accent)"],
+    auto: ["🟢 auto", TOKENS.pos],
+    derived: ["🔵 derived", TOKENS.accent],
     claude: ["🟣 AI notes", "#b78cff"],
-    manual: ["🟡 manual", "var(--warn)"],
+    manual: ["🟡 manual", TOKENS.warn],
   };
   const modeBadge = (m) => {
     const [label, color] = MODE[m] || ["·", "#9aa"];
