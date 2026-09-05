@@ -27,7 +27,7 @@ Mostly my own. Too many apps to check, a spreadsheet I kept forgetting to update
 git clone https://github.com/grzella/kist-finance.git
 cd kist
 pip install -r requirements.txt
-./run.sh                      # → opens http://127.0.0.1:8321
+./run.sh                      # → opens http://127.0.0.1:8321 (prefers ./.venv if present)
 ```
 
 That's it. On first launch a **setup wizard** walks you through:
@@ -45,24 +45,24 @@ Core (always on):
 |---|---|
 | 📊 Dashboard | net worth and key figures at a glance |
 | 💸 Cash-flow | income vs. expenses, monthly surplus |
-| 💡 Recommendations | rule-engine guidance from your data (+ optional AI) |
+| 💡 Recommendations | rule-engine guidance from your data (+ optional AI): loan-vs-market compared **after capital gains tax**, one definition of essential costs, a cushion that counts cash + a haircut on brokerage (retirement accounts separately), and a **memory** — each recommendation shows since when it has been open, and resolved ones are kept |
 | 💎 Wealth | assets and net worth over time, with snapshots |
-| 🧾 Fixed Expenses | recurring costs grouped by entity (personal/business/rental…) and subscription type (work/entertainment), with month-to-month trend, an "invoiced" tag for expense/tax tracking, and rule-based cost-optimization hints — an item you don't touch just carries its last amount forward, so there's no monthly copy-paste |
+| 🧾 Fixed Expenses | recurring costs grouped by entity (personal/business/rental…) and subscription type (work/entertainment/health/other), each in its **own currency** (converted at the cached rate) with a **monthly/yearly billing** toggle, month-to-month trend, an "invoiced" tag for expense/tax tracking, and data-driven cost hints (e.g. which subscriptions bill monthly and what an annual plan would save) — an item you don't touch just carries its last amount forward, so there's no monthly copy-paste |
 | 🥧 Allocation | portfolio breakdown vs. targets, 5/25 drift |
 | 🎯 Goals | savings goals with ETA as a range |
-| 🔮 Forecasts | range forecasts, FIRE crossover, stress test + guardrails |
-| 🛠️ Control Center | status, AI mode, prompt log, backups, security review |
+| 🔮 Forecasts | range forecasts, FIRE crossover with an inflation-indexed target, contribution growth, an after-tax series and a **cone bootstrapped from a benchmark's real returns**, stress test + guardrails |
+| 🛠️ Control Center | status, AI mode, prompt log, backups, security review; every scheduled task's last failure is visible here, and the app warns when the server runs older code than the files on disk (edit without restart) |
 
 Optional — toggle in the wizard, disabled ones disappear from the UI:
 
 | Module | What it adds |
 |---|---|
-| 🏠 Loans & mortgage | principal/interest split, effective rate, overpayment scenarios |
-| 🏛️ Taxes | consolidated tax sources + payment calendar |
+| 🏠 Loans & mortgage | principal/interest split, effective rate, overpayment scenarios, history with event markers (overpayments and bank corrections drawn as points, not sawtooth), a monthly reference-rate refresh task (PLN base) |
+| 🏛️ Taxes | consolidated tax sources + payment calendar, including **capital gains tax on the year's RSU sales** — logged in the RSU tab, due next April, and deducted from net worth as a reserve until paid |
 | 📈 Markets & FX | watchlist, price analytics, currency signal engine with backtest, daily 🌍 Risk Radar, on-demand keyless history backfill |
-| 💎 Equity / RSU | vesting schedule, Monte-Carlo projection, sell-vs-hold guidance |
+| 💎 Equity / RSU | a **vest schedule built from the grant list** (legacy grants expire, new ones start on their own dates, cash-vest included), a sales log that feeds the tax reserve, net-vs-gross values everywhere downstream (cash-flow, goals, FIRE), Monte-Carlo projection on a **block bootstrap of real returns** (the same engine scores its own backtest and forecast journal), sell-vs-hold guidance |
 | 🚁 Side business | revenue/costs of self-employment or a side company |
-| 💼 Career tracker | inbound job offers, market barometer, commit-activity tracker |
+| 💼 Career tracker | inbound job offers, market barometer (a missing month is called out with the collector's last error, never silently skipped), commit-activity tracker |
 | 🏡 Property analysis | deep-dive for a property-purchase goal |
 
 ## Connecting your own services (all optional)
@@ -146,7 +146,8 @@ Your data is one local SQLite file, so a backup is just a copy — but a copy yo
 - `.finance/`, `.env`, and `backups/` are git-ignored — **never commit them**.
 - `seed.py` refuses to overwrite existing data (use `--force` only on a throwaway DB).
 - **Demo mode** (Control Center or `?demo`) masks all figures with a `0-1` pattern and hides chart axis values — safe screenshots.
-- **Language**: UI is English-native with a Polish toggle (Control Center or `?lang=pl`); i18n contributions welcome.
+- **Language**: the UI is English-only; i18n contributions welcome.
+- **Saved analyses know when they are stale**: any analysis snapshot with an `as_of` date shows a warning once the underlying data (RSU file, loans, wealth, expenses) changed after it.
 
 ## Security & tests
 
@@ -155,7 +156,8 @@ This repo is built to be safe to fork and contribute to:
 - **Loopback hardening (no auth by design).** The API is keyless because the model is "one user, on their own machine, over loopback." A `before_request` guard defends the two attacks that need only your browser: it **rejects any non-loopback `Host`** (DNS rebinding) and **blocks cross-origin state-changing requests** (CSRF). Defense in depth: a strict **Content-Security-Policy** (`script-src 'self'`) neutralizes injected markup even in unescaped fields, external data (e.g. Supabase market text) is HTML-escaped, and RAG/DB content is framed to the model as *data, not instructions*. **Do not expose the app beyond `127.0.0.1`** — see [SECURITY.md](SECURITY.md) for the full threat model.
 - `server/security_review.py` — a pentest-style suite: secret scan of the working tree **and the full git history**, dangerous-pattern static analysis (eval/exec, shell, SQL injection, debug, network binds), maintainer personal-data audit, config hygiene, endpoint smoke tests, an **active probe of any local LLM server** (must reject keyless requests), an **active pentest of the AI's SQL tool** (injection/DDL/stacked-query payloads must all be refused, the connection read-only at the SQLite layer), and an **active pentest of the web guard** — a forged `Host` and a cross-origin write must both return 403, so a regression fails the build.
 - Runs three ways: **Control Center button**, CLI (`cd server && python -m security_review --ci`), and **GitHub Actions** on every push/PR + weekly ([`.github/workflows/security.yml`](.github/workflows/security.yml)).
-- **Real test suite** — `pytest` in [`tests/`](tests/) (endpoint smoke across every GET route, goals/wealth CRUD, forecast math, RAG ranking incl. the semantic hybrid, backup/restore round-trip, the wizard's module→view gating). CI enforces a **coverage floor** and a **bandit** security-lint gate; **Dependabot** watches dependencies. Run locally: `python -m pytest -q`.
+- **Real test suite** — `pytest` in [`tests/`](tests/) (endpoint smoke across every GET route, goals/wealth CRUD, forecast math incl. the bootstrap engine, the grant schedule and tax reserve, RAG ranking incl. the semantic hybrid, backup/restore round-trip, the wizard's module→view gating, scheduled-task failure tracking) — about 120 tests.
+- **Personal-data audit as a test** — two tests scan every tracked file for a maintainer marker list (names, employer, cities, private hosts/ports, key shapes) and fail the build on a hit; the same list guards the `security_review --ci` gate. CI enforces a **coverage floor** and a **bandit** security-lint gate; **Dependabot** watches dependencies. Run locally: `python -m pytest -q`.
 - **LLM contract tests** ([`tests/test_llm_contract.py`](tests/test_llm_contract.py)) — a distinct kind of test for the AI surface: the model is *mocked* and the tests assert the invariants the app guarantees **around** it (rather than what it says). Graceful degradation when the model is offline, the shared pipeline always logs and returns a `best`, local mode never calls the cloud, and a failed brief never overwrites the last good one — the harness contract, kept deterministic and fast.
 
 ## Tech

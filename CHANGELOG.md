@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added (2026-09-05 — modelling and finance pass)
+- **Vest schedule from the grant list** (`market.vest_schedule`): legacy grants expire on `legacy_until`, the yearly and extra grants start on `first_vest` with their own pricing windows, cash-vest included; one source for the RSU view, cash-flow, goals, FIRE and the Monte Carlo windows. The broker's `shares_next_vest` still wins for the next vest until `new_grants_vesting` is set.
+- **RSU sales log + capital gains reserve**: `GET/POST/DELETE /api/rsu/sales`; the year's sales feed a tax row and a calendar entry in Taxes (19% of the full sale amount, due next April) and are deducted from net worth as `tax_reserve` until paid.
+- **Net cash-flow**: vests × (1 − tax) + cash-vest × payslip net factor + bonus; the tax reserve accumulates separately; `cf_sweep_target` (loan name / `debt` / `none`) is honoured and the liquid start defaults to cash from Wealth. One savings pace: `cf_monthly_surplus` ⇄ `monthly_savings`.
+- **Recommendation memory** (`rec_log`): each recommendation carries a "since" date, resolved ones are listed; loan-vs-market is compared **after** capital gains tax; one `essential_monthly()` definition; the cushion = cash + 80% of brokerage, retirement accounts shown separately; a debt strategy note shows how much changed since it was written.
+- **Bootstrap Monte Carlo**: RSU projection, its backtest and the daily forecast journal all use a block bootstrap of real (demeaned) returns instead of GBM with a fixed drift.
+- **FIRE**: inflation-indexed target, contribution growth, an after-tax series and crossover, and a p10/p50/p90 cone bootstrapped from a benchmark's real monthly returns (`fire_benchmark_ticker`, default `IWDA.AS`). Goal simulations index the target by inflation.
+- **Fixed expenses in any currency** (`fx_to_base`): amounts are stored in the item's currency and converted at the cached rate on every read; a `billing` (monthly/yearly) field with a table toggle and a data-driven annual-plan hint; a health/sport subscription category.
+- **Scheduled task failures are visible**: a failed runner records `sched_err.<id>` (Data → Schedules, Control Center health, and the barometer card when the last full month is missing); success clears it. New monthly `rates_refresh` task (NBP reference rate from the official XML; WIBOR manual or estimated) for PLN-based instances.
+- **Stale-code and stale-analysis signals**: `/api/health` reports `code_stale` when `server/*.py` changed after the process started (the UI shows a restart banner); analysis snapshots with `as_of` get a `stale` marker once the underlying data changed later.
+- **Loan history event kinds** (`installment` / `overpayment` / `correction` / `start`) with markers on the balance chart instead of sawtooth lines.
+
+### Changed (2026-09-05)
+- Lighter visual layer: grouped sidebar navigation on wide screens, hairlines instead of borders, semantic color tokens, global Chart.js defaults; "Change amount" instead of "Set for <month>" in Fixed Expenses. `run.sh` prefers `./.venv/bin/python`.
+
+### Security (2026-09-05)
+- Yahoo history fetch URL is host-pinned with an allow-listed ticker and a closed range set (`_yf_chart_url`), covered by a convergence check and six tests. The personal-data audit gained family/foundation/vendor/host markers plus two repo-scan tests; the recommendation key uses SHA-256 (bandit B324).
+
 ### Security
 - **Mass-assignment guard**: the generic `PUT /api/settings` writer now drops security-sensitive keys (`commit_repos`, `commit_author`, `ai_mode`, `backup_dir`, `app_config`, …) — they're only settable via their own dedicated endpoints, so a same-origin write can't repoint the commit tracker or flip the AI to cloud through one open key/value setter. Escaped user free-text in the offers view and external (n8n collector) fields in the barometer. `security_review` pentests the settings denylist. (Second red-team pass.)
 - **Loopback/CSRF guard**: a `before_request` check rejects any non-loopback `Host` (DNS rebinding) and blocks cross-origin state-changing requests (CSRF) — the API has no auth by design, so this closes the two browser-reachable attack paths. Added a strict **Content-Security-Policy** (`script-src 'self'`), `X-Frame-Options: DENY`, `nosniff` and `no-referrer`; external (Supabase) market text is HTML-escaped before it hits the DOM; the system prompt now treats retrieved context / DB rows as data, not instructions (indirect prompt-injection). `security_review` actively pentests the guard (forged `Host` + cross-origin write must 403), and [SECURITY.md](SECURITY.md) documents the threat model. Prompted by a red-team self-review.
