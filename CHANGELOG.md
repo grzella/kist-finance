@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### UX phase 2 (2026-09-05)
+- Light theme: 🌗 toggle in the nav (choice kept in `localStorage`, `?theme=light` for screenshots); chart colours follow the theme.
+- Collapsible explanations (`help()`): long "how to read this" notes fold under a one-line summary.
+- Inline editing of amounts in Wealth and Fixed expenses (Enter saves, Esc cancels) — no more `prompt()` dialogs.
+- Dashboard opens with the four numbers and "3 decisions for today"; the rest folds below.
+- Loading skeleton, a 2 px busy bar for in-flight requests, and an error card with "Try again".
+
+
 ### Added (2026-09-05 — efficiency pass: data layers, calibration, RAG, leader's log)
 - **Ratios tab** (`/api/metrics`, `server/metrics.py`): eleven personal-finance ratios (savings rate, essential share, cushion months, debt service / income, liquid / debt, investment share, employer concentration, real estate share, FX exposure, effective cost of debt, net worth m/m) with traffic lights vs explicit targets, stored as a **monthly series** (`metrics_monthly`) and a **weekly wealth point** (`wealth_points`, new `wealth_points` scheduler task; older monthly snapshots are merged into the chart). "Recompute derived" also stores a point.
 - **Net-worth trajectory cone** (`/api/trajectory`): 24-month p10/p50/p90 from a block bootstrap of the benchmark's demeaned monthly returns on the invested part plus deterministic surplus, vest cash and bonus; scenario controls (horizon, bonus on/off, employer stock ±30%, USD ±10%, real terms) repaint in place; the last run is stored in the engine's `scenarios` table.

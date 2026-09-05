@@ -131,7 +131,10 @@ async function route() {
   const sameView = window._lastView === name;
   const keepY = window.scrollY;
   if (sameView) el.style.minHeight = el.offsetHeight + "px";
-  el.innerHTML = '<div class="empty">Loading…</div>';
+  el.innerHTML = `<div class="skeleton" aria-busy="true" aria-label="Loading…">
+    <div class="bar h"></div>
+    <div class="grid cols-4"><div class="bar kpi"></div><div class="bar kpi"></div><div class="bar kpi"></div><div class="bar kpi"></div></div>
+    <div class="bar"></div><div class="bar" style="width:72%"></div><div class="bar" style="width:55%"></div></div>`;
   try {
     await fn(el);
     if (sameView) window.scrollTo(0, keepY);
@@ -144,15 +147,21 @@ async function route() {
         const st = document.createElement("div");
         st.dataset.fresh = "1"; st.className = "muted";
         st.style.cssText = "font-size:.78em;margin:-6px 0 10px";
-        st.textContent = "🕐 updated: " + t.toLocaleDateString("en-GB")
-          + " " + String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0")
-          + " — the view is computed right now from the local DB; dates on cards (e.g. \"as of…\") describe the age of data or research, not the view";
+        st.textContent = "🕐 view computed " + t.toLocaleDateString("en-GB")
+          + " " + String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
+        st.title = "The moment this view was computed from the local DB. Dates on cards (e.g. \"as of…\") describe the age of data or research, not the view.";
         h2.after(st);
       }
     } catch (e) { /* stamp is cosmetic */ }
     if (demoOn()) { try { maskSensitiveText(el); } catch (e) { console.error("mask", e); } }
   } catch (e) {
-    el.innerHTML = `<div class="card"><b>Error:</b> <span class="muted">${e.message}</span></div>`;
+    el.style.minHeight = "";
+    el.innerHTML = `<div class="card" style="border-left:3px solid var(--neg)">
+      <b>This view could not be loaded.</b> <span class="muted">${esc(e.message)}</span>
+      <div class="mt row"><button class="primary" id="retryView">Try again</button>
+        <span class="muted">If the server is not responding: start it again (run.sh) and refresh.</span></div></div>`;
+    const rb = el.querySelector("#retryView");
+    if (rb) rb.addEventListener("click", () => route());
   }
 }
 
@@ -163,6 +172,18 @@ if (_navToggle) {
     document.getElementById("nav").classList.toggle("open"));
   document.querySelectorAll("#nav a").forEach((a) => a.addEventListener("click", () =>
     document.getElementById("nav").classList.remove("open")));
+}
+
+// theme toggle (🌗) — the icon shows where it switches TO
+const _themeToggle = document.getElementById("themeToggle");
+if (_themeToggle) {
+  const paint = () => {
+    const light = themeGet() === "light";
+    _themeToggle.textContent = light ? "🌙" : "☀️";
+    _themeToggle.title = light ? "Switch to dark theme" : "Switch to light theme";
+  };
+  paint();
+  _themeToggle.addEventListener("click", () => { themeSet(themeGet() === "light" ? "dark" : "light"); paint(); });
 }
 
 window.addEventListener("hashchange", route);

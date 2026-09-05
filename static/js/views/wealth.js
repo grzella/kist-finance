@@ -49,7 +49,7 @@ async function renderWealth(el) {
       <td>${i.name}</td>
       <td><span class="badge">${WEALTH_KINDS[i.kind] || i.kind}</span></td>
       <td>${i.owner}</td>
-      <td style="text-align:right">${fmt.pln(i.latest_value)}</td>
+      <td style="text-align:right" data-val="${i.id}">${fmt.pln(i.latest_value)}</td>
       <td><select data-link="${i.id}">
         <option value="">—</option>
         ${s.debts.map((d) => `<option value="${d.id}" ${i.linked_debt_id === d.id ? "selected" : ""}>${d.name}</option>`).join("")}
@@ -62,11 +62,16 @@ async function renderWealth(el) {
   }
 
   tbl.querySelectorAll("[data-upd]").forEach((b) =>
-    b.addEventListener("click", async () => {
-      const v = prompt(`New value (${window.APP_CURRENCY || "PLN"}):`);
-      if (v === null || v === "" || isNaN(parseNum(v))) return;
-      await api.post(`/api/wealth/items/${b.dataset.upd}/values`, { value: parseNum(v) });
-      route();
+    b.addEventListener("click", () => {
+      const item = s.items.find((i) => i.id === b.dataset.upd);
+      inlineEdit(tbl.querySelector(`[data-val="${b.dataset.upd}"]`), {
+        value: item && item.latest_value != null ? item.latest_value : "",
+        placeholder: window.APP_CURRENCY || "PLN",
+        onSave: async (v) => {
+          await api.post(`/api/wealth/items/${b.dataset.upd}/values`, { value: v });
+          route();
+        },
+      });
     }));
   tbl.querySelectorAll("[data-link]").forEach((sel) =>
     sel.addEventListener("change", async () => {

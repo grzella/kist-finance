@@ -15,7 +15,30 @@ async function renderDashboard(el) {
 
   el.innerHTML = `
     <h2>Dashboard — ${sum.month}</h2>
-    ${fresh && !fresh.complete ? `<div class="card" style="border-left:4px solid var(--amber)">
+    <div class="grid cols-4">
+      <div class="card kpi"><div class="label">Net worth</div>
+        <div class="value">${fmt.pln(sum.net_worth)}</div>
+        <div class="sub">cash ${fmt.pln(sum.cash_total)} · investments ${fmt.pln(sum.investments_total)} · loans −${fmt.pln(sum.loans_total ?? sum.debt_total)}${sum.tax_reserve ? ` · <span title="${sum.tax_reserve_note || ""}">tax reserve −${fmt.pln(sum.tax_reserve)}</span>` : ""}</div></div>
+      <div class="card kpi"><div class="label">Income / mo</div>
+        <div class="value pos">${fmt.pln(sum.planned_income)}</div>
+        <div class="sub">avg net salary + rent</div></div>
+      <div class="card kpi"><div class="label">Costs / mo</div>
+        <div class="value neg">${fmt.pln(sum.planned_costs)}</div>
+        <div class="sub">of which essential ${fmt.pln(sum.planned_essential)}</div></div>
+      <div class="card kpi"><div class="label">Surplus / mo</div>
+        <div class="value ${sum.planned_surplus > 0 ? "pos" : "warn"}">${fmt.pln(sum.planned_surplus)}</div>
+        <div class="sub">+ Sep bonus and RSU vests (Feb/May/Aug/Nov) on top</div></div>
+    </div>
+    <div class="card mt" style="border-left:4px solid ${CHART_COLORS[2]}">
+      <h3 style="margin-top:0">🧭 3 decisions for today <span class="muted">out of ${rec.items.length} recommendations · <a href="#recs">all →</a></span></h3>
+      ${rec.headline && !rec.items.length ? `<div class="muted" style="margin-bottom:10px">${rec.headline}</div>` : ""}
+      ${rec.items.length ? `<ol class="decisions">${rec.items.slice(0, 3).map((r, i) =>
+        `<li><span class="n">${i + 1}</span><span><b>[${r.area}]</b> ${r.text}</span></li>`).join("")}</ol>`
+        : `<div class="muted">No recommendations — data is complete, or the engine has not run yet.</div>`}
+      ${rec.items.length > 3 ? `<details class="help"><summary>${rec.items.length - 3} more</summary>
+        <ul style="padding-left:18px">${rec.items.slice(3).map((r) => `<li class="mt"><b>[${r.area}]</b> ${r.text}</li>`).join("")}</ul></details>` : ""}
+    </div>
+    ${fresh && !fresh.complete ? `<div class="card mt" style="border-left:4px solid var(--amber)">
       <div class="row" style="align-items:center;gap:10px">
         <b>📋 ${fresh.month}: ${fresh.due.length} item${fresh.due.length === 1 ? "" : "s"} to refresh (~${fresh.total_minutes} min)</b>
         <span class="muted" style="flex:1">${fresh.due.slice(0, 4).map((e) => e.label.split(":")[0]).join(" · ")}${fresh.due.length > 4 ? " · …" : ""}</span>
@@ -35,13 +58,6 @@ async function renderDashboard(el) {
         </div>
       </div>
     </div>` : fresh && fresh.complete ? `<div class="muted" style="margin:4px 0 8px">✅ ${fresh.month}: data complete — next ritual in a month.</div>` : ""}
-    <details class="card" style="border-left:4px solid ${CHART_COLORS[2]}">
-      <summary style="cursor:pointer"><b>💡 ${rec.headline.length > 140 ? rec.headline.slice(0, 140) + "…" : rec.headline}</b>
-        <span class="muted">(${rec.items.length} recommendations — expand / full list in the Recommendations tab)</span></summary>
-      <ul class="muted mt" style="padding-left:18px">
-        ${rec.items.map((r) => `<li class="mt"><b>[${r.area}]</b> ${r.text}</li>`).join("")}
-      </ul>
-    </details>
     ${xtb.headline ? `<details class="card mt" style="border-left:4px solid ${CHART_COLORS[4]}">
       <summary style="cursor:pointer"><b>📈 brokerage (${fmt.pln(xtb.facts.total)}):</b>
         ${xtb.headline.length > 120 ? xtb.headline.slice(0, 120) + "…" : xtb.headline}
@@ -62,8 +78,8 @@ async function renderDashboard(el) {
         <td>${sc.payoff_month ? "after " + sc.payoff_month + " mo" : "—"}</td>
         <td class="pos">${sc.interest_saved != null ? fmt.pln(sc.interest_saved) : "—"}</td>
       </tr>`).join("")}</tbody></table>
-      <div class="muted mt">Month-by-month simulation: in the overpayment scenarios all free funds go into the loan first
-        (effective interest rate); after payoff the freed installment + insurance feed the goal.</div>
+      ${help(`Month-by-month simulation: in the overpayment scenarios all free funds go into the loan first
+        (effective interest rate); after payoff the freed installment + insurance feed the goal.`, "how it is computed")}
     </div>` : ""}
     ${bizOn && biz ? `<details class="card mt" style="border-left:4px solid ${CHART_COLORS[6]}">
       <summary style="cursor:pointer"><b>🚁 Business:</b>
@@ -80,20 +96,6 @@ async function renderDashboard(el) {
       ${!bizMkt.error && bizMkt.weeks.length && bizMkt.weeks[0].recommendation ?
         `<div class="mt">💡 <b>Marketing (week):</b> ${bizMkt.weeks[0].recommendation}</div>` : ""}
     </details>` : ""}
-    <div class="grid cols-4 mt">
-      <div class="card kpi"><div class="label">Net worth</div>
-        <div class="value">${fmt.pln(sum.net_worth)}</div>
-        <div class="sub">cash ${fmt.pln(sum.cash_total)} · investments ${fmt.pln(sum.investments_total)} · loans −${fmt.pln(sum.loans_total ?? sum.debt_total)}${sum.tax_reserve ? ` · <span title="${sum.tax_reserve_note || ""}">tax reserve −${fmt.pln(sum.tax_reserve)}</span>` : ""}</div></div>
-      <div class="card kpi"><div class="label">Income / mo</div>
-        <div class="value pos">${fmt.pln(sum.planned_income)}</div>
-        <div class="sub">avg net salary + rent</div></div>
-      <div class="card kpi"><div class="label">Costs / mo</div>
-        <div class="value neg">${fmt.pln(sum.planned_costs)}</div>
-        <div class="sub">of which essential ${fmt.pln(sum.planned_essential)}</div></div>
-      <div class="card kpi"><div class="label">Surplus / mo</div>
-        <div class="value ${sum.planned_surplus > 0 ? "pos" : "warn"}">${fmt.pln(sum.planned_surplus)}</div>
-        <div class="sub">+ Sep bonus and RSU vests (Feb/May/Aug/Nov) on top</div></div>
-    </div>
     <div class="grid cols-2 mt">
       <div class="card"><h3>Monthly costs by category${sum.planned_categories && sum.planned_categories.length ? " (fixed plan)" : ""}</h3><canvas id="catChart"></canvas></div>
       <div class="card"><h3>Wealth over time — assets and net of loans</h3><canvas id="trendChart"></canvas></div>

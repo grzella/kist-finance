@@ -19,7 +19,7 @@ function _row(i, cm) {
     <td>${bill}</td>
     <td>${i.payer}</td>
     <td>${i.essential ? "✓" : ""}</td>
-    <td style="text-align:right">${(i.currency || "USD") !== (window.APP_CURRENCY || "USD") ? `<span title="${i.fx_missing ? "no rate in the cache — amount not converted" : "rate " + fmt.num(i.fx_rate, 4)}">${fmt.num(i.latest_amount_ccy, 2)} ${i.currency} ${i.fx_missing ? "⚠️" : "≈ " + fmt.usd(i.latest_amount)}</span>` : fmt.usd(i.latest_amount)}</td>
+    <td style="text-align:right" data-val="${i.id}">${(i.currency || "USD") !== (window.APP_CURRENCY || "USD") ? `<span title="${i.fx_missing ? "no rate in the cache — amount not converted" : "rate " + fmt.num(i.fx_rate, 4)}">${fmt.num(i.latest_amount_ccy, 2)} ${i.currency} ${i.fx_missing ? "⚠️" : "≈ " + fmt.usd(i.latest_amount)}</span>` : fmt.usd(i.latest_amount)}</td>
     <td class="muted">${i.latest_month || "—"}</td>
     <td><button data-upd="${i.id}" title="${i.current_month_set ? "amount for " + cm + " already entered — correct it" : "enter the new amount effective from " + cm}">Change amount</button></td>
     <td><button class="danger" data-del="${i.id}">✕</button></td>
@@ -71,8 +71,8 @@ async function renderExpenses(el) {
       <ul class="mt" style="margin:0;padding-left:18px">
         ${s.optimizations.map((o) => `<li class="mt ${o.severity === "warn" ? "" : "muted"}">${o.text}</li>`).join("")}
       </ul>
-      <div class="muted mt">These hints are computed from your own data — they don't scan the
-        market for live deals (that would fit a scheduled job, not a page render).</div>
+      ${help(`These hints are computed from your own data — they don't scan the
+        market for live deals (that would fit a scheduled job, not a page render).`, "where these hints come from")}
     </div>` : ""}
     <div class="card mt">
       <h3>Add an item</h3>
@@ -97,8 +97,9 @@ async function renderExpenses(el) {
         <input data-num id="eAmount" placeholder="amount (this month)">
         <button class="primary" id="eAdd">Add</button>
       </div>
-      <div class="muted mt">An item you don't change doesn't need re-entering every month — it
-        automatically "carries" its last amount forward. Only update what actually changed.</div>
+      ${help(`An item you don't change doesn't need re-entering every month — it
+        automatically "carries" its last amount forward. Only update what actually changed.
+        A new amount applies from the current month and carries forward until you change it again.`, "how amounts work")}
     </div>
 
     <div class="card mt"><h3>Personal</h3>${_table(personal, cm, "No items yet")}</div>
@@ -123,13 +124,16 @@ async function renderExpenses(el) {
     </div>`;
 
   el.querySelectorAll("[data-upd]").forEach((b) =>
-    b.addEventListener("click", async () => {
+    b.addEventListener("click", () => {
       const item = s.items.find((i) => i.id === b.dataset.upd);
-      const v = prompt(`New amount from ${cm} (${(item && item.currency) || ""}) — it carries forward every month until you change it again:`);
-      if (v === null || v === "" || isNaN(parseNum(v))) return;
-      await api.post(`/api/expenses/items/${b.dataset.upd}/values`,
-        { month: cm, amount: parseNum(v) });
-      route();
+      inlineEdit(el.querySelector(`[data-val="${b.dataset.upd}"]`), {
+        value: item && item.latest_amount_ccy != null ? item.latest_amount_ccy : (item && item.latest_amount != null ? item.latest_amount : ""),
+        placeholder: `from ${cm} (${(item && item.currency) || ""})`,
+        onSave: async (v) => {
+          await api.post(`/api/expenses/items/${b.dataset.upd}/values`, { month: cm, amount: v });
+          route();
+        },
+      });
     }));
   el.querySelectorAll("[data-del]").forEach((b) =>
     b.addEventListener("click", async () => {

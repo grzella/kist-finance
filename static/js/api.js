@@ -23,13 +23,26 @@ function demoToast() {
   t._hid = setTimeout(() => { t.style.display = "none"; }, 3500);
 }
 
+// Busy bar (2 px at the top) — shows the app is working instead of a dead button.
+let _inflight = 0;
+function _busy(delta) {
+  _inflight = Math.max(0, _inflight + delta);
+  document.documentElement.classList.toggle("busy", _inflight > 0);
+}
 const api = {
   async get(path) {
-    const r = await fetch(demoStatic() ? demoSnapshotPath(path) : path);
-    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
-    return r.json();
+    _busy(1);
+    try {
+      const r = await fetch(demoStatic() ? demoSnapshotPath(path) : path);
+      if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+      return await r.json();
+    } finally { _busy(-1); }
   },
   async send(method, path, body) {
+    _busy(1);
+    try { return await this._send(method, path, body); } finally { _busy(-1); }
+  },
+  async _send(method, path, body) {
     if (demoStatic()) {
       // compute-only POSTs (e.g. overpayment simulations) have baked responses
       const key = ("post_" + path + "__" + JSON.stringify(body === undefined ? "" : body))
@@ -97,6 +110,56 @@ function esc(s) {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+// ---------- collapsible explanations: short label, details on click ----------
+function help(html, label = "ℹ️ how to read this") {
+  return `<details class="help"><summary>${label}</summary><div>${html}</div></details>`;
+}
+
+// ---------- inline editing (instead of prompt()): Enter saves, Esc cancels ----------
+function inlineEdit(anchor, { value = "", placeholder = "", onSave }) {
+  if (!anchor || anchor.querySelector(".inline-edit")) return;
+  const prev = anchor.innerHTML;
+  const wrap = document.createElement("span");
+  wrap.className = "inline-edit";
+  wrap.innerHTML = `<input type="text" inputmode="decimal" aria-label="new value"
+      value="${esc(value === "" || value == null ? "" : fmt.grouped(value))}" placeholder="${esc(placeholder)}">
+    <button class="primary" data-ok title="Save (Enter)">OK</button><button data-cancel title="Cancel (Esc)">✕</button>`;
+  anchor.innerHTML = "";
+  anchor.appendChild(wrap);
+  const input = wrap.querySelector("input");
+  const cancel = () => { anchor.innerHTML = prev; };
+  const save = async () => {
+    const v = parseNum(input.value);
+    if (isNaN(v)) { input.classList.add("invalid"); input.focus(); return; }
+    wrap.querySelectorAll("input,button").forEach((x) => { x.disabled = true; });
+    try { await onSave(v); } catch (e) { cancel(); alert("Not saved: " + e.message); }
+  };
+  wrap.querySelector("[data-ok]").addEventListener("click", save);
+  wrap.querySelector("[data-cancel]").addEventListener("click", cancel);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); save(); } else if (e.key === "Escape") cancel();
+  });
+  input.focus();
+  input.select();
+}
+
+// ---------- THEME: dark by default, light on toggle (localStorage "theme", ?theme=light for screenshots) ----------
+function themeGet() {
+  const q = /[?&#]theme=(light|dark)\b/.exec(location.search + location.hash);
+  if (q) return q[1];
+  try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") return t; } catch (e) { /* noop */ }
+  return "dark";
+}
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  if (typeof applyChartTheme === "function") applyChartTheme(t);
+}
+function themeSet(t) {
+  try { localStorage.setItem("theme", t); } catch (e) { /* noop */ }
+  applyTheme(t);
+  if (typeof route === "function") route();   // charts must be redrawn in the new colours
+}
+
 // ---------- DEMO MODE — masks amounts with a 0-1 pattern (for screenshots) ----------
 function demoOn() {
   if (/[?&#](demo|test)\b/.test(location.search + location.hash)) return true;
@@ -162,5 +225,27 @@ if (window.Chart) {
   Chart.defaults.scale.ticks.padding = 6;
 }
 
-Chart.defaults.color = "#8b91a3";
-Chart.defaults.borderColor = "#2c3040";
+// Chart colours per theme: canvas cannot read CSS variables, so TOKENS/CHART_COLORS are
+// swapped in place (const object/array — mutating the contents is fine).
+const _CHART_THEMES = {
+  dark: { tokens: { muted: "#98a1b3", text: "#e8eaf0", inset: "rgba(255,255,255,0.05)", pos: "#35c98a", neg: "#ff7b7b", warn: "#f2c74f", accent: "#6ea8fe", violet: "#a78bfa", amber: "#e0a458" },
+    colors: ["#6ea8fe", "#35c98a", "#f2c74f", "#ff7b7b", "#a78bfa", "#5fd3d9", "#ff9f6b", "#98a1b3"],
+    grid: "rgba(255,255,255,0.05)", border: "rgba(255,255,255,0.06)", tipBg: "#1e222c", tipText: "#e8eaf0", tipBorder: "rgba(255,255,255,0.08)" },
+  light: { tokens: { muted: "#5c6577", text: "#151a26", inset: "rgba(15,23,42,0.05)", pos: "#178a5c", neg: "#d64545", warn: "#b7860b", accent: "#2f6fe4", violet: "#6d4fd6", amber: "#b8742a" },
+    colors: ["#2f6fe4", "#178a5c", "#b7860b", "#d64545", "#6d4fd6", "#1f9aa5", "#d8682b", "#5c6577"],
+    grid: "rgba(15,23,42,0.07)", border: "rgba(15,23,42,0.08)", tipBg: "#ffffff", tipText: "#151a26", tipBorder: "rgba(15,23,42,0.12)" },
+};
+function applyChartTheme(t) {
+  const th = _CHART_THEMES[t] || _CHART_THEMES.dark;
+  Object.assign(TOKENS, th.tokens);
+  CHART_COLORS.splice(0, CHART_COLORS.length, ...th.colors);
+  if (!window.Chart) return;
+  Chart.defaults.color = th.tokens.muted;
+  Chart.defaults.borderColor = th.border;
+  Chart.defaults.scale.grid.color = th.grid;
+  Chart.defaults.plugins.tooltip.backgroundColor = th.tipBg;
+  Chart.defaults.plugins.tooltip.titleColor = th.tipText;
+  Chart.defaults.plugins.tooltip.bodyColor = th.tipText;
+  Chart.defaults.plugins.tooltip.borderColor = th.tipBorder;
+}
+applyTheme(themeGet());

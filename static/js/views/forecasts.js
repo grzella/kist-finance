@@ -93,7 +93,7 @@ async function renderForecasts(el) {
           <tr><td>2M</td><td><b>${fire.milestones["660000"] || "—"}</b></td></tr>
           <tr><td>${fmt.pln(fire.target)} — work-optional 🏁</td><td class="pos"><b>${fire.milestones[String(fire.target)] || fire.crossover || "—"}</b></td></tr>
         </tbody></table></div>
-      <div class="muted mt" style="font-size:.82em">This replaces Monte Carlo with readable lines. Hover over the chart to see the value in a given month. "Real" uses the after-inflation return (~3.5% real) — the date in today's purchasing power.</div>
+      ${help(`This replaces Monte Carlo with readable lines. Hover over the chart to see the value in a given month. "Real" uses the after-inflation return (~3.5% real) — the date in today's purchasing power.`, "how to read the chart")}
     </div>
 
     <div class="grid cols-2 mt">
