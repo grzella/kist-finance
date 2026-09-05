@@ -18,12 +18,14 @@ async function renderMetrics(el) {
     <div class="card" style="border-left:4px solid ${bad.length ? TOKENS.neg : amber.length ? TOKENS.warn : TOKENS.pos}">
       <b>${bad.length ? `🔴 ${bad.length} off target: ${bad.map((i) => i.label).join(", ")}` : amber.length ? `🟡 ${amber.length} to improve: ${amber.map((i) => i.label).join(", ")}` : "🟢 All ratios on target"}</b>
       <div class="muted mt" style="font-size:.85em">Estimated net income ${fmt.pln(cur.facts.net_income_est)}/mo = surplus ${fmt.pln(cur.facts.surplus)} + fixed expenses ${fmt.pln(cur.facts.expenses)} + loan payments ${fmt.pln(cur.facts.debt_service)} · liquid ${fmt.pln(cur.facts.liquid)} · invested ${fmt.pln(cur.facts.invested)} · debt incl. reserve ${fmt.pln(cur.facts.debt_total)}</div>
+    <div class="muted mt" style="font-size:.9em">Every card has a "what & how" fold-out with the numbers used in the calculation; the full legend is at the bottom of the page.</div>
     </div>
     <div class="grid cols-4 mt">
       ${cur.items.map((i) => `<div class="card kpi" style="margin:0;border-left:4px solid ${col(i.light)}" title="${esc(i.note)}">
         <div class="label">${icon(i.light)} ${i.label}</div>
         <div class="value ${cls(i.light)}" style="font-size:28px">${val(i)}</div>
         <div class="sub">target ${i.target}</div>
+        ${i.explain ? help(`<b>What it means:</b> ${i.explain.what}<br><b>How it is computed:</b> ${i.explain.how}<br><b>Why it matters:</b> ${i.explain.why}`, "what & how") : ""}
       </div>`).join("")}
     </div>
 
@@ -43,7 +45,7 @@ async function renderMetrics(el) {
     </div>
 
     <details class="card mt"><summary style="cursor:pointer"><b>Definitions and thresholds</b></summary>
-      <table class="mt" style="font-size:.9em"><tbody>${cur.items.map((i) => `<tr><td><b>${i.label}</b></td><td class="muted">${i.note}</td><td style="white-space:nowrap">target ${i.target}</td></tr>`).join("")}</tbody></table>
+      <table class="mt" style="font-size:.9em"><tbody>${cur.items.map((i) => `<tr><td><b>${i.label}</b></td><td class="muted">${i.note}${i.explain ? `<div class="mt" style="font-size:.93em"><b>What it means:</b> ${i.explain.what}<br><b>How it is computed:</b> ${i.explain.how}<br><b>Why it matters:</b> ${i.explain.why}</div>` : ""}</td><td style="white-space:nowrap">target ${i.target}</td></tr>`).join("")}</tbody></table>
     </details>`;
 
   document.getElementById("mSnap").addEventListener("click", async () => {

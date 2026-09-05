@@ -120,6 +120,15 @@ def _light(value, good, green, amber):
     return "green" if value <= green else "amber" if value <= amber else "red"
 
 
+def _m(x):
+    """Number for explanations: 26 550 (no decimals), — when missing."""
+    return "—" if x is None else f"{float(x):,.0f}".replace(",", " ")
+
+
+def _p(x, d=1):
+    return "—" if x is None else f"{float(x):.{d}f}"
+
+
 def compute():
     """Current ratios from live data (nothing stored)."""
     w = planner.wealth_summary()
@@ -154,6 +163,7 @@ def compute():
     debt_cost = (sum(float(x.get("balance") or 0) * float(x.get("effective_rate") or 0) for x in debts) / bal) if bal else None
     after_tax = planner.expected_return_after_tax()
     growth = None
+    g_last = g_prev = None
     try:
         pts = [p for p in points() if p.get("net_worth") is not None]
         if len(pts) >= 2:
@@ -161,6 +171,7 @@ def compute():
             prev = next((p for p in reversed(pts[:-1]) if p["date"][:7] < last["date"][:7]), None)
             if prev and prev["net_worth"]:
                 growth = (last["net_worth"] / prev["net_worth"] - 1) * 100
+                g_last, g_prev = last["net_worth"], prev["net_worth"]
     except Exception:
         pass
     raw = {
@@ -175,6 +186,53 @@ def compute():
         "fx_share_pct": (fx / base * 100) if base > 0 else None,
         "debt_cost_pct": debt_cost,
         "nw_growth_mom_pct": growth,
+    }
+    # Explanations with the REAL numbers used in each calculation (Ratios tab → "what & how").
+    explain = {
+        "savings_rate_pct": {
+            "what": "The share of net income you actually put aside each month — the surplus after fixed expenses and loan payments.",
+            "how": f"surplus {_m(surplus)} / net income {_m(net_income)} (= surplus {_m(surplus)} + fixed expenses {_m(total_exp)} + loan payments {_m(debt_service)}) = {_p(raw['savings_rate_pct'])}%",
+            "why": "≥ 30% makes real progress toward your goal; below 15% net worth grows mostly from the market, not from you."},
+        "essential_share_pct": {
+            "what": "How much of your fixed spending cannot be cut quickly (items flagged as essential).",
+            "how": f"essential {_m(essential)} / all fixed expenses {_m(total_exp)} = {_p(raw['essential_share_pct'])}%",
+            "why": "The higher it is, the less room you have when income drops; above 75% the budget is rigid."},
+        "cushion_months": {
+            "what": "How many months of essential costs and loan payments the liquid reserve would cover if income stopped.",
+            "how": f"cushion {_m(lc['total'])} (cash + 80% of the brokerage portfolio) / (essential {_m(essential)} + loan payments {_m(debt_service)}) = {_p(raw['cushion_months'])} months",
+            "why": "Six months is the standard with a single income source; three is the minimum."},
+        "dti_pct": {
+            "what": "The share of net income consumed by loan payments and loan insurance.",
+            "how": f"loan payments and insurance {_m(debt_service)} / net income {_m(net_income)} = {_p(raw['dti_pct'])}%",
+            "why": "Banks compute the same ratio; above 40% refinancing and new credit get harder."},
+        "liquid_to_debt_pct": {
+            "what": "How much of your debt you could repay right away from liquid assets.",
+            "how": f"liquid {_m(liquid)} (cash {_m(vals.get('cash', 0))} + ETF {_m(vals.get('etf', 0))} + employer stock {_m(vals.get('rsu', 0))} + retirement {_m(vals.get('retirement', 0))}) / debt {_m(debt_total)} = {_p(raw['liquid_to_debt_pct'])}%",
+            "why": "≥ 50%: debt is a choice, not a constraint; < 25%: repayment depends on current income."},
+        "invest_share_pct": {
+            "what": "The share of net worth working in capital markets (ETFs, employer stock, retirement accounts).",
+            "how": f"investments {_m(invest)} / net worth {_m(base)} (property counted net of its loan) = {_p(raw['invest_share_pct'])}%",
+            "why": "Below 15% the wealth sits in property and cash, which do not compound."},
+        "rsu_share_pct": {
+            "what": "The share of net worth held in the stock of the employer that also pays your salary and bonus.",
+            "how": f"employer stock {_m(vals.get('rsu', 0))} / net worth {_m(base)} = {_p(raw['rsu_share_pct'])}%",
+            "why": "One company = one risk to salary, bonus and portfolio at once; ≤ 4% means you sell vests as they come."},
+        "real_estate_share_pct": {
+            "what": "Home equity (value minus loan) as a share of net worth.",
+            "how": f"net property {_m(vals.get('real_estate', 0))} / net worth {_m(base)} = {_p(raw['real_estate_share_pct'])}%",
+            "why": "Above 75% the wealth is illiquid and concentrated in a single market."},
+        "fx_share_pct": {
+            "what": "How much of net worth is in USD (USD cash, employer stock).",
+            "how": f"USD positions {_m(fx)} / net worth {_m(base)} = {_p(raw['fx_share_pct'])}%",
+            "why": f"A 10% move in the USD rate then shifts net worth by about {_m(fx * 0.1)}; above 45% it is a currency bet, not diversification."},
+        "debt_cost_pct": {
+            "what": "The average interest rate on your loans, weighted by balance.",
+            "how": f"Σ(balance × effective rate) / Σ balance {_m(bal)} = {_p(debt_cost)}%; threshold = expected after-tax return {_p(after_tax)}%",
+            "why": "When the cost of debt is below the after-tax return, overpaying loses to investing; when above, overpay."},
+        "nw_growth_mom_pct": {
+            "what": "Change in net worth versus the last point of the previous month.",
+            "how": f"latest point {_m(g_last)} / previous month's point {_m(g_prev)} − 1 = {_p(growth)}%",
+            "why": "The direction over a longer window matters; monthly market swings are normal."},
     }
     items = []
     for key, label, unit, good, green, amber, note in TARGETS:
@@ -191,7 +249,7 @@ def compute():
             light = _light(v, good, green, amber)
             target = (f"≥ {green}" if good == "high" else f"≤ {green}") + (" " + unit if unit != "%" else "%")
         items.append({"key": key, "label": label, "value": v, "unit": unit, "light": light,
-                      "target": target, "note": note})
+                      "target": target, "note": note, "explain": explain.get(key)})
     return {"as_of": date.today().isoformat(), "items": items,
             "facts": {"net_income_est": round(net_income), "surplus": round(surplus),
                       "expenses": round(total_exp), "debt_service": round(float(debt_service or 0)),
