@@ -239,7 +239,7 @@ MODULES = [
 ]
 
 CORE_VIEWS = ["dashboard", "cashflow", "recs", "wealth", "expenses", "allocation", "goals",
-              "forecasts", "control", "reminders", "data", "wizard"]
+              "forecasts", "metrics", "control", "reminders", "data", "wizard"]
 
 
 def get_app_config():
