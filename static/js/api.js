@@ -5,7 +5,7 @@ function demoSnapshotPath(p) {
   return "demo-data/" + p.replace(/^\//, "").replace(/[^A-Za-z0-9._-]/g, "_") + ".json";
 }
 let _demoToastAt = 0;
-function demoToast() {
+function demoToast(text) {
   if (Date.now() - _demoToastAt < 4000) return;
   _demoToastAt = Date.now();
   let t = document.getElementById("demoToast");
@@ -17,7 +17,7 @@ function demoToast() {
       "font-size:.9em;box-shadow:0 2px 12px rgba(0,0,0,.4)";
     document.body.appendChild(t);
   }
-  t.textContent = "🔒 Read-only demo — changes aren't saved. Clone the repo to use it for real.";
+  t.textContent = text || "🔒 Read-only demo — changes aren't saved. Clone the repo to use it for real.";
   t.style.display = "block";
   clearTimeout(t._hid);
   t._hid = setTimeout(() => { t.style.display = "none"; }, 3500);
@@ -33,7 +33,14 @@ const api = {
   async get(path) {
     _busy(1);
     try {
-      const r = await fetch(demoStatic() ? demoSnapshotPath(path) : path);
+      let r = await fetch(demoStatic() ? demoSnapshotPath(path) : path);
+      if (!r.ok && demoStatic() && path.includes("?")) {
+        // Static demo bakes one snapshot per endpoint; a parametrised variant (scenario
+        // controls, ranges) may be missing — fall back to the base snapshot and say so.
+        const base = path.split("?")[0];
+        const rb = await fetch(demoSnapshotPath(base));
+        if (rb.ok) { demoToast("🔒 Read-only demo — this scenario variant isn't baked, showing the default one."); return await rb.json(); }
+      }
       if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
       return await r.json();
     } finally { _busy(-1); }
