@@ -280,7 +280,12 @@ def test_schedules_run_due_records_error_and_clears_on_success(client, monkeypat
     assert t["last_error"] is None and t["last_run"]  # period recorded (daily/weekly/monthly key depending on the task)
 
 
-def test_health_reports_code_stale_flag(client):
+def test_health_reports_code_stale_flag(client, monkeypatch):
+    import app as flask_app
+    # snapshot "now" so files edited while the suite runs do not flip the flag
+    monkeypatch.setattr(flask_app, "_CODE_MTIME_AT_START", flask_app._code_mtime())
     h = client.get("/api/health").get_json()
     assert h["code_stale"] is False
+    monkeypatch.setattr(flask_app, "_CODE_MTIME_AT_START", 0)
+    assert client.get("/api/health").get_json()["code_stale"] is True
     assert h["summary"]["total"] == len(h["tasks"])

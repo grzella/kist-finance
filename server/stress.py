@@ -26,21 +26,8 @@ def _liquid_and_equity():
 
 
 def _essential_monthly():
-    import json as _json
-    d = planner.list_debts()
-    monthly_debt = d.get("monthly_cost_total") or 0
-    exp_essential = planner.expense_summary().get("essential_mine")
-    if exp_essential:
-        return float(exp_essential), monthly_debt
-    fc_raw = planner.get_setting("fixed_costs")
-    if fc_raw:
-        try:
-            fc = _json.loads(fc_raw).get("essential_mine")
-            if fc:
-                return float(fc), monthly_debt
-        except ValueError:
-            pass
-    return monthly_debt, monthly_debt
+    """One definition of essential costs — planner.essential_monthly()."""
+    return planner.essential_monthly()
 
 
 def run():

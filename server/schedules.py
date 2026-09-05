@@ -87,6 +87,10 @@ REGISTRY = [
      "kind": "app", "runner": lambda: __import__("barometer_collect").collect_openings(),
      "note": "appends real posting counts from job boards — needs a RAPIDAPI_JSEARCH_KEY",
      "default": {"freq": "monthly", "day": 2, "hour": 9}},
+    {"id": "rates_refresh", "label": "NBP reference rate + WIBOR 3M (monthly, PLN base only)",
+     "kind": "app", "runner": lambda: __import__("market").refresh_market_rates(),
+     "note": "feeds the post-fixed-rate installment projection and the refinancing recommendation; sources: static.nbp.pl, stooq",
+     "default": {"freq": "monthly", "day": 3, "hour": 9}},
 ]
 
 EXTERNAL = [

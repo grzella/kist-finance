@@ -76,9 +76,15 @@ async function renderForecasts(el) {
         <div class="card kpi"><div class="label">Cautious (4%)</div><div class="value">${(fire.crossover["cautious (4%)"] || "—").slice(0, 7)}</div></div>
         <div class="card kpi"><div class="label">Base (6.5%)</div><div class="value pos">${(fire.crossover["base (6.5%)"] || "—").slice(0, 7)}</div></div>
         <div class="card kpi"><div class="label">Optimistic (9%)</div><div class="value">${(fire.crossover["optimistic (9%)"] || "—").slice(0, 7)}</div></div>
-        <div class="card kpi"><div class="label">Real (after 3% inflation)</div><div class="value">${(fire.real_crossover || "—").slice(0, 7)}</div><div class="sub">purchasing power</div></div>
+        <div class="card kpi"><div class="label">Real (after ${fire.inflation_pct}% inflation)</div><div class="value">${(fire.real_crossover || "—").slice(0, 7)}</div><div class="sub">purchasing power · after ${fire.tax_pct}% tax: <b>${(fire.net_crossover || "—").slice(0, 7)}</b></div></div>
       </div>
       <canvas id="fireChart" height="90" class="mt"></canvas>
+      ${fire.cone && fire.cone.points && Object.keys(fire.cone.points).length ? `<div class="mt" style="font-size:.9em">
+        <b>Cone from real returns</b> <span class="muted">(block bootstrap of ${fire.cone.benchmark} monthly returns, ${fire.cone.months_of_data} months of data; nominal)</span>
+        <table class="mt"><thead><tr><th>Horizon</th><th class="neg">p10</th><th>p50</th><th class="pos">p90</th></tr></thead>
+        <tbody>${Object.entries(fire.cone.points).map(([y, q]) => `<tr><td>${y} years</td><td class="neg">${fmt.pln(q.p10)}</td><td><b>${fmt.pln(q.p50)}</b></td><td class="pos">${fmt.pln(q.p90)}</td></tr>`).join("")}</tbody></table></div>`
+        : fire.cone && fire.cone.note ? `<div class="muted mt" style="font-size:.85em">Cone: ${fire.cone.note} (${fire.cone.benchmark}, ${fire.cone.months_of_data} months) — deepen the benchmark history in Market (10 years) and the cone appears.</div>` : ""}
+      <div class="muted mt" style="font-size:.82em">Assumptions: ${fire.assumptions.base_return} · inflation ${fire.assumptions.inflation} · ${fire.assumptions.income_growth} · ${fire.assumptions.tax} · freed installment from ${fire.freed_from_month}.</div>
       <div class="mt"><b>Milestones (base scenario):</b>
         <table><tbody>
           <tr><td>First liquid million</td><td><b>${fire.milestones["1000000"] || "—"}</b></td></tr>

@@ -83,7 +83,7 @@ async function renderDashboard(el) {
     <div class="grid cols-4 mt">
       <div class="card kpi"><div class="label">Net worth</div>
         <div class="value">${fmt.pln(sum.net_worth)}</div>
-        <div class="sub">cash ${fmt.pln(sum.cash_total)} · investments ${fmt.pln(sum.investments_total)} · debt −${fmt.pln(sum.debt_total)}</div></div>
+        <div class="sub">cash ${fmt.pln(sum.cash_total)} · investments ${fmt.pln(sum.investments_total)} · loans −${fmt.pln(sum.loans_total ?? sum.debt_total)}${sum.tax_reserve ? ` · <span title="${sum.tax_reserve_note || ""}">tax reserve −${fmt.pln(sum.tax_reserve)}</span>` : ""}</div></div>
       <div class="card kpi"><div class="label">Income / mo</div>
         <div class="value pos">${fmt.pln(sum.planned_income)}</div>
         <div class="sub">avg net salary + rent</div></div>

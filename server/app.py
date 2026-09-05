@@ -133,6 +133,9 @@ def dashboard_summary():
     data["cash_total"] = round(t.get("cushion", 0) + t.get("savings", 0), 2)
     data["investments_total"] = round(t.get("investment", 0), 2)
     data["debt_total"] = w["debt_total"]
+    data["loans_total"] = w.get("loans_total", w["debt_total"])
+    data["tax_reserve"] = w.get("tax_reserve", 0)
+    data["tax_reserve_note"] = w.get("tax_reserve_note")
     data["net_worth"] = round(assets - w["debt_total"], 2)
     data["planned_income"] = round(w["totals"].get("income", 0), 2)
     exp = planner.expense_summary()
@@ -1006,6 +1009,25 @@ def rsu_put():
     return jsonify(market.update_rsu(request.get_json(force=True)))
 
 
+@app.get("/api/rsu/sales")
+def rsu_sales_list():
+    return jsonify({"sales": market.rsu_sales(), "tax": market.rsu_tax_summary()})
+
+
+@app.post("/api/rsu/sales")
+def rsu_sales_add():
+    body = request.get_json(force=True)
+    if not body.get("shares") or not body.get("price_usd"):
+        return jsonify({"error": "shares and price_usd are required"}), 400
+    return jsonify(market.log_rsu_sale(body)), 201
+
+
+@app.delete("/api/rsu/sales/<sid>")
+def rsu_sales_delete(sid):
+    market.delete_rsu_sale(sid)
+    return jsonify({"ok": True})
+
+
 @app.get("/api/rsu/advanced")
 def rsu_advanced():
     return jsonify(market.rsu_advanced())
@@ -1032,13 +1054,41 @@ def analysis(name):
     return _analysis("analysis_" + name)
 
 
+def _data_changed_at():
+    """Last change of the source data (rsu.json, loans, wealth, expenses) — to judge whether an
+    analysis snapshot (as_of) is still current."""
+    stamps = []
+    try:
+        from datetime import datetime as _dt
+        p = market._rsu_path()
+        if p.exists():
+            stamps.append(_dt.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d"))
+    except Exception:
+        pass
+    for q in ("select max(updated_at) m from debts", "select max(created_at) m from wealth_values",
+              "select max(created_at) m from expense_values", "select max(created_at) m from debt_values"):
+        try:
+            v = eb._rows(q)[0]["m"]
+            if v:
+                stamps.append(str(v)[:10])
+        except Exception:
+            pass
+    return max(stamps) if stamps else None
+
+
 def _analysis(key):
     import json as _json
     raw = planner.get_setting(key)
     try:
-        return jsonify(_json.loads(raw) if raw else {})
+        data = _json.loads(raw) if raw else {}
     except ValueError:
-        return jsonify({})
+        data = {}
+    if isinstance(data, dict) and data.get("as_of"):
+        changed = _data_changed_at()
+        as_of = str(data["as_of"])[:10]
+        if changed and changed > as_of:
+            data["stale"] = {"as_of": as_of, "data_changed_at": changed}
+    return jsonify(data)
 
 
 def main():

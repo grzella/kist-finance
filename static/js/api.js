@@ -83,6 +83,14 @@ document.addEventListener("blur", (e) => {
 // especially anything from an external source (e.g. market data synced from
 // Supabase) so a crafted string can't inject markup. Numbers/computed values
 // don't need it. (The CSP already blocks script execution as a second layer.)
+// "analysis may be stale" banner: the snapshot has as_of, and source data changed later.
+function analysisStaleBanner(a) {
+  if (!a || !a.stale) return "";
+  return `<div class="mt" style="padding:8px 12px;border-radius:8px;background:rgba(242,199,79,.12);font-size:.88em">
+    ⚠️ This analysis is from <b>${a.stale.as_of}</b>, and the data (RSU, loans, wealth, expenses) changed on <b>${a.stale.data_changed_at}</b> —
+    the numbers may be out of date. Ask for a refresh.</div>`;
+}
+
 function esc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")

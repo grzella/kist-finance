@@ -198,3 +198,38 @@ def test_market_fetch_convergence_check_recognises_hardened_url(market_mod):
     import security_review as sr
     items = sr._check_market_fetch()
     assert items and items[0]["status"] == "pass", f"hardened URL reported as fail: {items}"
+
+
+
+# --- Port audit 2026-09-05: nothing personal or infrastructure-specific may reach the public repo ---
+def test_public_repo_is_free_of_personal_markers():
+    """Runs the same personal-data audit as `security_review --ci` and requires a clean pass.
+    The marker list lives in security_review._PERSONAL_MARKERS — extend it there when a new
+    private term appears in the private instance (family names, loan names, vendors, hosts)."""
+    import security_review as sr
+    repo = sr._repo_root()
+    items = sr._check_personal_data(repo)
+    assert items and items[0]["status"] == "pass", items
+
+
+def test_tracked_files_have_no_secrets_or_private_paths():
+    """Belt and braces on top of the marker audit: real keys, local home paths and the
+    private repo name must never be tracked (docs excluded — they are prose, not config)."""
+    import subprocess, re
+    import security_review as sr
+    repo = sr._repo_root()
+    ls = subprocess.run(["git", "ls-files"], cwd=repo, capture_output=True, text=True).stdout.splitlines()
+    private_repo = "private-" + "lab"  # split so this file does not trip the marker audit itself
+    jwt_like = r"\beyJ[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}"  # three base64url segments
+    bad = re.compile(r"/Users/[a-z]+/|" + private_repo + "|" + jwt_like + r"|sk-ant-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}")
+    hits = []
+    for f in ls:
+        if f.endswith((".md", ".lock")) or f.startswith(("static/vendor/", "demo/")) or f == "server/security_review.py" or f.startswith("tests/"):
+            continue
+        try:
+            txt = (repo / f).read_text(errors="ignore")
+        except Exception:
+            continue
+        for m in bad.finditer(txt):
+            hits.append(f"{f}: {m.group(0)[:40]}")
+    assert not hits, hits

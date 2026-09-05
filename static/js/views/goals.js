@@ -9,7 +9,7 @@ async function renderGoals(el) {
         <input data-num id="gSavings" placeholder="monthly savings PLN"
           value="${fmt.grouped(cfg.monthly_savings)}" style="width:220px">
         <button class="primary" id="gSaveCfg">Save</button>
-        <span class="muted">Also used in the Offers view to compute impact on the goal.</span>
+        <span class="muted">One number for Goals, Offers, FIRE and Cash-flow (the same as "base surplus" in Cash-flow). Bonus, net vests and cash-vest from RSU are added on top.</span>
       </div>
     </div>
     <div class="card mt">

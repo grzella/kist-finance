@@ -62,13 +62,17 @@ async function renderRecs(el) {
         <thead><tr><th style="width:140px">Category</th><th>Recommendation</th><th style="width:110px"></th></tr></thead>
         <tbody>
         ${engineItems.map((r, i) => `<tr>
-          <td><span class="badge">${r.area}</span></td>
+          <td><span class="badge">${r.area}</span>${r.since ? `<div class="muted" style="font-size:.75em;margin-top:3px">since ${r.since}</div>` : ""}</td>
           <td style="font-size:.92em">${r.text.length > 160
             ? `${r.text.slice(0, 160)}… <details style="display:inline"><summary class="muted" style="display:inline;cursor:pointer">more</summary><div class="mt">${r.text}</div></details>`
             : r.text}</td>
           <td><button data-eadd="${i}">→ backlog</button></td>
         </tr>`).join("")}
         </tbody>
+      </table>
+      ${(rec.history || []).length ? `<details class="mt"><summary class="muted" style="cursor:pointer">✅ Resolved / gone (${rec.history.length})</summary>
+        <ul class="muted mt" style="padding-left:18px;font-size:.88em">${rec.history.map((h) => `<li><b>[${h.area}]</b> ${h.text.slice(0, 140)}${h.text.length > 140 ? "…" : ""} <span style="opacity:.7">(${h.since} → ${h.resolved})</span></li>`).join("")}</ul></details>` : ""}
+      <table style="display:none"><tbody>
       </table>
     </div>
 

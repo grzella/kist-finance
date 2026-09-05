@@ -64,7 +64,8 @@ async function renderDebts(el) {
           ${s.total_interest != null ? `· interest to maturity: ${fmt.pln(s.total_interest)}` : ""}
           ${d.months_left != null ? `· installments left per bank: ${d.months_left}` : ""}</div>
         ${d.variable_projection ? `<div class="muted mt" style="border-left:3px solid var(--accent);padding-left:8px">
-          <b>After the fixed rate ends (${d.variable_projection.fixed_until})</b>, balance ~${fmt.pln(d.variable_projection.balance_at_switch)}:
+          <b>After the fixed rate ends (${d.variable_projection.fixed_until})</b>, balance ~${fmt.pln(d.variable_projection.balance_at_switch)}
+          <span class="badge" title="rates from the market_rates setting; refreshed by the 'NBP reference rate + WIBOR 3M' task">rates as of ${d.variable_projection.rates_asof || "?"}</span>:
           at today's WIBOR ${d.variable_projection.now.wibor}% + margin ${d.variable_projection.margin}% →
           installment <b>${fmt.pln(d.variable_projection.now.rata)}</b> (${fmt.pln(d.variable_projection.now.delta_vs_now)}/mo)
           ${d.variable_projection.forecast ? `· at the forecast WIBOR ${d.variable_projection.forecast.wibor}% →
@@ -101,22 +102,32 @@ async function renderDebts(el) {
 
     data.debts.forEach((d, idx) => {
       if (!d.history.length) return;
+      // line = last state in the month (corrections and overpayments stop drawing "teeth"); events as markers
+      const byMonth = {};
+      d.history.forEach((h) => { byMonth[h.month] = h; });
+      const months = Object.keys(byMonth).sort();
+      const events = d.history.filter((h) => h.kind === "overpayment" || h.kind === "correction");
       trackChart(new Chart(document.getElementById("dChart" + idx), {
         type: "line",
         data: {
-          labels: d.history.map((h) => h.month),
-          datasets: [{ label: "Balance (actual)", data: d.history.map((h) => h.balance),
+          labels: months,
+          datasets: [{ label: "Balance (actual)", data: months.map((m) => byMonth[m].balance),
             borderColor: CHART_COLORS[3], backgroundColor: "transparent", tension: 0.25 },
+          ...(events.length ? [{ label: "overpayment / correction", type: "scatter",
+            data: events.map((h) => ({ x: h.month, y: h.balance, note: h.note })),
+            pointStyle: (c) => (events[c.dataIndex] && events[c.dataIndex].kind === "overpayment") ? "triangle" : "rectRot",
+            pointRadius: 6, pointHoverRadius: 8, backgroundColor: CHART_COLORS[1], borderColor: CHART_COLORS[1], showLine: false }] : []),
           ...(d.pace && d.pace.points && d.pace.points.length > 1 ? [{
             label: "Model (no overpayments)",
-            data: d.history.map((h) => {
-              const p = d.pace.points.find((x) => x.month === h.month);
+            data: months.map((m) => {
+              const p = d.pace.points.find((x) => x.month === m);
               return p ? p.model : null;
             }),
             borderColor: "#8a8fa8", borderDash: [6, 4], backgroundColor: "transparent",
             tension: 0.25, pointRadius: 0 }] : [])],
         },
-        options: { plugins: { legend: { display: d.pace && !d.pace.insufficient } } },
+        options: { plugins: { legend: { display: d.pace && !d.pace.insufficient },
+          tooltip: { callbacks: { afterLabel: (c) => (c.raw && c.raw.note) ? c.raw.note : "" } } } },
       }));
     });
   }

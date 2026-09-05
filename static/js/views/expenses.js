@@ -19,7 +19,7 @@ function _row(i, cm) {
     <td>${bill}</td>
     <td>${i.payer}</td>
     <td>${i.essential ? "✓" : ""}</td>
-    <td style="text-align:right">${fmt.usd(i.latest_amount)}</td>
+    <td style="text-align:right">${(i.currency || "USD") !== (window.APP_CURRENCY || "USD") ? `<span title="${i.fx_missing ? "no rate in the cache — amount not converted" : "rate " + fmt.num(i.fx_rate, 4)}">${fmt.num(i.latest_amount_ccy, 2)} ${i.currency} ${i.fx_missing ? "⚠️" : "≈ " + fmt.usd(i.latest_amount)}</span>` : fmt.usd(i.latest_amount)}</td>
     <td class="muted">${i.latest_month || "—"}${i.latest_amount != null && !i.current_month_set ? ' <span class="badge">carried over</span>' : ""}</td>
     <td><button data-upd="${i.id}" title="${i.current_month_set ? "amount for " + cm + " already entered — correct it" : "enter the new amount effective from " + cm}">Change amount</button></td>
     <td><button class="danger" data-del="${i.id}">✕</button></td>
@@ -93,6 +93,7 @@ async function renderExpenses(el) {
         <select id="ePayer"><option selected>me</option><option>partner</option><option>tenant</option></select>
         <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="eEssential" checked> essential</label>
         <label style="display:flex;align-items:center;gap:4px" title="a business expense you'll get an invoice for"><input type="checkbox" id="eInvoice"> 📄 invoiced</label>
+        <select id="eCurrency" title="item currency — enter the amount in this currency; converted at the cached rate"><option selected>USD</option><option>EUR</option><option>PLN</option><option>GBP</option></select>
         <input data-num id="eAmount" placeholder="amount (this month)">
         <button class="primary" id="eAdd">Add</button>
       </div>
@@ -123,7 +124,8 @@ async function renderExpenses(el) {
 
   el.querySelectorAll("[data-upd]").forEach((b) =>
     b.addEventListener("click", async () => {
-      const v = prompt(`New amount from ${cm} — it carries forward every month until you change it again:`);
+      const item = s.items.find((i) => i.id === b.dataset.upd);
+      const v = prompt(`New amount from ${cm} (${(item && item.currency) || ""}) — it carries forward every month until you change it again:`);
       if (v === null || v === "" || isNaN(parseNum(v))) return;
       await api.post(`/api/expenses/items/${b.dataset.upd}/values`,
         { month: cm, amount: parseNum(v) });
@@ -156,6 +158,7 @@ async function renderExpenses(el) {
       name,
       entity: document.getElementById("eEntity").value.trim() || "personal",
       category: document.getElementById("eCategory").value,
+      currency: document.getElementById("eCurrency").value,
       payer: document.getElementById("ePayer").value,
       essential: document.getElementById("eEssential").checked,
       invoice: document.getElementById("eInvoice").checked,

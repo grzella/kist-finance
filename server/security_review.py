@@ -95,6 +95,13 @@ _PERSONAL_MARKERS = [
     ("personal goal geo",  r"W\u0142och|Wloch\b|Hiszpan"),
     ("employer ticker",    r"\"TEAM\""),
     ("employer perf-rating vocab", r"Exceeds/Greatly"),
+    # added 2026-09-05 (port audit): family / foundation / private-instance vocabulary
+    ("family names",       r"\bLidi[ai]\b|\bWiktori[ai]\b|\bJustyn[aey]\b"),
+    ("foundation",         r"EDUKO|eduko\.org"),
+    ("private loan names", r"Lodz-wynajem|Tarchomin-mieszkanie"),
+    ("private vendors",    r"\binfakt\b|\bRouvy\b"),
+    ("private ports/hosts", r"127\.0\.0\.1:832[23]\b|localhost:832[23]\b"),
+    ("supabase project ref", r"[a-z]{20}\.supabase\.co"),
 ]
 
 # Excludes for content scans (docs / vendored / sample data are not code).

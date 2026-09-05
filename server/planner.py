@@ -143,6 +143,15 @@ def get_setting(key, default=None):
 
 
 def set_settings(data):
+    data = dict(data)
+    # mirror: one savings pace under two historical keys
+    if "monthly_savings" in data and "cf_monthly_surplus" not in data:
+        data["cf_monthly_surplus"] = data["monthly_savings"]
+    elif "cf_monthly_surplus" in data and "monthly_savings" not in data:
+        data["monthly_savings"] = data["cf_monthly_surplus"]
+    # debt-strategy timestamp — the recommendation shows how much changed since it was written
+    if "debt_strategy" in data and "debt_strategy_at" not in data:
+        data["debt_strategy_at"] = _now()
     for k, v in data.items():
         eb._exec("insert into app_settings (key, value) values (?,?) "
                  "on conflict(key) do update set value=excluded.value", (k, str(v)))
@@ -177,10 +186,21 @@ def set_settings_public(data):
     return {**settings(), "rejected": rejected}
 
 
+def monthly_surplus():
+    """ONE savings pace for Goals, Offers, FIRE and Cash-flow: cf_monthly_surplus
+    (fallback: the legacy monthly_savings). Two keys were two sources of truth for the same
+    number — from now on set_settings mirrors one into the other."""
+    v = _num(get_setting("cf_monthly_surplus"))
+    if v is None:
+        v = _num(get_setting("monthly_savings"))
+    return v
+
+
 def settings():
     return {
         "current_total_monthly": _num(get_setting("current_total_monthly")),
-        "monthly_savings": _num(get_setting("monthly_savings")),
+        "monthly_savings": monthly_surplus(),
+        "cf_monthly_surplus": monthly_surplus(),
     }
 
 
@@ -378,13 +398,27 @@ def wealth_summary():
             total += sum(v for v in live_by_id.values() if v is not None)
         monthly[m] = total
     trend = [{"month": m, "total": round(t, 2)} for m, t in sorted(monthly.items())]
-    debt_total = eb._rows("select coalesce(sum(balance),0) s from debts")[0]["s"]
+    loans_total = eb._rows("select coalesce(sum(balance),0) s from debts")[0]["s"]
+    # capital gains reserve on this year's share sales: money on the account, but not yours
+    reserve = 0.0
+    reserve_note = None
+    try:
+        import market as _mkt
+        tx = _mkt.rsu_tax_summary()
+        if tx.get("tax_due_pln"):
+            reserve = float(tx["tax_due_pln"])
+            reserve_note = f"PIT-38 {tx['year']} ({tx['shares_sold']:.0f} szt., do {tx['deadline']})" if not True else f"capital gains tax {tx['year']} ({tx['shares_sold']:.0f} shares, due {tx['deadline']})"
+    except Exception:
+        pass
     return {
         "items": items,
         "debts": debts,
         "totals": by_kind,
         "total": sum(v for v in by_kind.values()),
-        "debt_total": debt_total,
+        "loans_total": loans_total,
+        "tax_reserve": round(reserve, 2),
+        "tax_reserve_note": reserve_note,
+        "debt_total": round(loans_total + reserve, 2),
         "trend": trend,
     }
 
@@ -505,22 +539,43 @@ def expense_summary():
     items = eb._rows(
         "select * from expense_items where archived = 0 order by category, name")
     cur_month = date.today().strftime("%Y-%m")
+    fx_cache = {}
+
+    def _fx(ccy):
+        """Item currency → base rate (1.0 for the base). Amounts are STORED in the item's currency
+        and converted on every read — a PLN amount typed 'at the day's rate' lies six months later."""
+        ccy = (ccy or "PLN").upper()
+        if ccy not in fx_cache:
+            try:
+                import market as _mkt
+                fx_cache[ccy] = _mkt.fx_to_base(ccy)
+            except Exception:
+                fx_cache[ccy] = None
+        return fx_cache[ccy]
+
     for it in items:
         vals = eb._rows(
             "select month, amount from expense_values where item_id = ? "
             "order by month desc limit 1", (it["id"],))
-        it["latest_amount"] = vals[0]["amount"] if vals else None
+        raw = vals[0]["amount"] if vals else None
+        rate = _fx(it.get("currency"))
+        base_ccy = "PLN"
+        it["latest_amount_ccy"] = raw
+        it["fx_rate"] = rate
+        it["fx_missing"] = bool(raw is not None and rate is None)
+        it["latest_amount"] = (round(raw * rate, 2) if (raw is not None and rate) else raw)
         it["latest_month"] = vals[0]["month"] if vals else None
         it["current_month_set"] = bool(vals and vals[0]["month"] == cur_month)
 
     history = eb._rows(
-        "select v.month, v.item_id, v.amount, i.essential, i.payer "
+        "select v.month, v.item_id, v.amount, i.essential, i.payer, i.currency "
         "from expense_values v join expense_items i on i.id = v.item_id "
         "where i.archived = 0 order by v.month")
     per_item = {}
     for row in history:
+        rate = _fx(row.get("currency")) or 1.0
         per_item.setdefault(row["item_id"], []).append(
-            (row["month"], row["amount"], row["essential"], row["payer"]))
+            (row["month"], row["amount"] * rate, row["essential"], row["payer"]))
     all_months = sorted({m for series in per_item.values() for m, *_ in series}
                         | ({cur_month} if per_item else set()))
     trend = []
@@ -982,8 +1037,13 @@ def list_debts():
             "order by month, created_at", (d["id"],))
         d["pace"] = _debt_pace(d, hist)
         d["history"] = eb._rows(
-            "select month, balance, principal_paid, interest_paid, note "
-            "from debt_values where debt_id = ? order by month", (d["id"],))
+            "select month, balance, principal_paid, interest_paid, note, created_at "
+            "from debt_values where debt_id = ? order by month, created_at", (d["id"],))
+        for h in d["history"]:
+            n = (h.get("note") or "").lower()
+            h["kind"] = ("start" if "initial" in n or "opening" in n else
+                         "overpayment" if "overpay" in n else
+                         "correction" if "correction" in n or "bank" in n else "installment")
     total = sum(d["balance"] for d in debts)
     return {"debts": debts, "total": total,
             "monthly_cost_total": round(sum(d["monthly_cost_total"] for d in debts), 2)}
@@ -1026,7 +1086,7 @@ def _variable_projection(d):
     bal_at_switch = max(0, d["balance"] - principal_m * months_to_switch)
     rem = max(1, months_left - months_to_switch)
     out = {"fixed_until": d["fixed_until"], "margin": margin,
-           "balance_at_switch": round(bal_at_switch, 2)}
+           "balance_at_switch": round(bal_at_switch, 2), "rates_asof": rates.get("asof")}
     for key, wib in (("now", rates["wibor3m"]),
                      ("forecast", rates.get("wibor_forecast"))):
         if wib is None:
@@ -1109,6 +1169,91 @@ def delete_debt(debt_id):
 # limits), tax-efficiency (tax-advantaged wrappers first), savings-goals.
 
 EXPECTED_MARKET_RETURN = 6.5  # % nominal, conservative after-cost assumption
+BROKERAGE_HAIRCUT = 0.8       # share of the ETF/stock portfolio counted toward the cushion (a crash = −20…−25%)
+
+
+def _pct_setting(key, default):
+    v = _num(get_setting(key))
+    return default if v is None else v
+
+
+def capital_gains_tax_pct():
+    return _pct_setting("capital_gains_tax_pct", 19.0)
+
+
+def expected_return_after_tax():
+    """Expected market return AFTER capital gains tax — the number a loan rate must beat
+    (interest is not deductible, so 'overpayment = net return'). 6.5% × 0.81 ≈ 5.3%."""
+    return round(EXPECTED_MARKET_RETURN * (1 - capital_gains_tax_pct() / 100), 2)
+
+
+def essential_monthly():
+    """ONE definition of essential monthly costs (fixed expenses marked essential → legacy
+    fixed_costs blob → debt service alone). Returns (essential, debt_service)."""
+    import json as _json
+    d = list_debts()
+    monthly_debt = d.get("monthly_cost_total") or 0
+    exp_essential = expense_summary().get("essential_mine")
+    if exp_essential:
+        return float(exp_essential), monthly_debt
+    fc_raw = get_setting("fixed_costs")
+    if fc_raw:
+        try:
+            fc = _json.loads(fc_raw).get("essential_mine")
+            if fc:
+                return float(fc), monthly_debt
+        except ValueError:
+            pass
+    return float(monthly_debt), monthly_debt
+
+
+def liquid_cushion(w=None):
+    """Cushion = cash + 80% of the brokerage portfolio (ETF/stocks, not RSU). Retirement
+    accounts are NOT counted — early withdrawal costs matching and tax; shown separately."""
+    w = w or wealth_summary()
+    cash = broker = retire = 0.0
+    for it in w["items"]:
+        v = it.get("latest_value") or 0
+        if v <= 0 or it.get("kind") == "income":
+            continue
+        cls = _alloc_class(it.get("name", ""))
+        if it.get("kind") == "cushion" or cls == "cash":
+            cash += v
+        elif cls == "etf":
+            broker += v
+        elif cls == "retirement":
+            retire += v
+    return {"cash": round(cash), "brokerage": round(broker), "brokerage_counted": round(broker * BROKERAGE_HAIRCUT),
+            "retirement": round(retire), "total": round(cash + broker * BROKERAGE_HAIRCUT), "haircut": BROKERAGE_HAIRCUT}
+
+
+def _rec_key(area, text):
+    import hashlib
+    return area + ":" + hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def _rec_memory(items):
+    """Recommendation memory: first/last time each one appeared (key = area + text);
+    disappearing = 'resolved'. Without memory every recommendation looked new every day."""
+    eb._exec("""create table if not exists rec_log (
+        key text primary key, area text, text text, first_seen text, last_seen text, resolved_at text)""")
+    now = _now(); seen = set()
+    for r in items:
+        k = _rec_key(r["area"], r["text"]); seen.add(k)
+        row = eb._rows("select first_seen, resolved_at from rec_log where key=?", (k,))
+        if row:
+            eb._exec("update rec_log set last_seen=?, resolved_at=NULL where key=?", (now, k))
+            r["since"] = row[0]["first_seen"][:10]
+        else:
+            eb._exec("insert into rec_log (key, area, text, first_seen, last_seen) values (?,?,?,?,?)",
+                     (k, r["area"], r["text"], now, now))
+            r["since"] = now[:10]
+    for row in eb._rows("select key from rec_log where resolved_at is null"):
+        if row["key"] not in seen:
+            eb._exec("update rec_log set resolved_at=? where key=?", (now, row["key"]))
+    hist = eb._rows("select area, text, first_seen, resolved_at from rec_log where resolved_at is not null "
+                    "order by resolved_at desc limit 10")
+    return [{"area": h["area"], "text": h["text"], "since": h["first_seen"][:10], "resolved": h["resolved_at"][:10]} for h in hist]
 
 
 def _zl(v):
@@ -1125,31 +1270,14 @@ def recommendation():
     t = w["totals"]
     # Cushion definition: cash (kind=cushion) + brokerage + pension — all
     # quickly liquidable. A tenant deposit (a liability) is excluded by kind.
-    liquid_extra = sum(i["latest_value"] or 0 for i in w["items"]
-                       if i.get("kind") == "savings")  # liquid savings-kind items
-    cushion = t.get("cushion", 0) + liquid_extra
+    lc = liquid_cushion(w)
+    cushion = lc["total"]
     assets = w["total"] - t.get("income", 0)  # income kind is a monthly figure, not an asset
     real_estate = sum(i["latest_value"] or 0 for i in w["items"]
                       if i["kind"] == "investment" and "ieszkanie" in i["name"])
     monthly_debt_cost = d["monthly_cost_total"]
-    month = date.today().strftime("%Y-%m")
-    expenses = eb._rows(
-        "select coalesce(sum(abs(amount)),0) s from transactions "
-        "where type='expense' and date like ?", (month + "%",))[0]["s"]
-    # fixed expenses (expense_items/values) beat the transaction-derived guess;
-    # the old fixed_costs blob stays as a fallback until the list has items
-    import json as _json
-    essential_monthly = max(monthly_debt_cost + expenses, monthly_debt_cost)
-    exp_essential = expense_summary().get("essential_mine")
-    if exp_essential:
-        essential_monthly = exp_essential
-    else:
-        fc_raw = get_setting("fixed_costs")
-        if fc_raw:
-            try:
-                essential_monthly = _json.loads(fc_raw).get("essential_mine") or essential_monthly
-            except ValueError:
-                pass
+    essential_m, _ = essential_monthly()
+    after_tax = expected_return_after_tax()
 
     recs = []
 
@@ -1169,18 +1297,26 @@ def recommendation():
     # 0. user-chosen strategy overrides generic debt heuristics
     strategy = get_setting("debt_strategy")
     if strategy:
+        stale = ""
+        at = get_setting("debt_strategy_at")
+        if at:
+            ev = eb._rows("select count(*) n, coalesce(sum(principal_paid),0) p from debt_values where created_at > ?", (at,))[0]
+            if ev["n"]:
+                stale = (f"⚠️ Written {at[:10]} — since then {ev['n']} loan events "
+                         f"(principal repaid {_zl(ev['p'])}); check whether the numbers in the strategy still hold. ")
         recs.append({"area": "strategy (your decision)", "priority": 0,
-                     "text": strategy})
+                     "text": stale + strategy})
 
     # 1. emergency fund
-    target = essential_monthly * 6
-    if essential_monthly > 0 and cushion < target:
+    target = essential_m * 6
+    if essential_m > 0 and cushion < target:
         gap = target - cushion
         recs.append({
             "area": "emergency fund", "priority": 1,
             "text": (f"Build the emergency cushion: you have {_zl(cushion)} "
-                     f"(cash + liquid savings), "
-                     f"the target is ~{_zl(target)} (6 months of fixed costs ~{_zl(essential_monthly)}/mo); "
+                     f"(cash {_zl(lc['cash'])} + {int(lc['haircut'] * 100)}% of the brokerage portfolio {_zl(lc['brokerage_counted'])}; "
+                     f"retirement accounts {_zl(lc['retirement'])} counted separately — early withdrawal costs), "
+                     f"the target is ~{_zl(target)} (6 months of essential costs ~{_zl(essential_m)}/mo); "
                      f"{_zl(gap)} is missing — this is the priority before overpayments and investing.")})
 
     # 2. debt avalanche vs investing
@@ -1188,18 +1324,18 @@ def recommendation():
         rate = debt["effective_rate"] or 0
         if debt["balance"] <= 0:
             continue
-        if rate > EXPECTED_MARKET_RETURN:
+        if rate > after_tax:
             recs.append({
                 "area": "debts", "priority": 6 if strategy else 2,
                 "text": (f"Overpay {debt['name']}: the effective {rate:.2f}% beats "
-                         f"the expected market return (~{EXPECTED_MARKET_RETURN}%) — an overpayment is "
-                         f"a guaranteed, untaxed {rate:.1f}% return. "
+                         f"the expected market return AFTER TAX (~{after_tax}% = {EXPECTED_MARKET_RETURN}% × (1 − {capital_gains_tax_pct():g}%)) — "
+                         f"an overpayment is a guaranteed, untaxed {rate:.1f}% return. "
                          f"Interest to maturity at the current installment: {_zl(debt['schedule']['total_interest'] or 0)}.")})
         else:
             recs.append({
                 "area": "debts", "priority": 4,
                 "text": (f"{debt['name']} ({rate:.2f}% effective) — do not overpay aggressively; "
-                         f"cheap debt, the capital works better elsewhere.")})
+                         f"cheap debt: the market after tax returns ~{after_tax}%, so the capital works comparably or better elsewhere.")})
         break  # avalanche: only the top-rate debt gets the action
 
     # 2b. refinancing: fixed rate far above current market
@@ -1253,18 +1389,21 @@ def recommendation():
             "area": "goals", "priority": 5,
             "text": "You have no active goal — add one in the Goals tab (e.g. a home "
                     "down payment), and job offers and the savings pace will start counting toward it."})
-    if cfg.get("monthly_savings") in (None, 0):
+    if monthly_surplus() in (None, 0):
         recs.append({
             "area": "goals", "priority": 5,
-            "text": "Set a realistic monthly savings pace in the Goals tab — without it "
+            "text": "Set a realistic monthly savings pace (Goals, or Cash-flow → base surplus) — without it "
                     "goal projections and job-offer comparisons do not work."})
 
     recs.sort(key=lambda r: r["priority"])
+    history = _rec_memory(recs)
     return {
+        "history": history,
         "headline": recs[0]["text"] if recs else "The data looks healthy — no urgent actions.",
         "items": recs,
         "facts": {
-            "cushion": cushion, "cushion_target": target,
+            "cushion": cushion, "cushion_parts": lc, "cushion_target": target,
+            "after_tax_return_pct": after_tax,
             "monthly_debt_cost": monthly_debt_cost,
             "real_estate_share": round(real_estate / assets * 100, 1) if assets else None,
             "top_debt_rate": max((x["effective_rate"] or 0) for x in d["debts"]) if d["debts"] else None,
@@ -1376,6 +1515,7 @@ def _simulate_path(target, monthly_savings, debts, overpay_debt_id=None,
                        "freed": d["monthly_cost_total"]}
              for d in debts}
     saved, interest_paid, payoff_month = 0.0, 0.0, None
+    infl = _pct_setting("inflation_pct", 3.0) / 100
     for m in range(1, horizon_months + 1):
         contrib = monthly_savings
         for did, st in state.items():
@@ -1396,30 +1536,47 @@ def _simulate_path(target, monthly_savings, debts, overpay_debt_id=None,
                 if did == overpay_debt_id and payoff_month is None:
                     payoff_month = m
         saved += max(0, contrib)
-        if saved >= target:
+        if saved >= target * ((1 + infl) ** (m / 12.0)):  # the target grows with inflation (house prices too)
             return {"months": m, "payoff_month": payoff_month,
                     "interest_paid_on_target_debt": round(interest_paid, 2)}
     return {"months": None, "payoff_month": payoff_month,
             "interest_paid_on_target_debt": round(interest_paid, 2)}
 
 
-def _annual_extras():
-    """Bonus + RSU vests: real disposable cash on top of monthly savings."""
+def _annual_extras(today=None):
+    """Bonus + RSU vests + cash-vest: real NET cash on top of the monthly surplus.
+    Shares: the next 12 months from the grant schedule × price × (1 − tax at sale);
+    cash-vest: × the payslip net factor. Previously gross and without cash-vest — the pace to
+    the goal was overstated by ~19% on shares and ignored the cash part."""
     extras = {"bonus_net": _num(get_setting("annual_bonus_net")) or 0,
-              "rsu_annual": 0}
+              "rsu_annual": 0, "rsu_annual_gross": 0, "cash_vest_annual_net": 0,
+              "rsu_shares_12m": 0, "net_factor": None}
     try:
         import market
         r = market.get_rsu()
-        if r.get("shares_next_vest") and r.get("last_close") and r.get("usdpln"):
-            n_vests = len(r.get("vest_months") or [2, 5, 8, 11])
-            extras["rsu_annual"] = round(
-                r["shares_next_vest"] * r["last_close"] * r["usdpln"] * n_vests, 0)
+        sched = r.get("vest_schedule") or []
+        last, fx = r.get("last_close"), r.get("usdpln")
+        if sched and last and fx:
+            from datetime import date as _d
+            today = today or _d.today()
+            horizon = {f"{today.year + (today.month - 1 + i) // 12:04d}-{(today.month - 1 + i) % 12 + 1:02d}" for i in range(12)}
+            nxt12 = [m for m in sched if m["month"] in horizon]
+            shares = sum(m["shares"] for m in nxt12)
+            cash_usd = sum(m.get("cash_usd", 0) for m in nxt12)
+            nf = r.get("net_factor") or 0.81
+            cf = r.get("cash_vest_net_factor") or 0.55
+            extras["rsu_shares_12m"] = round(shares, 1)
+            extras["rsu_annual_gross"] = round(shares * last * fx, 0)
+            extras["rsu_annual"] = round(shares * last * fx * nf, 0)
+            extras["cash_vest_annual_net"] = round(cash_usd * fx * cf, 0)
+            extras["net_factor"] = nf
     except Exception:
         pass
     pct = _num(get_setting("extras_to_goal_pct"))
     extras["pct_to_goal"] = pct if pct is not None else 100
     extras["monthly_equivalent"] = round(
-        (extras["bonus_net"] + extras["rsu_annual"]) / 12 * extras["pct_to_goal"] / 100, 2)
+        (extras["bonus_net"] + extras["rsu_annual"] + extras["cash_vest_annual_net"]) / 12
+        * extras["pct_to_goal"] / 100, 2)
     return extras
 
 
@@ -1676,13 +1833,28 @@ CF_DEFAULTS = {  # generic starting values — real ones live in the DB (git-ign
     "cf_safety_buffer": 30000,     # safety buffer (floor of the liquid balance)
     "cf_liquid_start": 0,          # starting liquid funds
     "cf_bonus_month": 9,           # bonus month
-    "cf_sweep_target": "loan",     # where surplus goes: loan | property | none
+    "cf_sweep_target": "debt",  # where surplus is swept: loan name/fragment, 'debt' (highest rate) or 'none'
+    "capital_gains_tax_pct": 19,   # capital gains tax on share sales
+    "cash_vest_net_factor": 0.55,  # share of the cash-vest left net on the payslip     # where surplus goes: loan | property | none
 }
 
 
-def cashflow(months=15):
-    """Forward liquidity: base surplus + lumpy vests/bonus, sweeping excess
-    above the safety buffer into primary-debt overpay until paid, then accumulating."""
+def _cash_liquid_now():
+    """Cash from wealth (class 'cash' + kind 'cushion'), in the base currency."""
+    try:
+        w = wealth_summary()
+        return round(sum((it.get("latest_value") or 0) for it in w["items"]
+                         if (it.get("latest_value") or 0) > 0
+                         and (it.get("kind") == "cushion" or _alloc_class(it.get("name", "")) == "cash")), 0)
+    except Exception:
+        return None
+
+
+def cashflow(months=15, today=None):
+    """Forward liquidity, NET: base surplus + vests from the grant SCHEDULE (× 1 − tax)
+    + net cash-vest + bonus; the tax reserve on shares is set aside separately (not liquidity).
+    Surplus above the buffer is swept into the loan named by cf_sweep_target — after payoff
+    (or with no target) it simply accumulates."""
     import market as _mkt
     from datetime import date
 
@@ -1690,47 +1862,73 @@ def cashflow(months=15):
         v = _num(get_setting(key))
         return v if v is not None else CF_DEFAULTS[key]
 
-    surplus = _cf("cf_monthly_surplus")
+    surplus = monthly_surplus() if monthly_surplus() is not None else CF_DEFAULTS["cf_monthly_surplus"]
     buffer = _cf("cf_safety_buffer")
-    liquid = _cf("cf_liquid_start")
+    manual_start = _num(get_setting("cf_liquid_start"))
+    auto_start = _cash_liquid_now()
+    if manual_start is not None and manual_start > 0:
+        liquid, liquid_source = manual_start, "manual"
+    else:
+        liquid, liquid_source = (auto_start if auto_start is not None else CF_DEFAULTS["cf_liquid_start"]), "wealth"
     bonus_month = int(_cf("cf_bonus_month"))
-    bonus = _num(get_setting("annual_bonus_net")) or 20000
+    bonus = _num(get_setting("annual_bonus_net")) or 0
+    sweep_cfg = (get_setting("cf_sweep_target") or CF_DEFAULTS["cf_sweep_target"] or "none").strip().lower()
 
     debts = list_debts()["debts"]
-    loan = next((d for d in debts if any(k in d["name"].lower()
-                 for k in ("mortgage", "loan", "home", "house"))), None)
-    loan_bal = loan["balance"] if loan else 0
-    loan_principal = (loan.get("principal_month") if loan else 0) or 0
-    loan_freed = loan.get("monthly_cost_total", 0) if loan else 0
+    target = None
+    if sweep_cfg not in ("none", "", "goal"):
+        key = sweep_cfg.split(":", 1)[1] if sweep_cfg.startswith("debt:") else sweep_cfg
+        cands = [d for d in debts if d["balance"] > 0 and (key in d["name"].lower()
+                 or (key == "loan" and any(k in d["name"].lower() for k in ("mortgage", "loan", "home", "house"))))]
+        if not cands and key in ("debt", "top"):
+            cands = [d for d in debts if d["balance"] > 0]
+        target = sorted(cands, key=lambda d: -(d.get("effective_rate") or 0))[0] if cands else None
+    sweep_mode = "debt" if target else "accumulate"
+    loan_bal = target["balance"] if target else 0
+    loan_principal = (target.get("principal_month") if target else 0) or 0
+    loan_freed = target.get("monthly_cost_total", 0) if target else 0
 
     rsu = {}
     try:
         rsu = _mkt.get_rsu()
     except Exception:
         pass
-    vest_pln = rsu.get("next_vest_value_pln") or 0
+    sched = {m["month"]: m for m in (rsu.get("vest_schedule") or [])}
+    last, fx = rsu.get("last_close") or 0, rsu.get("usdpln") or 0
+    nf = rsu.get("net_factor") or 0.81
+    cf_net = rsu.get("cash_vest_net_factor") or 0.55
+    tax_pct = rsu.get("tax_pct") or 19.0
     vest_months = set(rsu.get("vest_months") or [2, 5, 8, 11])
-    shares_next = rsu.get("shares_next_vest") or 0
 
-    today = date.today()
+    today = today or date.today()
     y, m = today.year, today.month
     rows = []
     loan_paid_month = None
     base_surplus = surplus
+    reserve = 0.0
     for i in range(months):
         mm = ((m - 1 + i) % 12) + 1
         yy = y + (m - 1 + i) // 12
         label = f"{yy:04d}-{mm:02d}"
         inflow = base_surplus
         parts = [f"surplus {_zl(base_surplus)}"]
-        if mm in vest_months and vest_pln:
-            inflow += vest_pln
-            parts.append(f"vest of {shares_next} shares {_zl(vest_pln)}")
+        vest_row = sched.get(label)
+        vest_gross = vest_net = cash_net = 0.0
+        if vest_row and last and fx:
+            vest_gross = vest_row["shares"] * last * fx
+            vest_net = vest_gross * nf
+            cash_net = (vest_row.get("cash_usd") or 0) * fx * cf_net
+            if vest_net:
+                inflow += vest_net
+                parts.append(f"vest {vest_row['shares']:.0f} shares {_zl(vest_net)} netto")
+            if cash_net:
+                inflow += cash_net
+                parts.append(f"cash-vest {_zl(cash_net)} netto")
+            reserve += vest_gross * tax_pct / 100
         if mm == bonus_month and bonus:
             inflow += bonus
             parts.append(f"bonus {_zl(bonus)}")
         liquid += inflow
-        # sweep excess above buffer into the debt until paid
         overpay = 0
         if loan_bal > 0:
             overpay = max(0, min(liquid - buffer, loan_bal))
@@ -1738,31 +1936,45 @@ def cashflow(months=15):
             loan_bal = max(0, loan_bal - loan_principal - overpay)
             if loan_bal <= 0 and loan_paid_month is None:
                 loan_paid_month = label
-                base_surplus = surplus + loan_freed  # freed rata boosts surplus
+                base_surplus = surplus + loan_freed
         rows.append({
             "month": label,
             "inflow": round(inflow, 0),
             "inflow_parts": " · ".join(parts),
-            "overpay_loan": round(overpay, 0),
+            "vest_net": round(vest_net, 0), "cash_vest_net": round(cash_net, 0),
+            "overpay_loan": round(overpay, 0), "overpay": round(overpay, 0),
             "liquid": round(liquid, 0),
-            "loan_balance": round(loan_bal, 0),
+            "tax_reserve": round(reserve, 0),
+            "loan_balance": round(loan_bal, 0), "target_balance": round(loan_bal, 0),
             "below_buffer": liquid < buffer - 1,
-            "is_vest": mm in vest_months and bool(vest_pln),
+            "is_vest": bool(vest_row) and vest_net > 0,
             "is_bonus": mm == bonus_month and bool(bonus),
         })
     return {
         "rows": rows,
         "buffer": buffer,
-        "loan_start": loan["balance"] if loan else 0,
+        "sweep_mode": sweep_mode,
+        "sweep_target_name": target["name"] if target else None,
+        "sweep_setting": sweep_cfg,
+        "loan_start": target["balance"] if target else 0,
         "loan_paid_month": loan_paid_month,
         "loan_freed_monthly": loan_freed,
+        "target_start": target["balance"] if target else 0,
+        "target_paid_month": loan_paid_month,
+        "target_freed_monthly": loan_freed,
+        "liquid_start": round(liquid if not rows else (rows[0]["liquid"] - rows[0]["inflow"] + rows[0]["overpay"]), 0),
+        "liquid_start_source": liquid_source,
+        "liquid_start_auto": auto_start,
+        "tax_reserve_total": round(reserve, 0),
         "assumptions": {
             "cf_monthly_surplus": surplus,
             "cf_safety_buffer": buffer,
-            "cf_liquid_start": _cf("cf_liquid_start"),
+            "cf_liquid_start": manual_start,
             "annual_bonus_net": bonus,
-            "vest_value_pln": vest_pln,
+            "net_factor": nf, "cash_vest_net_factor": cf_net, "tax_pct": tax_pct,
+            "vest_value_pln": rsu.get("next_vest_value_net_pln"),
             "vest_months": sorted(vest_months),
+            "cf_sweep_target": sweep_cfg,
         },
     }
 
@@ -1794,6 +2006,12 @@ def tax_summary():
     zus_annual = round(zus * 12, 0)
     biz_rate = (_num(get_setting("tax_biz_rate_pct")) or 12) / 100
     biz_pit = round(biz_profit * biz_rate, 0)
+    try:
+        import market as _mkt
+        rsu_tax = _mkt.rsu_tax_summary()
+    except Exception:
+        rsu_tax = {"year": date.today().year, "tax_pct": 19, "gross_pln": 0, "tax_due_pln": 0,
+                   "shares_sold": 0, "deadline": f"{date.today().year + 1}-04-30", "sales_count": 0}
 
     items = [
         {"source": "Rental (lump-sum)", "rate": f"{rate}%",
@@ -1805,14 +2023,17 @@ def tax_summary():
         {"source": "business — income tax on profit", "rate": "12–32% / 19%", "base": biz_profit,
          "tax": biz_pit, "cadence": "monthly/quarterly advance", "managed": "you (sole prop.)",
          "note": "currently a loss → 0; the loss offsets future profits"},
-        {"source": "RSU / capital gains", "rate": "19%", "base": 0, "tax": 0,
-         "cadence": "on sale", "managed": "auto",
-         "note": "≈0 when selling right after vest (minimal post-vest gain)"},
+        {"source": f"RSU — capital gains tax on {rsu_tax['year']} sales", "rate": f"{rsu_tax['tax_pct']:g}%",
+         "base": rsu_tax["gross_pln"], "tax": rsu_tax["tax_due_pln"],
+         "cadence": f"by {rsu_tax['deadline']}", "managed": "you",
+         "note": (f"{rsu_tax['shares_sold']:.0f} shares sold in {rsu_tax['year']} — tax on the FULL sale amount "
+                  "(incentive plan: cost basis ≈ 0), not on the gain after vest. Reserve deducted from net worth."
+                  if rsu_tax["sales_count"] else "no sales this year — log sales in the RSU tab and the tax computes itself")},
         {"source": "Salary — income tax", "rate": "up to 32%", "base": salary, "tax": None,
          "cadence": "withheld by the employer", "managed": "employer",
          "note": "for reference — you do not manage it yourself (PIT-11)"},
     ]
-    self_managed = rental_tax + zus_annual + biz_pit
+    self_managed = rental_tax + zus_annual + biz_pit + (rsu_tax["tax_due_pln"] or 0)
 
     today = date.today()
     def nth(month_offset, day):
@@ -1825,8 +2046,11 @@ def tax_summary():
         {"date": f"{today.year + (1 if today.month > 4 else 0):04d}-04-30",
          "what": "Annual: PIT-28 (rental) + PIT-36L/sole prop.", "amount": None},
     ]
+    if rsu_tax["tax_due_pln"]:
+        calendar.append({"date": rsu_tax["deadline"], "what": f"Capital gains tax on {rsu_tax['year']} RSU sales (reserve)",
+                         "amount": rsu_tax["tax_due_pln"]})
     optimizations = [
-        "RSU: sell right after vest — capital gains tax applies only to the gain after the vest date (≈0). Holding = risk + no tax benefit.",
+        "RSU: sell at vest — the tax (capital gains on the full sale amount under an incentive plan) is the same today and in a year, while holding adds single-stock risk; move the tax reserve to a separate account right away (due 30 April next year).",
         "Cash vs equity: cash is income tax up to 32%, sold shares are 19% capital gains — a ~13 pp difference. Choose consciously (cash raises borrowing capacity).",
         "Rental: the 8.5% lump sum is usually favorable at low costs; if big renovations/interest come in, recompute the progressive scale.",
         "Sole proprietorship: the start-up years' loss lowers future income tax once the business turns a profit — worth 'keeping' it in the filing.",
@@ -2835,7 +3059,7 @@ def fire_projection():
              for k in ("work-optional", "liquid", "independent", "portfolio"))), None)
     start = (g and g.get("current_amount")) or 289000
     target = (g and g.get("target_amount")) or 1000000
-    base_month = _num(get_setting("monthly_savings")) or 10000
+    base_month = monthly_surplus() or 10000
     extras = _annual_extras().get("monthly_equivalent", 0) or 0
     contrib = base_month + extras
     # after the loan is paid off, the freed installment adds to savings
@@ -2853,27 +3077,50 @@ def fire_projection():
     series = {k: [] for k in scenarios}
     labels = []
     crossover = {}
+    # inflation indexes the TARGET (cost of living), contributions grow with income; gains taxed at withdrawal
+    infl = _pct_setting("inflation_pct", 3.0) / 100
+    # contribution growth: default = inflation (3%); a base raise applies to salary, not to the whole
+    # surplus (which contains vests and cash-vest); override with income_growth_pct
+    growth = _pct_setting("income_growth_pct", 3.0) / 100
+    tax = capital_gains_tax_pct() / 100
+    # month the loan installment is freed: from Cash-flow (the actual payoff month), not "in a year"
+    freed_from = 12
+    try:
+        lp = cashflow().get("target_paid_month")
+        if lp:
+            freed_from = max(0, (int(lp[:4]) - today.year) * 12 + (int(lp[5:7]) - today.month))
+    except Exception:
+        pass
 
     def label_at(m):
         yy = today.year + (today.month - 1 + m) // 12
         mm = (today.month - 1 + m) % 12 + 1
         return f"{yy:04d}-{mm:02d}"
 
+    def contrib_at(m):
+        return contrib * ((1 + growth) ** (m / 12.0)) + (freed if m >= freed_from else 0)
+
+    def target_at(m):
+        return target * ((1 + infl) ** (m / 12.0))
+
+    series_net = []
     for name, r in scenarios.items():
         bal = start
+        contributed = start
         rm = r / 12
         for m in range(horizon + 1):
             if m % 12 == 0:
                 series[name].append(round(bal))
                 if name == list(scenarios)[1]:
                     labels.append(label_at(m))
-            if name not in crossover and bal >= target:
+                    series_net.append(round(contributed + max(0.0, bal - contributed) * (1 - tax)))
+            if name not in crossover and bal >= target_at(m):
                 crossover[name] = label_at(m)
-            # the freed loan installment kicks in after ~12 months
-            add = contrib + (freed if m >= 12 else 0)
+            add = contrib_at(m)
             bal = bal * (1 + rm) + add
+            contributed += add
 
-    # kamienie milowe dla scenariusza bazowego
+    # milestones for the base scenario (nominal)
     base_r = 0.065 / 12
     milestones = {}
     bal = start
@@ -2881,16 +3128,46 @@ def fire_projection():
         for mk in (round(target / 3), round(target * 2 / 3), target):  # thirds of the goal
             if mk not in milestones and bal >= mk:
                 milestones[mk] = label_at(m)
-        bal = bal * (1 + base_r) + contrib + (freed if m >= 12 else 0)
+        bal = bal * (1 + base_r) + contrib_at(m)
 
-    # wersja realna (po inflacji 3%): zwrot realny bazowy 3,5%
-    real_r = 0.035 / 12
+    # real version: real return = base − inflation, target not indexed
+    real_r = (0.065 - infl) / 12
     bal = start
     real_cross = None
     for m in range(horizon + 1):
         if real_cross is None and bal >= target:
             real_cross = label_at(m)
-        bal = bal * (1 + real_r) + contrib + (freed if m >= 12 else 0)
+        bal = bal * (1 + real_r) + contrib_at(m)
+    # after tax: when the portfolio AFTER capital gains tax crosses the indexed target
+    net_cross = None
+    bal = start; contributed = start
+    for m in range(horizon + 1):
+        if net_cross is None and (contributed + max(0.0, bal - contributed) * (1 - tax)) >= target_at(m):
+            net_cross = label_at(m)
+        add = contrib_at(m); bal = bal * (1 + base_r) + add; contributed += add
+
+    # cone from a block bootstrap of the benchmark's real monthly returns (e.g. a world ETF)
+    cone = None
+    try:
+        import market as _mkt, forecast_models as _fm
+        bench = get_setting("fire_benchmark_ticker") or "IWDA.AS"
+        hist = _mkt.prices(bench, days=4000)
+        by_m = {}
+        for r in hist:
+            by_m[r["date"][:7]] = r["close"]
+        months_sorted = sorted(by_m)
+        mrets = [by_m[b] / by_m[a] - 1 for a, b in zip(months_sorted, months_sorted[1:]) if by_m[a]]
+        if len(mrets) >= 48:
+            cone = {"benchmark": bench, "months_of_data": len(mrets), "points": {}}
+            for yrs in (5, 10, 15):
+                bb = _fm.block_bootstrap_annual(mrets, yrs, sims=600, block=24)
+                if bb:
+                    total_contrib = sum(contrib_at(m) for m in range(yrs * 12))
+                    cone["points"][yrs] = {q: round(start * bb[q] + total_contrib * (bb[q] ** 0.5)) for q in ("p10", "p50", "p90")}
+        else:
+            cone = {"benchmark": bench, "months_of_data": len(mrets), "points": {}, "note": "too little history (48 months needed)"}
+    except Exception as e:
+        cone = {"error": str(e)[:80]}
 
     # --- property-goal projection (50% down payment) ---
     ig = next((x for x in goals if any(k in x["name"].lower()
@@ -2934,12 +3211,18 @@ def fire_projection():
         "labels": labels, "series": series, "crossover": crossover,
         "milestones": {str(k): v for k, v in milestones.items()},
         "real_crossover": real_cross,
+        "net_crossover": net_cross,
+        "series_net": series_net,
+        "cone": cone,
+        "inflation_pct": round(infl * 100, 2), "income_growth_pct": round(growth * 100, 2), "tax_pct": round(tax * 100, 1),
+        "freed_from_month": label_at(freed_from),
         "property": {"target": round(property_target), "start": round(property_start),
                   "crossover": property_cross, "series": property_series, "delay_months": delay,
                   "note": "Down-payment accumulation starts after the loan is paid off (~" + (label_at(delay)) + "). Cautious 4% return (funds close to the goal). NOTE: the same surpluses as work-optional — buying the house delays reaching 3M."},
         "tracking": tracking,
-        "assumptions": {"base_return": "6.5% nominal", "inflation": "3%",
-                        "contrib_note": f"{round(contrib)} PLN/mo (savings {round(base_month)} + bonus/RSU {round(extras)}); after loan payoff +{round(freed)}"},
+        "assumptions": {"base_return": "6.5% nominal", "inflation": f"{infl * 100:g}% (target indexed)",
+                        "income_growth": f"{growth * 100:g}%/yr (contributions grow with income)", "tax": f"{tax * 100:g}% on gains at withdrawal",
+                        "contrib_note": f"{round(contrib)}/mo (savings {round(base_month)} + net bonus/RSU {round(extras)}); after the loan payoff (+{round(freed)}) from {label_at(freed_from)}"},
     }
 
 

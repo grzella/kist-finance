@@ -48,7 +48,7 @@ async function renderRsu(el) {
         <div class="sub">${r.held_value_pln ? "≈ " + fmt.pln(r.held_value_pln) + " (" + fmt.usd(r.held_value_usd) + ")" : ""}</div></div>
       <div class="card kpi"><div class="label">Next vest (${r.next_vest_month})</div>
         <div class="value">+${fmt.num(r.shares_next_vest, 0)}</div>
-        <div class="sub">${nextVestPln ? "≈ " + fmt.pln(nextVestPln) + " at $" + r.last_close : ""}</div></div>
+        <div class="sub">${nextVestPln ? "≈ " + fmt.pln(nextVestPln) + " gross · <b>" + fmt.pln(r.next_vest_value_net_pln) + " net</b>" + (r.next_cash_vest_net_pln ? " + cash-vest " + fmt.pln(r.next_cash_vest_net_pln) + " net" : "") : ""}</div></div>
       <div class="card kpi"><div class="label">Total after vest</div>
         <div class="value">${fmt.num(r.shares_after_vest, 0)}</div>
         <div class="sub">${r.after_vest_value_pln ? "≈ " + fmt.pln(r.after_vest_value_pln) : ""}</div></div>
@@ -56,6 +56,42 @@ async function renderRsu(el) {
         <div class="value">${r.last_close ? "$" + r.last_close : "—"}</div>
         <div class="sub">close ${r.last_close_date || "—"}${r.usdpln !== 1 ? ` · USD/${window.APP_CURRENCY || "PLN"} ${r.usdpln ? fmt.num(r.usdpln, 3) : "—"} (${r.usdpln_date || "—"})` : ""}<br>
           new quotes daily ~22:35 (n8n) · sync: ${r.cache_synced ? r.cache_synced.slice(0, 16).replace("T", " ") : "—"}</div></div>
+    </div>
+    <div class="card mt" style="border-left:4px solid ${CHART_COLORS[1]}">
+      <h3 style="margin-top:0">📅 Vest schedule — from the list of grants, not one number</h3>
+      ${r.legacy_open_ended ? `<div class="mt" style="padding:6px 10px;border-radius:6px;background:rgba(242,199,79,.12);font-size:.88em">
+        ⚠️ Legacy grants (${r.legacy_shares_per_vest} shares/quarter) have no expiry date — the projection assumes they vest forever.
+        Enter <b>"legacy grants until"</b> in the parameters (the last vest month from your broker) and the schedule, Cash-flow, Goals and FIRE recompute.</div>` : ""}
+      <div style="overflow-x:auto"><table class="mt"><thead><tr><th>Month</th><th style="text-align:right">Shares</th><th>From</th><th style="text-align:right">Cash-vest</th><th style="text-align:right">≈ net at $${r.last_close}</th></tr></thead>
+        <tbody>${(r.vest_schedule || []).map((m) => `<tr>
+          <td>${m.month}</td><td style="text-align:right"><b>${fmt.num(m.shares, 0)}</b></td>
+          <td class="muted" style="font-size:.85em">${Object.entries(m.parts || {}).map(([k, v]) => `${k} ${fmt.num(v, 0)}`).join(" · ")}</td>
+          <td style="text-align:right" class="muted">${m.cash_usd ? fmt.usd(m.cash_usd) : "—"}</td>
+          <td style="text-align:right">${r.last_close && r.usdpln ? fmt.pln(m.shares * r.last_close * r.usdpln * (r.net_factor || 0.81) + (m.cash_usd || 0) * r.usdpln * (r.cash_vest_net_factor || 0.55)) : "—"}</td>
+        </tr>`).join("")}</tbody></table></div>
+      <div class="muted mt" style="font-size:.85em">Sources: ${(r.vest_sources || []).map((s) => `<b>${s.label}</b> ${fmt.num(s.per_vest, 1)}/vest (${s.first_vest || "?"} → ${s.last_vest || "?"})`).join(" · ")}.
+        Net = shares × (1 − ${r.tax_pct}% tax at sale) + cash-vest × ${Math.round((r.cash_vest_net_factor || 0.55) * 100)}% (payslip).</div>
+    </div>
+    <div class="card mt" style="border-left:4px solid var(--amber)">
+      <h3 style="margin-top:0">🧾 Sales and tax — capital gains ${r.tax ? r.tax.year : ""}</h3>
+      <div class="grid cols-3">
+        <div class="card kpi"><div class="label">Sold in ${r.tax ? r.tax.year : "—"}</div><div class="value">${r.tax ? fmt.num(r.tax.shares_sold, 0) : "—"} shares</div><div class="sub">${r.tax ? fmt.pln(r.tax.gross_pln) + " gross" : ""}</div></div>
+        <div class="card kpi"><div class="label">Tax ${r.tax ? r.tax.tax_pct + "%" : ""} (reserve)</div><div class="value neg">${r.tax ? fmt.pln(r.tax.tax_due_pln) : "—"}</div><div class="sub">on the FULL sale amount · deducted from net worth</div></div>
+        <div class="card kpi"><div class="label">Tax deadline</div><div class="value" style="font-size:1.3em">${r.tax ? r.tax.deadline : "—"}</div><div class="sub">keep the reserve on a separate account</div></div>
+      </div>
+      <div class="row mt">
+        <input type="date" id="sDate" value="${new Date().toISOString().slice(0, 10)}" style="width:150px">
+        <input type="number" id="sShares" placeholder="shares" style="width:100px">
+        <input type="number" step="0.01" id="sPrice" placeholder="price USD" style="width:110px">
+        <input type="number" step="0.0001" id="sFx" placeholder="USD rate (auto)" style="width:130px">
+        <input id="sNote" placeholder="note" style="flex:1;min-width:140px">
+        <button class="primary" id="sAdd">Log sale</button>
+      </div>
+      <div class="muted mt" style="font-size:.85em">Logging a sale reduces "shares held" and adds the tax. The USD rate defaults to the cache.</div>
+      ${(r.sales || []).length ? `<table class="mt"><thead><tr><th>Date</th><th style="text-align:right">Shares</th><th style="text-align:right">Price</th><th style="text-align:right">Rate</th><th style="text-align:right">Gross</th><th>Note</th><th></th></tr></thead>
+        <tbody>${r.sales.map((x) => `<tr><td>${x.date}</td><td style="text-align:right">${fmt.num(x.shares, 0)}</td><td style="text-align:right">$${fmt.num(x.price_usd, 2)}</td>
+          <td style="text-align:right" class="muted">${fmt.num(x.usdpln, 4)}</td><td style="text-align:right"><b>${fmt.pln(x.gross_pln)}</b></td><td class="muted" style="font-size:.85em">${x.note || ""}</td>
+          <td><button class="danger" data-sdel="${x.id}">✕</button></td></tr>`).join("")}</tbody></table>` : ""}
     </div>
     ${(r.shares_history || []).length ? `<div class="card mt">
       <h3 style="margin-top:0">🧾 Share-count history (from the strip, monthly)</h3>
@@ -80,6 +116,7 @@ async function renderRsu(el) {
       <h3 style="margin-top:0">🔬 Deep-dive analysis — ${deep.vest_month} vest
         <span class="muted" style="font-weight:normal;font-size:.75em">(as of ${deep.as_of}, price $${deep.price})</span></h3>
       <div><b>${deep.headline}</b></div>
+      ${analysisStaleBanner(deep)}
       ${(deep.sections || []).map((s) => `<details class="mt" ${s === deep.sections[0] ? "open" : ""}>
         <summary style="cursor:pointer"><b>${s.title}</b></summary>
         <div class="mt" style="font-size:.93em">${s.text}</div>
@@ -122,7 +159,7 @@ async function renderRsu(el) {
       <div class="muted mt" style="font-size:.85em">Band = the distribution of the value of held + vested shares (base, not counting growing grants)
         from ${fmt.grouped(adv.sims)} simulations of the price path (GBM on actual ${adv.vol_annual_pct}% volatility). The dark line = the median (p50);
         the band = p10–p90. Dashed = the path to the analyst consensus $${adv.analyst.mid} (fundamental view, 12 mo).
-        ${adv.usdpln !== 1 ? `USD/${window.APP_CURRENCY || "PLN"} ${fmt.num(adv.usdpln, 2)}. ` : ""}Gross values — 19% capital gains tax on the gain after vest (≈0 when selling right away).</div>
+        ${adv.usdpln !== 1 ? `USD/${window.APP_CURRENCY || "PLN"} ${fmt.num(adv.usdpln, 2)}. ` : ""}Gross values — subtract ${adv.tax_pct || 19}% tax at sale (on the full amount). "base" = the grant schedule (legacy grants expire, new ones start); "perf" adds hypothetical future yearly grants.</div>
       <table class="mt"><thead><tr><th>Window</th><th>Shares (base)</th>
         <th>Pess. p10</th><th>Median p50</th><th>Opt. p90</th><th>Analyst consensus</th></tr></thead>
       <tbody>${adv.projection.map((p) => `<tr>
@@ -194,9 +231,8 @@ async function renderRsu(el) {
         <span class="muted">≈</span>
         <b>${r.total_vest_value_pln ? fmt.pln(r.total_vest_value_pln) : "—"} gross</b>
       </div>
-      <div class="muted mt">Extra grants and legacy tranches live in <code>rsu.json</code>
-        (<code>extra_grants</code>, <code>legacy_shares_per_vest</code>); once they start vesting set
-        <code>new_grants_vesting</code> so the model replaces the fixed "next vest" number.</div>
+      <div class="muted mt">The ${r.tax_pct}% tax on the full sale amount (incentive plan) is paid at sale,
+        so net ≈ ${r.next_vest_value_net_pln ? fmt.pln(r.next_vest_value_net_pln) : "—"} per quarter${r.next_cash_vest_net_pln ? ` + cash-vest ${fmt.pln(r.next_cash_vest_net_pln)} net` : ""}.</div>
     </div>
     <div class="card mt">
       <details><summary style="cursor:pointer"><b>⚙️ Grant parameters</b> <span class="muted" style="font-size:.85em">(rarely change — expand after a vest, or ask the AI to update them)</span></summary>
@@ -205,6 +241,8 @@ async function renderRsu(el) {
         <input type="number" id="rNext" value="${r.shares_next_vest}" title="shares in the next vest" style="width:110px">
         <input data-num id="rGrant" value="${fmt.grouped(r.grant_value_usd)}" title="grant value USD">
         <input id="rWindow" value="${r.pricing_window}" title="pricing window YYYY-MM" style="width:110px">
+        <input id="rFirst" value="${r.first_vest || ""}" placeholder="1st vest YYYY-MM" title="first vest of the new grant" style="width:130px">
+        <input id="rLegacyUntil" value="${r.legacy_until || ""}" placeholder="legacy grants until YYYY-MM" title="last vest month of the legacy grants (from the broker)" style="width:190px">
         <button class="primary" id="rSave">Save</button>
       </div>
       <div class="muted mt">held · next vest · grant value USD · pricing window.
@@ -244,7 +282,21 @@ async function renderRsu(el) {
       shares_next_vest: +document.getElementById("rNext").value,
       grant_value_usd: parseNum(document.getElementById("rGrant")),
       pricing_window: document.getElementById("rWindow").value,
+      first_vest: document.getElementById("rFirst").value || null,
+      legacy_until: document.getElementById("rLegacyUntil").value || null,
     });
     route();
   });
+  document.getElementById("sAdd").addEventListener("click", async () => {
+    const shares = +document.getElementById("sShares").value, price = +document.getElementById("sPrice").value;
+    if (!shares || !price) { alert("Enter the share count and price"); return; }
+    const fx = +document.getElementById("sFx").value;
+    await api.post("/api/rsu/sales", { date: document.getElementById("sDate").value, shares, price_usd: price,
+      usdpln: fx || undefined, note: document.getElementById("sNote").value });
+    route();
+  });
+  el.querySelectorAll("[data-sdel]").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm("Delete this sale record? (shares held will not change automatically)")) return;
+    await api.del("/api/rsu/sales/" + b.dataset.sdel); route();
+  }));
 }
