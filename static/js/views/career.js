@@ -1,5 +1,5 @@
 async function renderCareer(el) {
-  const a = await api.get("/api/analysis/career").catch(() => ({}));
+  const [a, em0] = await Promise.all([api.get("/api/analysis/career").catch(() => ({})), api.get("/api/em").catch(() => null)]);
   if (!a.headline) {
     el.innerHTML = `<div class="card"><h2>Career</h2>
     <details style="margin:6px 0 12px;padding:8px 12px;background:var(--accent)14;border-radius:8px">
@@ -35,6 +35,7 @@ async function renderCareer(el) {
   el.innerHTML = `
     <div class="muted" style="margin-bottom:4px"><a href="#offers" style="text-decoration:none">← Career (offers and market)</a></div>
     <h2>🧭 Career — long-term growth analysis</h2>
+    ${em0 ? `<div class="card mt" style="border-left:4px solid var(--pos)" id="emCard"></div>` : ""}
     <details style="margin:6px 0 12px;padding:8px 12px;background:var(--accent)14;border-radius:8px">
       <summary style="cursor:pointer;font-size:.9em"><b>👀 What this tab is (and is not)</b> — market monitoring, not job hunting <span class="muted" style="font-weight:normal">· click for details</span></summary>
       <div class="muted" style="font-size:.87em;margin-top:6px">This tab watches the <b>job market as a signal</b>, the same way the Market tab watches stock prices:
@@ -138,4 +139,71 @@ async function renderCareer(el) {
 
     <div class="card mt muted" style="font-size:.8em">Analysis from market research — a snapshot. To refresh: "refresh the career analysis".
       Sources: ${a.sources.map((u, i) => `<a href="${u}" target="_blank">[${i + 1}]</a>`).join(" ")}</div>`;
+
+  // ---- Evidence & rhythm: measuring growth as a leader (in place, no page jump)
+  const plan90 = (a.market_2026 && a.market_2026.plan_90d) || a.plan_90d || [];
+  const paintEm = (em) => {
+    const card = document.getElementById("emCard");
+    if (!card || !em) return;
+    const wk = em.weeks.find((w) => w.week === em.this_week) || {};
+    const st = em.plan || {};
+    const done = plan90.filter((_, i) => (st[i] || {}).status === "done").length;
+    const kindIcon = { impact: "🎯", visibility: "📣", scope: "🧭", feedback: "💬", learning: "📚" };
+    const last8 = em.weeks.slice(-8);
+    card.innerHTML = `
+      <h3 style="margin-top:0">📒 Evidence & rhythm — measuring growth <span class="muted" style="font-weight:normal;font-size:.75em">(the analysis says "what", this says "how much")</span></h3>
+      <div class="grid cols-2">
+        <div>
+          <h4 style="margin:0 0 6px">Week ${em.this_week} in 4 numbers</h4>
+          <div class="row" style="gap:6px;flex-wrap:wrap">
+            <input data-num id="emE" placeholder="energy 1–5" value="${wk.energy ?? ""}" style="width:110px">
+            <input data-num id="emH" placeholder="deep-work hours" value="${wk.deep_hours ?? ""}" style="width:140px">
+            <input data-num id="emO" placeholder="1:1s" value="${wk.one_on_ones ?? ""}" style="width:70px">
+            <input data-num id="emD" placeholder="decisions" value="${wk.decisions ?? ""}" style="width:90px">
+            <button class="primary" id="emWeekSave">Save week</button>
+          </div>
+          <input id="emN" placeholder="one sentence about the week" value="${esc(wk.note || "")}" style="width:100%;margin-top:6px">
+          ${last8.length ? `<table class="mt" style="font-size:.85em"><thead><tr><th>Week</th><th style="text-align:right">⚡</th><th style="text-align:right">🧠 h</th><th style="text-align:right">1:1</th><th style="text-align:right">decisions</th></tr></thead>
+            <tbody>${last8.map((w) => `<tr><td>${w.week.slice(5)}</td><td style="text-align:right">${w.energy ?? "—"}</td><td style="text-align:right">${w.deep_hours ?? "—"}</td><td style="text-align:right">${w.one_on_ones ?? "—"}</td><td style="text-align:right">${w.decisions ?? "—"}</td></tr>`).join("")}</tbody></table>` : `<div class="muted mt" style="font-size:.85em">The first entry shows up here as a row; after 4 weeks a trend appears.</div>`}
+        </div>
+        <div>
+          <h4 style="margin:0 0 6px">90-day plan <span class="muted" style="font-weight:normal">${plan90.length ? `${done}/${plan90.length} ✓` : ""}</span></h4>
+          ${plan90.length ? `<div style="height:6px;background:var(--inset);border-radius:3px;margin-bottom:8px"><div style="height:6px;width:${Math.round(done / plan90.length * 100)}%;background:${TOKENS.pos};border-radius:3px"></div></div>
+          ${plan90.map((p, i) => { const it = st[i] || {}; return `<div class="row" style="gap:6px;align-items:flex-start;margin-top:6px;font-size:.88em">
+            <select data-plan="${i}" style="font-size:.85em">${["todo", "doing", "done"].map((x) => `<option value="${x}" ${(it.status || "todo") === x ? "selected" : ""}>${{ todo: "☐", doing: "◐", done: "☑" }[x]}</option>`).join("")}</select>
+            <div style="${it.status === "done" ? "opacity:.6;text-decoration:line-through" : ""}">${p}${it.at ? ` <span class="muted" style="font-size:.85em">(${it.at})</span>` : ""}</div></div>`; }).join("")}`
+          : `<div class="muted" style="font-size:.85em">The 90-day plan comes from the career analysis JSON (key <code>plan_90d</code>: a list of steps). Add it there and the checklist appears here.</div>`}
+        </div>
+      </div>
+      <h4 class="mt">Evidence log <span class="muted" style="font-weight:normal">(${em.log.length}: ${em.kinds.map((k) => `${kindIcon[k]} ${em.counts[k] || 0}`).join(" · ")})</span></h4>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <input type="date" id="emDate" value="${new Date().toISOString().slice(0, 10)}" style="width:150px">
+        <select id="emKind">${em.kinds.map((k) => `<option value="${k}">${kindIcon[k]} ${k}</option>`).join("")}</select>
+        <input id="emText" placeholder="what happened (with a number, if there is one)" style="flex:1;min-width:260px">
+        <input id="emMetric" placeholder="metric" style="width:120px">
+        <input data-num id="emValue" placeholder="value" style="width:90px">
+        <input id="emLink" placeholder="link / proof" style="width:160px">
+        <button class="primary" id="emAdd">Add</button>
+      </div>
+      ${em.log.length ? `<table class="mt" style="font-size:.88em"><tbody>${em.log.slice(0, 30).map((r) => `<tr>
+        <td style="white-space:nowrap" class="muted">${r.date}</td><td>${kindIcon[r.kind] || ""} <span class="badge">${r.kind}</span></td>
+        <td>${esc(r.text)}${r.metric ? ` <span class="muted">· ${esc(r.metric)}${r.value != null ? ` = <b>${fmt.num(r.value, 0)}</b>` : ""}</span>` : ""}${r.link ? ` <a href="${esc(r.link)}" target="_blank">↗</a>` : ""}</td>
+        <td><button class="danger" data-emdel="${r.id}" title="delete">✕</button></td></tr>`).join("")}</tbody></table>` : `<div class="muted mt" style="font-size:.85em">Empty. One entry a week is enough: a decision with its result, a talk, a merged PR, feedback from a VP.</div>`}`;
+    const refresh = async () => paintEm(await api.get("/api/em").catch(() => null));
+    document.getElementById("emWeekSave").addEventListener("click", async () => {
+      await api.put("/api/em/week", { energy: parseNum(document.getElementById("emE")), deep_hours: parseNum(document.getElementById("emH")),
+        one_on_ones: parseNum(document.getElementById("emO")), decisions: parseNum(document.getElementById("emD")), note: document.getElementById("emN").value });
+      refresh();
+    });
+    document.getElementById("emAdd").addEventListener("click", async () => {
+      const text = document.getElementById("emText").value.trim();
+      if (!text) { alert("Write what happened"); return; }
+      await api.post("/api/em/log", { date: document.getElementById("emDate").value, kind: document.getElementById("emKind").value, text,
+        metric: document.getElementById("emMetric").value, value: parseNum(document.getElementById("emValue")), link: document.getElementById("emLink").value });
+      refresh();
+    });
+    card.querySelectorAll("[data-emdel]").forEach((b) => b.addEventListener("click", async () => { await api.del("/api/em/log/" + b.dataset.emdel); refresh(); }));
+    card.querySelectorAll("[data-plan]").forEach((sel) => sel.addEventListener("change", async () => { await api.put("/api/em/plan", { idx: +sel.dataset.plan, status: sel.value }); refresh(); }));
+  };
+  paintEm(em0);
 }

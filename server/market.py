@@ -50,6 +50,10 @@ def _ensure_cache():
             base_close real, sigma_daily real, p10 real, p50 real, p90 real,
             realized_close real, realized_on text, inside integer, resid_z real,
             unique (made_on, ticker, horizon_days))""")
+        try:
+            conn.execute("alter table forecast_track add column calibrated integer default 0")
+        except Exception:
+            pass  # column already exists
         conn.commit()
 
 
@@ -1005,6 +1009,7 @@ def _live_track_record():
     errs = sorted(r[2] for r in scored)
     return {
         "scored": n, "band_coverage_pct": cov, "directional_pct": dirp,
+        "directional_note": "direction on a random walk is a coin flip — we grade the bands, not the direction",
         "median_abs_err_pct": round(errs[len(errs) // 2], 1),
         "tracked_since": first[0], "predictions_made": first[1],
     }
@@ -1331,15 +1336,34 @@ def _ft_rows(q, params=()):
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
-def forecast_residuals(ticker):
-    """Normalized errors of settled forecasts per horizon (for calibration)."""
+def forecast_residuals(ticker, window=120):
+    """Normalized errors of settled forecasts per horizon (for calibration) — a ROLLING
+    WINDOW of the last `window` settlements PER HORIZON (before: 400 rows in total, so the
+    63-day horizon got leftovers and an old regime weighed as much as the current one)."""
     rows = _ft_rows("select horizon_days, resid_z from forecast_track "
                     "where ticker=? and resid_z is not null "
-                    "order by made_on desc limit 400", (ticker,))
+                    "order by made_on desc limit 1200", (ticker,))
     out = {}
     for r in rows:
-        out.setdefault(r["horizon_days"], []).append(r["resid_z"])
+        lst = out.setdefault(r["horizon_days"], [])
+        if len(lst) < window:
+            lst.append(r["resid_z"])
     return out
+
+
+def vol_regime():
+    """Sigma multiplier from the latest VIX close in the cache (risk radar):
+    <20 → 1.0; 20–30 → 1.15; >30 → 1.3. Simple, explicit, testable — instead of a GARCH."""
+    vix = None
+    try:
+        px = prices("^VIX", days=7)
+        vix = px[-1]["close"] if px else None
+    except Exception:
+        vix = None
+    if vix is None:
+        return {"factor": 1.0, "vix": None, "label": "no VIX (1.00)"}
+    f = 1.0 if vix < 20 else 1.15 if vix < 30 else 1.3
+    return {"factor": f, "vix": round(vix, 1), "label": f"VIX {vix:.0f} → ×{f:.2f}"}
 
 
 def record_and_score_forecasts():
@@ -1350,6 +1374,7 @@ def record_and_score_forecasts():
     _ensure_cache()
     tickers = [t["ticker"] for t in get_watchlist()]
     scored = recorded = 0
+    reg = vol_regime()["factor"]
     for tk in tickers:
         hist = prices(tk, days=600)
         if len(hist) < 60:
@@ -1380,20 +1405,54 @@ def record_and_score_forecasts():
             scored += 1
         # 2) store today's bands (calibrated with own errors when available)
         today = dates[-1]
-        bands = fm.short_term_bands_calibrated(closes, forecast_residuals(tk))
+        bands = fm.short_term_bands_calibrated(closes, forecast_residuals(tk), vol_regime=reg)
         if not bands:
             continue
         sig_d = bands["ewma_vol_daily_pct"] / 100.0
         for h in bands["horizons"]:
             with db.get_conn() as conn:
                 conn.execute("insert or ignore into forecast_track "
-                             "(made_on, ticker, horizon_days, base_close, sigma_daily, p10, p50, p90) "
-                             "values (?,?,?,?,?,?,?,?)",
+                             "(made_on, ticker, horizon_days, base_close, sigma_daily, p10, p50, p90, calibrated) "
+                             "values (?,?,?,?,?,?,?,?,?)",
                              (today, tk, h["days"], bands["last_close"], sig_d,
-                              h["p10"], h["p50"], h["p90"]))
+                              h["p10"], h["p50"], h["p90"], 1 if h.get("calibrated") else 0))
                 conn.commit()
             recorded += 1
-    return {"scored": scored, "recorded": recorded, "tickers": len(tickers)}
+    return {"scored": scored, "recorded": recorded, "tickers": len(tickers), "vol_regime": reg}
+
+
+def forecast_calibration():
+    """Calibration per ticker × horizon: coverage, miss direction, Winkler, share of
+    self-calibrated forecasts. Answers "which ticker and which horizon is off, and are
+    the bands too narrow or too wide" instead of one global coverage number."""
+    import forecast_models as fm
+    rows = _ft_rows("select ticker, horizon_days, p10, p90, base_close, realized_close, "
+                    "coalesce(calibrated,0) calibrated, made_on from forecast_track "
+                    "where realized_close is not null order by ticker, horizon_days, made_on")
+    groups = {}
+    for r in rows:
+        groups.setdefault((r["ticker"], r["horizon_days"]), []).append(r)
+    by_ticker = []
+    for (tk, h), rs in sorted(groups.items()):
+        sc = fm.interval_scores(rs)
+        if not sc:
+            continue
+        cal = [r for r in rs if r["calibrated"]]
+        sc_cal = fm.interval_scores(cal) if len(cal) >= 10 else None
+        by_ticker.append({"ticker": tk, "horizon_days": h, **sc,
+                          "calibrated_n": len(cal),
+                          "calibrated_coverage_pct": sc_cal["coverage_pct"] if sc_cal else None,
+                          "first": rs[0]["made_on"], "last": rs[-1]["made_on"]})
+    by_h = {}
+    for r in rows:
+        by_h.setdefault(r["horizon_days"], []).append(r)
+    by_horizon = []
+    for h, rs in sorted(by_h.items()):
+        sc = fm.interval_scores(rs)
+        if sc:
+            by_horizon.append({"horizon_days": h, **sc})
+    return {"by_ticker": by_ticker, "by_horizon": by_horizon, "regime": vol_regime(),
+            "target_pct": 80, "total_scored": len(rows)}
 
 
 def forecast_selfscore():
@@ -1419,7 +1478,9 @@ def ticker_bands(ticker):
     closes = [h["close"] for h in hist]
     if len(closes) < 60:
         return {"error": "not enough history"}
-    out = fm.short_term_bands_calibrated(closes, forecast_residuals(ticker))
+    reg = vol_regime()
+    out = fm.short_term_bands_calibrated(closes, forecast_residuals(ticker), vol_regime=reg["factor"])
+    out["regime"] = reg
     out["coverage"] = fm.short_term_coverage_backtest(closes, 21)
     return out
 

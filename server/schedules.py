@@ -32,6 +32,13 @@ def _run_wealth_snapshot():
     return True
 
 
+def _run_wealth_points():
+    import metrics
+    metrics.record_point()
+    metrics.record_month()
+    return True
+
+
 def _run_forecast_cycle():
     import market
     market.record_and_score_forecasts()
@@ -59,6 +66,10 @@ REGISTRY = [
      "kind": "app", "runner": _run_wealth_snapshot,
      "note": "one point per month feeds the wealth chart",
      "default": {"freq": "monthly", "day": 1, "hour": 9}},
+    {"id": "wealth_points", "label": "Wealth point + ratios (weekly)",
+     "kind": "app", "runner": _run_wealth_points,
+     "note": "a dense net-worth trajectory (one point per week) and this month's ratio series",
+     "default": {"freq": "weekly", "day": 0, "hour": 9}},
     {"id": "forecast_cycle", "label": "Forecast self-learning cycle",
      "kind": "app", "runner": _run_forecast_cycle,
      "note": "settles matured forecasts and records today's bands",

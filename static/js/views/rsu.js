@@ -190,7 +190,7 @@ async function renderRsu(el) {
         vs the assumed <b>+${bt.assumed_drift_pct}%</b> — the price was falling hard, so the median direction was often wrong.
         <b>Treat the p10–p90 band as optimistic (narrower than the real risk).</b> This reinforces the recommendation: sell at vest, do not bet on a rebound.</div>
       <div class="muted mt" style="font-size:.82em">📡 Live track record:
-        ${lv.scored ? `${lv.scored} scored since ${lv.tracked_since} — calibration ${lv.band_coverage_pct}%, direction ${lv.directional_pct}%.`
+        ${lv.scored ? `${lv.scored} scored since ${lv.tracked_since} — band coverage ${lv.band_coverage_pct}% (target 80%), median error ${lv.median_abs_err_pct}%; direction is not graded (a coin flip on a random walk).`
           : `collecting since ${lv.tracked_since || "today"} (${lv.predictions_made} forecasts recorded, first scores in ~1 week).`}</div>
     </div>`; })() : ""}
 

@@ -1,10 +1,12 @@
 async function renderForecasts(el) {
   el.innerHTML = '<div class="empty">Computing scenarios…</div>';
-  const [debtsData, rsu, cfg, sum, fire, stress] = await Promise.all([
+  const [debtsData, rsu, cfg, sum, fire, stress, calib, traj0] = await Promise.all([
     api.get("/api/debts"), api.get("/api/rsu"),
     api.get("/api/settings"), api.get("/api/dashboard/summary"),
     api.get("/api/fire-projection").catch(() => null),
-    api.get("/api/stress-test").catch(() => null)]);
+    api.get("/api/stress-test").catch(() => null),
+    api.get("/api/forecast/calibration").catch(() => null),
+    api.get("/api/trajectory").catch(() => null)]);
 
   const loan = debtsData.debts.find((d) => d.balance > 0);
   const secondLoan = debtsData.debts.filter((d) => d.balance > 0)[1];
@@ -137,6 +139,40 @@ async function renderForecasts(el) {
       </div>` : ""}
     </div>` : ""}
 
+    ${traj0 ? `<div class="card mt" style="border-left:4px solid var(--violet)">
+      <h3 style="margin-top:0">🌫️ Net-worth trajectory — ${traj0.months}-month cone with scenarios</h3>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">The invested part (ETF + employer stock + retirement) grows with a ${traj0.assumptions.drift_annual_pct}%/yr drift
+        + ${traj0.assumptions.method}; the rest accrues the surplus and net vest cash (${fmt.pln(traj0.assumptions.flow_monthly)}/mo), the bonus lands in month ${traj0.assumptions.bonus_month}.
+        Stock/USD shocks are one-off today — they show how much they matter, not where they go.</div>
+      <div class="row" style="gap:12px;flex-wrap:wrap;align-items:center;font-size:.9em">
+        <label>Horizon <select id="tjM"><option value="12">12 mo</option><option value="24" selected>24 mo</option><option value="36">36 mo</option></select></label>
+        <label><input type="checkbox" id="tjB" checked> annual bonus</label>
+        <label>Employer stock <select id="tjT"><option value="-30">−30%</option><option value="0" selected>unchanged</option><option value="30">+30%</option></select></label>
+        <label>USD <select id="tjU"><option value="-10">−10%</option><option value="0" selected>unchanged</option><option value="10">+10%</option></select></label>
+        <label><input type="checkbox" id="tjR"> real (after inflation)</label>
+      </div>
+      <div id="tjBody"></div>
+    </div>` : ""}
+
+    ${calib && calib.by_horizon && calib.by_horizon.length ? `<div class="card mt" style="border-left:4px solid var(--accent)">
+      <h3 style="margin-top:0">🎯 Forecast calibration — per ticker × horizon <span class="muted" style="font-weight:normal;font-size:.75em">(${calib.total_scored} settled · volatility regime: ${calib.regime.label})</span></h3>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">The p10–p90 band should cover ~80%. "Too narrow" = volatility underestimated (the miss direction tells which way),
+        "too wide" = a uselessly cautious band. Winkler = band width + a penalty per miss, as % of price — lower is better. New bands use a rolling window of 120 own settlements
+        per horizon and a VIX regime multiplier; the "self-cal." column shows how the already-calibrated ones score.</div>
+      <table><thead><tr><th>Horizon</th><th style="text-align:right">n</th><th style="text-align:right">Coverage</th><th style="text-align:right">↓ / ↑</th><th style="text-align:right">Winkler</th><th>Verdict</th></tr></thead>
+        <tbody>${calib.by_horizon.map((h) => `<tr><td><b>${h.horizon_days} days</b></td><td style="text-align:right">${h.n}</td>
+          <td style="text-align:right" class="${h.verdict === "ok" ? "pos" : "warn"}"><b>${h.coverage_pct}%</b></td>
+          <td style="text-align:right" class="muted">${h.below_pct}% / ${h.above_pct}%</td><td style="text-align:right">${h.winkler_pct}%</td>
+          <td>${h.verdict === "ok" ? "🟢" : "🟡"} ${h.verdict}</td></tr>`).join("")}</tbody></table>
+      <details class="mt"><summary class="muted" style="cursor:pointer">Per ticker (${calib.by_ticker.length} pairs)</summary>
+        <div style="overflow-x:auto"><table class="mt" style="font-size:.88em"><thead><tr><th>Ticker</th><th>Horizon</th><th style="text-align:right">n</th><th style="text-align:right">Coverage</th><th style="text-align:right">↓ / ↑</th><th style="text-align:right">Winkler</th><th style="text-align:right">self-cal.</th><th>Verdict</th></tr></thead>
+          <tbody>${calib.by_ticker.map((r) => `<tr><td><b>${r.ticker}</b></td><td>${r.horizon_days} d</td><td style="text-align:right">${r.n}</td>
+            <td style="text-align:right" class="${r.verdict === "ok" ? "pos" : "warn"}">${r.coverage_pct}%</td>
+            <td style="text-align:right" class="muted">${r.below_pct}% / ${r.above_pct}%</td><td style="text-align:right">${r.winkler_pct}%</td>
+            <td style="text-align:right" class="muted">${r.calibrated_n}${r.calibrated_coverage_pct != null ? ` (${r.calibrated_coverage_pct}%)` : ""}</td>
+            <td>${r.verdict}</td></tr>`).join("")}</tbody></table></div></details>
+    </div>` : ""}
+
     <div class="card mt">
       <h3>Overpayment calculator — any variant</h3>
       <div class="row">
@@ -156,6 +192,46 @@ async function renderForecasts(el) {
       ? `<table>${op(r).map(([k, v, c]) => `<tr><td>${k}</td><td class="${c || ""}"><b>${v}</b></td></tr>`).join("")}</table>`
       : '<span class="pos"><b>The overpayment covers the whole balance — loan paid off 🎉</b></span>';
   });
+
+  // trajectory: repaint IN PLACE (no page jump) when a scenario changes
+  let tjChart = null;
+  const paintTraj = (t) => {
+    const body = document.getElementById("tjBody");
+    if (!body || !t) return;
+    const end = t.p50[t.p50.length - 1];
+    body.innerHTML = `
+      <div class="grid cols-3 mt">
+        <div class="card kpi" style="margin:0"><div class="label">Today</div><div class="value" style="font-size:24px">${fmt.pln(t.start)}</div></div>
+        <div class="card kpi" style="margin:0"><div class="label">Median in ${t.months} mo</div><div class="value pos" style="font-size:24px">${fmt.pln(end)}</div><div class="sub">${end >= t.start ? "+" : ""}${fmt.pln(end - t.start)}</div></div>
+        <div class="card kpi" style="margin:0"><div class="label">p10–p90 band</div><div class="value" style="font-size:20px"><span class="neg">${fmt.pln(t.p10[t.p10.length - 1])}</span> – <span class="pos">${fmt.pln(t.p90[t.p90.length - 1])}</span></div></div>
+      </div>
+      <canvas id="tjChart" height="80" class="mt"></canvas>
+      <table class="mt" style="font-size:.9em"><thead><tr><th>Variant (median at the end)</th><th style="text-align:right">Net worth</th><th style="text-align:right">vs base</th></tr></thead>
+        <tbody>${t.variants.map((v) => `<tr><td>${v.label}</td><td style="text-align:right"><b>${fmt.pln(v.p50_end)}</b></td><td style="text-align:right" class="${v.delta_vs_base < 0 ? "neg" : v.delta_vs_base > 0 ? "pos" : "muted"}">${v.delta_vs_base ? (v.delta_vs_base > 0 ? "+" : "") + fmt.pln(v.delta_vs_base) : "—"}</td></tr>`).join("")}</tbody></table>
+      <div class="muted mt" style="font-size:.8em">Benchmark ${t.assumptions.benchmark || "—"} (${t.assumptions.months_of_data} months of data) · invested ${fmt.pln(t.assumptions.invested)} · employer stock ${fmt.pln(t.assumptions.rsu)} · USD positions ${fmt.pln(t.assumptions.fx_usd)}${t.assumptions.real ? ` · real at ${t.assumptions.inflation_pct}% inflation` : ""}. The last run is stored in the scenarios table.</div>`;
+    if (tjChart) { try { tjChart.destroy(); } catch (e) { /* noop */ } }
+    tjChart = new Chart(document.getElementById("tjChart"), {
+      type: "line",
+      data: { labels: t.labels, datasets: [
+        { label: "p10", data: t.p10, borderColor: TOKENS.neg, backgroundColor: "transparent", borderWidth: 1, pointRadius: 0, tension: 0.2 },
+        { label: "p90", data: t.p90, borderColor: TOKENS.pos, backgroundColor: "rgba(110,168,254,0.12)", fill: "-1", borderWidth: 1, pointRadius: 0, tension: 0.2 },
+        { label: "median", data: t.p50, borderColor: TOKENS.accent, backgroundColor: "transparent", borderWidth: 3, pointRadius: 0, tension: 0.2 },
+      ] },
+      options: { interaction: { mode: "index", intersect: false },
+        plugins: { tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt.pln(c.parsed.y)}` } } },
+        scales: { y: { ticks: { callback: (v) => (v / 1000000).toFixed(2) + " M" } } } },
+    });
+    trackChart(tjChart);
+  };
+  if (traj0) {
+    paintTraj(traj0);
+    const refetch = async () => {
+      const q = `months=${document.getElementById("tjM").value}&bonus=${document.getElementById("tjB").checked ? 1 : 0}`
+        + `&team=${document.getElementById("tjT").value}&usd=${document.getElementById("tjU").value}&real=${document.getElementById("tjR").checked ? 1 : 0}`;
+      paintTraj(await api.get("/api/trajectory?" + q).catch(() => null));
+    };
+    ["tjM", "tjB", "tjT", "tjU", "tjR"].forEach((id) => document.getElementById(id).addEventListener("change", refetch));
+  }
 
   if (fire && document.getElementById("fireChart")) {
     const names = Object.keys(fire.series);

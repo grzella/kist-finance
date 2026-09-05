@@ -45,12 +45,13 @@ Core (always on):
 |---|---|
 | 📊 Dashboard | net worth and key figures at a glance |
 | 💸 Cash-flow | income vs. expenses, monthly surplus |
-| 💡 Recommendations | rule-engine guidance from your data (+ optional AI): loan-vs-market compared **after capital gains tax**, one definition of essential costs, a cushion that counts cash + a haircut on brokerage (retirement accounts separately), and a **memory** — each recommendation shows since when it has been open, and resolved ones are kept |
+| 💡 Recommendations | rule-engine guidance from your data (+ optional AI): loan-vs-market compared **after capital gains tax**, one definition of essential costs, a cushion that counts cash + a haircut on brokerage (retirement accounts separately), and a **memory** — each recommendation shows since when it has been open, resolved ones are kept, and each gets an **outcome** (done / rejected / obsolete) with a monthly review of the execution rate |
 | 💎 Wealth | assets and net worth over time, with snapshots |
 | 🧾 Fixed Expenses | recurring costs grouped by entity (personal/business/rental…) and subscription type (work/entertainment/health/other), each in its **own currency** (converted at the cached rate) with a **monthly/yearly billing** toggle, month-to-month trend, an "invoiced" tag for expense/tax tracking, and data-driven cost hints (e.g. which subscriptions bill monthly and what an annual plan would save) — an item you don't touch just carries its last amount forward, so there's no monthly copy-paste |
 | 🥧 Allocation | portfolio breakdown vs. targets, 5/25 drift |
 | 🎯 Goals | savings goals with ETA as a range |
-| 🔮 Forecasts | range forecasts, FIRE crossover with an inflation-indexed target, contribution growth, an after-tax series and a **cone bootstrapped from a benchmark's real returns**, stress test + guardrails |
+| 🔮 Forecasts | range forecasts, FIRE crossover with an inflation-indexed target, contribution growth, an after-tax series and a **cone bootstrapped from a benchmark's real returns**, a **24-month net-worth cone with scenario toggles** (bonus, employer stock ±30%, USD ±10%, real terms), **forecast calibration per ticker × horizon** (coverage, miss direction, Winkler score, VIX regime), stress test + guardrails |
+| 📐 Ratios | eleven personal-finance ratios with traffic lights vs targets (savings rate, essential share, cushion months, debt service / income, liquid / debt, investment share, employer concentration, real estate share, FX exposure, effective cost of debt, net worth m/m) — stored as a **monthly series** plus a **weekly wealth point**, so trends are measured, not guessed |
 | 🛠️ Control Center | status, AI mode, prompt log, backups, security review; every scheduled task's last failure is visible here, and the app warns when the server runs older code than the files on disk (edit without restart) |
 
 Optional — toggle in the wizard, disabled ones disappear from the UI:
@@ -62,7 +63,7 @@ Optional — toggle in the wizard, disabled ones disappear from the UI:
 | 📈 Markets & FX | watchlist, price analytics, currency signal engine with backtest, daily 🌍 Risk Radar, on-demand keyless history backfill |
 | 💎 Equity / RSU | a **vest schedule built from the grant list** (legacy grants expire, new ones start on their own dates, cash-vest included), a sales log that feeds the tax reserve, net-vs-gross values everywhere downstream (cash-flow, goals, FIRE), Monte-Carlo projection on a **block bootstrap of real returns** (the same engine scores its own backtest and forecast journal), sell-vs-hold guidance |
 | 🚁 Side business | revenue/costs of self-employment or a side company |
-| 💼 Career tracker | inbound job offers, market barometer (a missing month is called out with the collector's last error, never silently skipped), commit-activity tracker |
+| 💼 Career tracker | inbound job offers, market barometer (a missing month is called out with the collector's last error, never silently skipped), commit-activity tracker, and a **leader's evidence log**: dated impact / visibility / scope / feedback / learning entries with a metric and proof link, the week in four numbers, a 90-day plan checklist |
 | 🏡 Property analysis | deep-dive for a property-purchase goal |
 
 ## Connecting your own services (all optional)

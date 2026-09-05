@@ -6,6 +6,18 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parent.parent          # Kist repo root (server/..)
 
 
+def rag_default_dirs():
+    """Markdown notes for the local RAG (beyond the app's tables): a `notes/` folder inside
+    the DATA directory (`<FINANCE_PROJECT_DIR>/notes`), if present — private notes live with
+    private data, and tests (temporary data dir) never index your real notes.
+    Override with the `rag_dirs` setting (JSON list of paths)."""
+    proj = os.environ.get("FINANCE_PROJECT_DIR")
+    if not proj:
+        return []
+    d = Path(proj) / "notes"
+    return [d] if d.is_dir() else []
+
+
 def load_env():
     """Parse .env into os.environ (stdlib, no python-dotenv)."""
     env_file = APP_DIR / ".env"

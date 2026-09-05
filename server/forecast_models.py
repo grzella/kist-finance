@@ -187,20 +187,68 @@ def conformal_quantiles(residuals_z, min_n=40):
     return {"z10": _quantile(zs, 0.10), "z90": _quantile(zs, 0.90), "n": len(zs)}
 
 
-def short_term_bands_calibrated(closes, residuals_by_h=None, horizons=(5, 21, 63)):
+def short_term_bands_calibrated(closes, residuals_by_h=None, horizons=(5, 21, 63), vol_regime=1.0):
     """Like short_term_bands, but if we have ≥40 settled own-forecasts for a
-    horizon, the band quantiles come from OUR errors (self-learning)."""
+    horizon, the band quantiles come from OUR errors (self-learning).
+
+    `vol_regime` (≥1) scales sigma in a high-volatility regime (VIX from the risk radar):
+    EWMA(0.94) reacts late, and above VIX 20 the 21/63-day bands used to be too narrow."""
     base = short_term_bands(closes, horizons)
     if not base:
         return None
     last = base["last_close"]
     sig = base["ewma_vol_daily_pct"] / 100.0
+    reg = max(1.0, float(vol_regime or 1.0))
+    base["vol_regime"] = reg
     for h in base["horizons"]:
         cq = conformal_quantiles((residuals_by_h or {}).get(h["days"]))
+        s_n = sig * math.sqrt(h["days"]) * reg
         if cq:
-            s_n = sig * math.sqrt(h["days"])
             h["p10"] = round(last * math.exp(cq["z10"] * s_n), 4)
             h["p90"] = round(last * math.exp(cq["z90"] * s_n), 4)
             h["source"] = f"self-calibrated ({cq['n']} scored own forecasts)"
             h["calibrated"] = True
+        elif reg > 1.0 and h["days"] >= 21:
+            # no own errors yet: widen the band in proportion to the regime
+            h["p10"] = round(last * math.exp(math.log(h["p10"] / last) * reg), 4)
+            h["p90"] = round(last * math.exp(math.log(h["p90"] / last) * reg), 4)
+            h["source"] += f" × regime {reg:.2f}"
     return base
+
+
+def interval_scores(rows, alpha=0.2):
+    """INTERVAL evaluation of settled forecasts (not just hit/miss): p10–p90 coverage,
+    share of misses below/above (direction of the miscalibration) and the mean Winkler
+    score as % of the base price (band width + 2/α penalty per miss; lower is better).
+    rows: dicts with p10, p90, realized_close (+ base_close)."""
+    n = inside = below = above = 0
+    wsum = 0.0
+    for r in rows:
+        lo, hi, y = r.get("p10"), r.get("p90"), r.get("realized_close")
+        if lo is None or hi is None or y is None or hi < lo:
+            continue
+        base = r.get("base_close") or ((lo + hi) / 2.0) or 1.0
+        n += 1
+        w = hi - lo
+        if y < lo:
+            below += 1
+            w += 2.0 / alpha * (lo - y)
+        elif y > hi:
+            above += 1
+            w += 2.0 / alpha * (y - hi)
+        else:
+            inside += 1
+        wsum += w / base * 100.0
+    if not n:
+        return None
+    cov = inside / n * 100.0
+    bel, abv = below / n * 100.0, above / n * 100.0
+    if cov < 72:
+        skew = " (misses low)" if bel > 2 * abv + 3 else " (misses high)" if abv > 2 * bel + 3 else ""
+        verdict = "too narrow" + skew
+    elif cov > 90:
+        verdict = "too wide"
+    else:
+        verdict = "ok"
+    return {"n": n, "coverage_pct": round(cov, 1), "below_pct": round(bel, 1), "above_pct": round(abv, 1),
+            "winkler_pct": round(wsum / n, 2), "verdict": verdict, "target_pct": int((1 - alpha) * 100)}

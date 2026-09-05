@@ -1234,16 +1234,19 @@ def _rec_key(area, text):
 
 def _rec_memory(items):
     """Recommendation memory: first/last time each one appeared (key = area + text);
-    disappearing = 'resolved'. Without memory every recommendation looked new every day."""
-    eb._exec("""create table if not exists rec_log (
-        key text primary key, area text, text text, first_seen text, last_seen text, resolved_at text)""")
+    disappearing = 'resolved'. Without memory every recommendation looked new every day.
+    Each item also carries its `key` and a recorded `outcome`, if any."""
+    _ensure_rec_log()
     now = _now(); seen = set()
     for r in items:
         k = _rec_key(r["area"], r["text"]); seen.add(k)
-        row = eb._rows("select first_seen, resolved_at from rec_log where key=?", (k,))
+        r["key"] = k
+        row = eb._rows("select first_seen, resolved_at, outcome, outcome_note from rec_log where key=?", (k,))
         if row:
             eb._exec("update rec_log set last_seen=?, resolved_at=NULL where key=?", (now, k))
             r["since"] = row[0]["first_seen"][:10]
+            r["outcome"] = row[0].get("outcome")
+            r["outcome_note"] = row[0].get("outcome_note")
         else:
             eb._exec("insert into rec_log (key, area, text, first_seen, last_seen) values (?,?,?,?,?)",
                      (k, r["area"], r["text"], now, now))
@@ -1251,9 +1254,72 @@ def _rec_memory(items):
     for row in eb._rows("select key from rec_log where resolved_at is null"):
         if row["key"] not in seen:
             eb._exec("update rec_log set resolved_at=? where key=?", (now, row["key"]))
-    hist = eb._rows("select area, text, first_seen, resolved_at from rec_log where resolved_at is not null "
-                    "order by resolved_at desc limit 10")
-    return [{"area": h["area"], "text": h["text"], "since": h["first_seen"][:10], "resolved": h["resolved_at"][:10]} for h in hist]
+    hist = eb._rows("select key, area, text, first_seen, resolved_at, outcome, outcome_note from rec_log "
+                    "where resolved_at is not null order by resolved_at desc limit 10")
+    return [{"key": h["key"], "area": h["area"], "text": h["text"], "since": h["first_seen"][:10],
+             "resolved": h["resolved_at"][:10], "outcome": h.get("outcome"), "outcome_note": h.get("outcome_note")}
+            for h in hist]
+
+
+REC_OUTCOMES = ("done", "rejected", "obsolete")
+
+
+def _ensure_rec_log():
+    eb._exec("""create table if not exists rec_log (
+        key text primary key, area text, text text, first_seen text, last_seen text, resolved_at text)""")
+    for col in ("outcome", "outcome_note", "outcome_at"):
+        try:
+            eb._exec("alter table rec_log add column " + eb._ident(col) + " text")
+        except Exception:
+            pass  # column already exists
+
+
+def set_rec_outcome(key, outcome, note=""):
+    """Record what happened to a recommendation (done / rejected / obsolete) — without it the
+    rules engine only "learns" that something disappeared, not whether it was worth following."""
+    _ensure_rec_log()
+    if outcome not in REC_OUTCOMES and outcome not in ("", None):
+        raise ValueError("outcome")
+    if not eb._rows("select 1 from rec_log where key=?", (key,)):
+        raise KeyError(key)
+    eb._exec("update rec_log set outcome=?, outcome_note=?, outcome_at=? where key=?",
+             (outcome or None, (note or "")[:300], _now() if outcome else None, key))
+    _audit("rec_log", key, "outcome", {"outcome": outcome})
+    return {"key": key, "outcome": outcome or None}
+
+
+def rec_review():
+    """Monthly review: how many recommendations appeared / resolved / with which outcome;
+    the list of resolved ones WITHOUT a recorded outcome (that is what needs closing)."""
+    _ensure_rec_log()
+    rows = eb._rows("select key, area, text, first_seen, last_seen, resolved_at, outcome, outcome_note, outcome_at "
+                    "from rec_log order by first_seen desc")
+    months = {}
+    for r in rows:
+        m = (r["first_seen"] or "")[:7]
+        mm = months.setdefault(m, {"month": m, "new": 0, "resolved": 0, "executed": 0, "rejected": 0,
+                                   "stale": 0, "no_outcome": 0})
+        mm["new"] += 1
+        if r.get("resolved_at"):
+            mm["resolved"] += 1
+        oc = r.get("outcome")
+        if oc == "done":
+            mm["executed"] += 1
+        elif oc == "rejected":
+            mm["rejected"] += 1
+        elif oc == "obsolete":
+            mm["stale"] += 1
+        elif r.get("resolved_at"):
+            mm["no_outcome"] += 1
+    pending = [{"key": r["key"], "area": r["area"], "text": r["text"], "since": r["first_seen"][:10],
+                "resolved": r["resolved_at"][:10]}
+               for r in rows if r.get("resolved_at") and not r.get("outcome")]
+    total = len(rows)
+    executed = sum(1 for r in rows if r.get("outcome") == "done")
+    return {"months": sorted(months.values(), key=lambda x: x["month"], reverse=True)[:12],
+            "pending": pending, "total": total, "executed": executed,
+            "with_outcome": sum(1 for r in rows if r.get("outcome")),
+            "execution_rate_pct": round(executed / total * 100) if total else None}
 
 
 def _zl(v):
@@ -2217,6 +2283,13 @@ def refresh_derived():
     except Exception as e:
         out["snapshots"] = str(e)[:80]
     try:
+        import metrics as _metrics
+        _metrics.record_point()
+        _metrics.record_month()
+        out["metrics"] = "ok"
+    except Exception as e:
+        out["metrics"] = str(e)[:80]
+    try:
         import risk_radar
         risk_radar.snapshot()
         out["risk_radar"] = "ok"
@@ -2368,6 +2441,16 @@ def _auto_reminders():
         out.append({"title": f"RSU vest ({rsu.get('shares_next_vest')} shares"
                     + (f", ≈{_zl(val)}" if val else "") + ") — review your sell/hold plan",
                     "due_date": vdate, "auto": True, "kind": "RSU"})
+    except Exception:
+        pass
+    # recommendations resolved without a recorded outcome (>7 days) → review
+    try:
+        pend = [p for p in rec_review()["pending"]
+                if (days_to(p["resolved"]) or 0) <= -7]
+        if pend:
+            out.append({"title": f"Recommendation review: {len(pend)} resolved without a recorded outcome "
+                                 f"(Recommendations → outcome: done / rejected / obsolete)",
+                        "due_date": today.isoformat(), "auto": True, "kind": "review"})
     except Exception:
         pass
     # annual bonus — only when configured (amount + month come from settings)

@@ -1,9 +1,12 @@
 async function renderRecs(el) {
-  const [rec, xtb, acts, aiOp] = await Promise.all([
+  const [rec, xtb, acts, aiOp, review] = await Promise.all([
     api.get("/api/recommendation"),
     api.get("/api/recommendation/xtb"),
     api.get("/api/actions"),
-    api.get("/api/recommendation/ai").catch(() => ({}))]);
+    api.get("/api/recommendation/ai").catch(() => ({})),
+    api.get("/api/recommendation/review").catch(() => null)]);
+  const OUTCOMES = ["done", "rejected", "obsolete"];
+  const outcomeSel = (key, cur) => key ? `<select data-oc="${key}" style="font-size:.8em"><option value="">outcome…</option>${OUTCOMES.map((o) => `<option ${cur === o ? "selected" : ""}>${o}</option>`).join("")}</select>` : "";
 
   const STATUS_LABELS = { backlog: "backlog", "w trakcie": "in progress", zrobione: "done", odrzucone: "rejected" };
   const engineItems = [...rec.items, ...(xtb.items || []).map((i) => ({ ...i, area: "Portfolio: " + i.area }))];
@@ -66,12 +69,17 @@ async function renderRecs(el) {
           <td style="font-size:.92em">${r.text.length > 160
             ? `${r.text.slice(0, 160)}… <details style="display:inline"><summary class="muted" style="display:inline;cursor:pointer">more</summary><div class="mt">${r.text}</div></details>`
             : r.text}</td>
-          <td><button data-eadd="${i}">→ backlog</button></td>
+          <td><button data-eadd="${i}">→ backlog</button><div class="mt">${outcomeSel(r.key, r.outcome)}</div></td>
         </tr>`).join("")}
         </tbody>
       </table>
       ${(rec.history || []).length ? `<details class="mt"><summary class="muted" style="cursor:pointer">✅ Resolved / gone (${rec.history.length})</summary>
-        <ul class="muted mt" style="padding-left:18px;font-size:.88em">${rec.history.map((h) => `<li><b>[${h.area}]</b> ${h.text.slice(0, 140)}${h.text.length > 140 ? "…" : ""} <span style="opacity:.7">(${h.since} → ${h.resolved})</span></li>`).join("")}</ul></details>` : ""}
+        <ul class="muted mt" style="padding-left:18px;font-size:.88em">${rec.history.map((h) => `<li><b>[${h.area}]</b> ${h.text.slice(0, 140)}${h.text.length > 140 ? "…" : ""} <span style="opacity:.7">(${h.since} → ${h.resolved})</span> ${outcomeSel(h.key, h.outcome)}</li>`).join("")}</ul></details>` : ""}
+      ${review ? `<details class="mt"><summary class="muted" style="cursor:pointer">📋 Monthly recommendation review — execution ${review.execution_rate_pct != null ? review.execution_rate_pct + "%" : "—"} (${review.executed}/${review.total} done${review.pending.length ? `, <b class="warn">${review.pending.length} without an outcome</b>` : ""})</summary>
+        <div class="muted mt" style="font-size:.85em">A recommendation that disappeared is not yet a success — the outcome (done / rejected / obsolete) says whether the engine was worth following. Resolved ones without an outcome land in Reminders after 7 days.</div>
+        <table class="mt" style="font-size:.88em"><thead><tr><th>Month</th><th style="text-align:right">new</th><th style="text-align:right">resolved</th><th style="text-align:right">done</th><th style="text-align:right">rejected</th><th style="text-align:right">obsolete</th><th style="text-align:right">no outcome</th></tr></thead>
+          <tbody>${review.months.map((m) => `<tr><td><b>${m.month}</b></td><td style="text-align:right">${m.new}</td><td style="text-align:right">${m.resolved}</td><td style="text-align:right" class="pos">${m.executed}</td><td style="text-align:right">${m.rejected}</td><td style="text-align:right" class="muted">${m.stale}</td><td style="text-align:right" class="${m.no_outcome ? "warn" : "muted"}">${m.no_outcome}</td></tr>`).join("")}</tbody></table>
+      </details>` : ""}
       <table style="display:none"><tbody>
       </table>
     </div>
@@ -119,6 +127,10 @@ async function renderRecs(el) {
     } catch (err) { out.innerHTML = `<div class="neg">Error: ${err.message}</div>`; }
     finally { btn.disabled = false; }
   });
+  el.querySelectorAll("[data-oc]").forEach((sel) => sel.addEventListener("change", async () => {
+    const r = await api.put("/api/recommendation/outcome", { key: sel.dataset.oc, outcome: sel.value }).catch(() => null);
+    sel.style.borderColor = r && !r.error ? TOKENS.pos : TOKENS.neg;   // in place, no view reload
+  }));
   el.querySelectorAll("[data-eadd]").forEach((b) =>
     b.addEventListener("click", async () => {
       const r = engineItems[+b.dataset.eadd];

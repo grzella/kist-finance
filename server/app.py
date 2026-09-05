@@ -18,6 +18,12 @@ import planner  # noqa: E402
 
 db.init_db()          # base tables (self-contained; replaces external skill)
 planner.ensure_tables()
+try:
+    import metrics as _metrics_mod, em as _em_mod
+    _metrics_mod.ensure_tables()
+    _em_mod.ensure_tables()
+except Exception:
+    pass
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
@@ -282,6 +288,11 @@ def forecast_bands(ticker):
 @app.get("/api/forecast/selfscore")
 def forecast_selfscore():
     return jsonify(market.forecast_selfscore())
+
+
+@app.get("/api/forecast/calibration")
+def forecast_calibration():
+    return jsonify(market.forecast_calibration())
 
 
 @app.post("/api/forecast/cycle")
@@ -690,9 +701,9 @@ def _ai_answer(prompt, system=None, use_rag=True):
             planner.set_settings({"rag_dirty": ""})
         except Exception:
             pass
-    ctx = rag.context_for(prompt) if use_rag else ""
+    ctx, sources = rag.context_with_sources(prompt) if use_rag else ("", [])
     ask = (ctx + "\n\nQuestion: " + prompt) if ctx else prompt
-    out = {"mode": mode, "rag_used": bool(ctx)}
+    out = {"mode": mode, "rag_used": bool(ctx), "sources": sources}
     # Local model gets a read-only SQL tool: it can CHECK real numbers in the
     # database instead of guessing from RAG excerpts. Falls back to plain chat
     # when the server has no tool support (or the tool run yields nothing).
@@ -909,6 +920,87 @@ def reminders_update(rid):
 def reminders_delete(rid):
     planner.delete_reminder(rid)
     return jsonify({"ok": True})
+
+
+@app.put("/api/recommendation/outcome")
+def recommendation_outcome():
+    b = request.get_json(force=True) or {}
+    try:
+        return jsonify(planner.set_rec_outcome(b.get("key", ""), b.get("outcome") or "", b.get("note") or ""))
+    except KeyError:
+        return jsonify({"error": "unknown recommendation"}), 404
+    except ValueError:
+        return jsonify({"error": "outcome: done / rejected / obsolete"}), 400
+
+
+@app.get("/api/recommendation/review")
+def recommendation_review():
+    return jsonify(planner.rec_review())
+
+
+@app.get("/api/metrics")
+def metrics_summary():
+    import metrics
+    return jsonify(metrics.summary())
+
+
+@app.post("/api/metrics/snapshot")
+def metrics_snapshot():
+    import metrics
+    return jsonify({"point": metrics.record_point(), "month": metrics.record_month()})
+
+
+@app.get("/api/trajectory")
+def trajectory():
+    import metrics
+    a = request.args
+    def _f(k, d=0.0):
+        try:
+            return float(a.get(k, d))
+        except (TypeError, ValueError):
+            return d
+    return jsonify(metrics.trajectory(
+        months=int(_f("months", 24)), bonus=a.get("bonus", "1") not in ("0", "false"),
+        team_shock_pct=_f("team"), usd_shock_pct=_f("usd"),
+        real=a.get("real", "0") in ("1", "true")))
+
+
+@app.get("/api/em")
+def em_summary():
+    import em
+    return jsonify(em.summary())
+
+
+@app.post("/api/em/log")
+def em_log_add():
+    import em
+    try:
+        return jsonify(em.add_log(request.get_json(force=True) or {})), 201
+    except ValueError as e:
+        return jsonify({"error": f"missing field: {e}"}), 400
+
+
+@app.delete("/api/em/log/<eid>")
+def em_log_delete(eid):
+    import em
+    em.delete_log(eid)
+    return jsonify({"ok": True})
+
+
+@app.put("/api/em/week")
+def em_week_put():
+    import em
+    return jsonify(em.put_week(request.get_json(force=True) or {}))
+
+
+@app.put("/api/em/plan")
+def em_plan_put():
+    import em
+    b = request.get_json(force=True) or {}
+    try:
+        return jsonify(em.set_plan_state(b.get("idx", 0), b.get("status", "todo"), b.get("note", "")))
+    except ValueError:
+        return jsonify({"error": "status: todo / doing / done"}), 400
 
 
 @app.get("/api/recommendation")

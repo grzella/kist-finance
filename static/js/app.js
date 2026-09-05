@@ -20,6 +20,7 @@ const views = {
   business: renderBusiness,
   market: renderMarket,
   forecasts: renderForecasts,
+  metrics: renderMetrics,
   rsu: renderRsu,
 };
 
