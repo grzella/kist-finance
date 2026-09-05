@@ -1,6 +1,6 @@
-"""planner_cashflow — Płynność: oś czasu cash-flow netto, podsumowanie podatków.
+"""planner_cashflow — Cash-flow: net liquidity timeline, tax summary.
 
-Wydzielone z planner.py 2026-09-05 (kod 1:1; odwołania do innych modułów przez `P`).
+Split out of planner.py on 2026-09-05 (code moved 1:1; other modules are reached through `P`).
 """
 from datetime import date, datetime
 from planner_proxy import P

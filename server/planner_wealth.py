@@ -1,6 +1,6 @@
-"""planner_wealth — Majątek: pozycje i wartości, wycena z kursów, trend, miesięczny snapshot net worth.
+"""planner_wealth — Wealth: items and values, live pricing, trend, monthly net-worth snapshot.
 
-Wydzielone z planner.py 2026-09-05 (kod 1:1; odwołania do innych modułów przez `P`).
+Split out of planner.py on 2026-09-05 (code moved 1:1; other modules are reached through `P`).
 """
 import uuid
 from datetime import date

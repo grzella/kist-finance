@@ -1,6 +1,6 @@
-"""planner_expenses — Wydatki stałe: pozycje per miesiąc (carry-forward), waluty, optymalizacje.
+"""planner_expenses — Fixed expenses: per-month items (carry-forward), currencies, cost hints.
 
-Wydzielone z planner.py 2026-09-05 (kod 1:1; odwołania do innych modułów przez `P`).
+Split out of planner.py on 2026-09-05 (code moved 1:1; other modules are reached through `P`).
 """
 import uuid
 from datetime import date

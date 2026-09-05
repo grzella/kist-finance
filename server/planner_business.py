@@ -1,6 +1,6 @@
-"""planner_business — Firma: księga przychodów/kosztów, plan działań, marketing (Supabase).
+"""planner_business — Side business: revenue/cost ledger, action plan, marketing (Supabase).
 
-Wydzielone z planner.py 2026-09-05 (kod 1:1; odwołania do innych modułów przez `P`).
+Split out of planner.py on 2026-09-05 (code moved 1:1; other modules are reached through `P`).
 """
 import uuid
 from datetime import date

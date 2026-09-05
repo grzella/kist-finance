@@ -1,6 +1,6 @@
-"""planner_recs — Silnik rekomendacji z pamięcią i wynikiem, poduszka, koszty niezbędne, portfel maklerski.
+"""planner_recs — Recommendation engine with memory and outcomes, cushion, essential costs, brokerage portfolio.
 
-Wydzielone z planner.py 2026-09-05 (kod 1:1; odwołania do innych modułów przez `P`).
+Split out of planner.py on 2026-09-05 (code moved 1:1; other modules are reached through `P`).
 """
 
 import engine_bridge as eb

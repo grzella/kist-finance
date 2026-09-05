@@ -1,6 +1,6 @@
-"""planner_core — Rdzeń: tabele appki, ustawienia, audyt, wspólne pomocniki (_num, _now, _zl).
+"""planner_core — Core: app tables, settings, audit log, shared helpers (_num, _now, _zl).
 
-Wydzielone z planner.py 2026-09-05 (kod 1:1; odwołania do innych modułów przez `P`).
+Split out of planner.py on 2026-09-05 (code moved 1:1; other modules are reached through `P`).
 """
 import uuid
 from datetime import date, datetime

@@ -1,6 +1,6 @@
-"""planner_ops — Operacje: health/Control Center, inwentarz danych, git, aktywność GitHub, skan sekretów.
+"""planner_ops — Ops: health / Control Center, data inventory, git, GitHub activity, secrets scan.
 
-Wydzielone z planner.py 2026-09-05 (kod 1:1; odwołania do innych modułów przez `P`).
+Split out of planner.py on 2026-09-05 (code moved 1:1; other modules are reached through `P`).
 """
 from datetime import date, datetime
 

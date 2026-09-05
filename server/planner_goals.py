@@ -1,6 +1,6 @@
-"""planner_goals — Cele: projekcja, ETA, ekstra wpływy (bonus/vesty), scenariusze ścieżki do celu.
+"""planner_goals — Goals: projection, ETA, extra inflows (bonus/vests), goal-path scenarios.
 
-Wydzielone z planner.py 2026-09-05 (kod 1:1; odwołania do innych modułów przez `P`).
+Split out of planner.py on 2026-09-05 (code moved 1:1; other modules are reached through `P`).
 """
 import uuid
 from datetime import date, datetime

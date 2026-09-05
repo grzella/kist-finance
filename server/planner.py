@@ -1,23 +1,23 @@
-"""planner — fasada nad modułami planner_* (podział 2026-09-05).
+"""planner — facade over the planner_* modules (split on 2026-09-05).
 
-Wszystkie nazwy dawnego planner.py są dostępne jak dotąd (`planner.wealth_summary()` itd.).
-Kod mieszka w:
-  planner_core        Rdzeń: tabele appki, ustawienia, audyt, wspólne pomocniki (_num, _now, _zl).
-  planner_wealth      Majątek: pozycje i wartości, wycena z kursów, trend, miesięczny snapshot net worth.
-  planner_expenses    Wydatki stałe: pozycje per miesiąc (carry-forward), waluty, optymalizacje.
-  planner_goals       Cele: projekcja, ETA, ekstra wpływy (bonus/vesty), scenariusze ścieżki do celu.
-  planner_career      Kariera: oferty pracy (statystyki vs obecne), barometr rynku pracy.
-  planner_debts       Kredyty: amortyzacja, meta, tempo spłaty, projekcja zmiennej stopy, nadpłaty.
-  planner_recs        Silnik rekomendacji z pamięcią i wynikiem, poduszka, koszty niezbędne, portfel maklerski.
-  planner_business    Firma: księga przychodów/kosztów, plan działań, marketing (Supabase).
-  planner_cashflow    Płynność: oś czasu cash-flow netto, podsumowanie podatków.
-  planner_allocation  Alokacja aktywów: klasy, cele, dryf 5/25, dźwignia.
-  planner_freshness   Świeżość danych: pasek aktualizacji, przypomnienia (auto + ręczne), przelicz pochodne.
-  planner_ops         Operacje: health/Control Center, inwentarz danych, git, aktywność GitHub, skan sekretów.
-  planner_fire        FIRE / work-optional: projekcja, stożek, snapshoty i śledzenie postępu.
+Every name of the former planner.py is still available here (`planner.wealth_summary()` etc.).
+The code lives in:
+  planner_core        Core: app tables, settings, audit log, shared helpers (_num, _now, _zl).
+  planner_wealth      Wealth: items and values, live pricing, trend, monthly net-worth snapshot.
+  planner_expenses    Fixed expenses: per-month items (carry-forward), currencies, cost hints.
+  planner_goals       Goals: projection, ETA, extra inflows (bonus/vests), goal-path scenarios.
+  planner_career      Career: job offers (stats vs current), job-market barometer.
+  planner_debts       Loans: amortisation, meta, payoff pace, variable-rate projection, overpayments.
+  planner_recs        Recommendation engine with memory and outcomes, cushion, essential costs, brokerage portfolio.
+  planner_business    Side business: revenue/cost ledger, action plan, marketing (Supabase).
+  planner_cashflow    Cash-flow: net liquidity timeline, tax summary.
+  planner_allocation  Asset allocation: classes, targets, 5/25 drift, leverage.
+  planner_freshness   Data freshness: update bar, reminders (auto + manual), recompute derived.
+  planner_ops         Ops: health / Control Center, data inventory, git, GitHub activity, secrets scan.
+  planner_fire        FIRE / work-optional: projection, cone, snapshots and progress tracking.
 
-Monkeypatch w testach: `planner.X` działa dla wywołań MIĘDZY modułami (idą przez proxy);
-wywołania wewnątrz jednego modułu patchuj w tym module (`planner_ops.X`).
+Monkeypatching in tests: `planner.X` works for calls BETWEEN modules (they go through the proxy);
+a call made inside one module is patched in that module (`planner_ops.X`).
 """
 import uuid
 from datetime import date, datetime

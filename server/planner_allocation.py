@@ -1,6 +1,6 @@
-"""planner_allocation — Alokacja aktywów: klasy, cele, dryf 5/25, dźwignia.
+"""planner_allocation — Asset allocation: classes, targets, 5/25 drift, leverage.
 
-Wydzielone z planner.py 2026-09-05 (kod 1:1; odwołania do innych modułów przez `P`).
+Split out of planner.py on 2026-09-05 (code moved 1:1; other modules are reached through `P`).
 """
 
 import engine_bridge as eb

@@ -1,9 +1,9 @@
-"""Leniwe proxy do fasady `planner` dla modułów planner_*.
+"""Lazy proxy to the `planner` facade for the planner_* modules.
 
-Moduły dzielą przestrzeń nazw dawnego planner.py: odwołanie do funkcji z innego modułu
-idzie przez `P.nazwa`, które w momencie wywołania czyta atrybut z `planner` — dzięki temu
-nie ma cykli importów przy starcie, a monkeypatch `planner.X` w testach działa tak samo jak
-przed podziałem. Odwołania w obrębie jednego modułu są gołe (jak dawniej).
+The modules share the namespace of the former planner.py: a reference to a function from
+another module goes through `P.name`, which reads the attribute from `planner` at call time —
+so there are no import cycles at start-up and `monkeypatch.setattr(planner, …)` in tests keeps
+working exactly as before the split. References within one module stay bare (as before).
 """
 
 
