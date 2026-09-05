@@ -259,7 +259,8 @@ def test_github_activity_unconfigured_returns_empty(client, monkeypatch):
     it returns configured:false with zeros so the UI shows setup steps, never someone
     else's numbers."""
     import planner
-    monkeypatch.setattr(planner, "_github_contribution_calendar", lambda days=90: None)
+    import planner_ops  # po podziale planner.py: wywołania wewnątrz modułu patchuje się w tym module
+    monkeypatch.setattr(planner_ops, "_github_contribution_calendar", lambda days=90: None)
     ga = planner.github_activity(days=30)
     assert ga["configured"] is False
     assert ga["today"] == 0 and ga["repos"] == 0 and len(ga["series"]) == 30

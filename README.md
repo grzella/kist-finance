@@ -163,7 +163,7 @@ This repo is built to be safe to fork and contribute to:
 
 ## Tech
 
-Python 3 + Flask, SQLite (WAL, single file), vanilla JS + Chart.js. Self-contained SQLite layer (`server/db.py`) — no dependencies beyond Flask.
+Python 3 + Flask, SQLite (WAL, single file), vanilla JS + Chart.js. Self-contained SQLite layer (`server/db.py`) — no dependencies beyond Flask. Domain logic lives in `server/planner_*.py` (core, wealth, expenses, goals, career, debts, recs, business, cashflow, allocation, freshness, ops, fire) behind the `planner` facade; `metrics.py` (ratios, trajectory), `em.py` (leader's log), `market.py` (prices, RSU, forecasts, FX).
 
 ## Changelog
 

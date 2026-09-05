@@ -25,6 +25,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - **Stale-code and stale-analysis signals**: `/api/health` reports `code_stale` when `server/*.py` changed after the process started (the UI shows a restart banner); analysis snapshots with `as_of` get a `stale` marker once the underlying data changed later.
 - **Loan history event kinds** (`installment` / `overpayment` / `correction` / `start`) with markers on the balance chart instead of sawtooth lines.
 
+### Changed (2026-09-05 — planner split)
+- `server/planner.py` (3.6k lines) is now a thin facade over thirteen `server/planner_*.py` modules (core, wealth, expenses, goals, career, debts, recs, business, cashflow, allocation, freshness, ops, fire). Every public name is still importable from `planner`; function bodies were moved 1:1 by an AST-driven script, and cross-module calls go through a lazy proxy (`planner_proxy.P`) so there are no import cycles and `monkeypatch.setattr(planner, …)` keeps working for cross-module calls. Verified with the full suite plus a before/after snapshot of all 45 GET routes on a seeded database (identical after UUID/timestamp normalisation). To patch a call made *inside* one module, patch that module (e.g. `planner_ops`).
+
 ### Changed (2026-09-05)
 - Lighter visual layer: grouped sidebar navigation on wide screens, hairlines instead of borders, semantic color tokens, global Chart.js defaults; "Change amount" instead of "Set for <month>" in Fixed Expenses. `run.sh` prefers `./.venv/bin/python`.
 
