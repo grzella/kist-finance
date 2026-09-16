@@ -1581,8 +1581,10 @@ def generate_brief(kind="daily"):
         return {"ok": False, "error": "no cached quotes — add tickers / connect a sync"}
     horizon = "the past trading day" if kind == "daily" else "the past week"
     prompt = ("Write a market brief covering " + horizon + " for a calm long-term investor, "
-              "based ONLY on these facts (no invented numbers):\n" + "\n".join(facts) +
-              "\nheadline: one sentence. highlights: up to 4 key moves/observations. "
+              "based ONLY on these facts (no invented numbers, and no causes or news "
+              "that the facts don't state):\n" + "\n".join(facts) +
+              "\nheadline: one plain sentence. highlights: up to 4 key moves/observations, "
+              "each giving what moved and by how much when the facts state it. "
               "positions: a stance (hold/add/trim/watch) per ticker with one-line rationale.")
     system = "You are a concise market analyst. No disclaimers."
     # engine per the Control AI mode: 'both' tries the cloud model first
