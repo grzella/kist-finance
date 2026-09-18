@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Ported from the private instance (2026-09-18)
+- **Experience distill is fenced as untrusted data** (`server/experience.py`): the question is user free-text and the answer is model output re-ingested by the loop, so `_build_prompt()` now wraps both in `_UNTRUSTED_DELIM` with an untrusted-data frame and strips injected copies of the delimiter — a poisoned Q&A can no longer spoof a turn or steer the stored lesson. Retrieval of the lesson was already fenced; this closes the *ingest* side. Covered by an audit probe in `_check_ai_tools()` and a regression test.
+- **FIRE stops promising a loan payoff that already happened** (`server/planner_fire.py`): the projection read the loan's monthly cost, which drops to zero the moment it is paid off, so it could not tell "paid off" from "no data" — it kept announcing a future freeing date and delayed the down-payment accumulation by five months. It now reads the loan **balance** (`loan_open`); once the loan is closed the freed installment is assumed to sit in the baseline surplus (counting it twice is the bug on the other side), accumulation starts immediately and both notes say so.
+
 ### UX phase 2 (2026-09-05)
 - Light theme: 🌗 toggle in the nav (choice kept in `localStorage`, `?theme=light` for screenshots); chart colours follow the theme.
 - Collapsible explanations (`help()`): long "how to read this" notes fold under a one-line summary.

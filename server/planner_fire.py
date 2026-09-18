@@ -21,12 +21,16 @@ def fire_projection():
     base_month = P.monthly_surplus() or 10000
     extras = P._annual_extras().get("monthly_equivalent", 0) or 0
     contrib = base_month + extras
-    # after the loan is paid off, the freed installment adds to savings
+    # The freed installment adds to savings only while the loan is still running.
+    # Once it is paid off its monthly cost is 0 and the freed money already sits in
+    # the baseline surplus, so adding it here again would count it twice.
     freed = 0
+    loan_open = False
     try:
         loan = next((d for d in P.list_debts()["debts"] if any(k in d["name"].lower()
                      for k in ("mortgage", "loan", "home", "house"))), None)
         freed = loan.get("monthly_cost_total", 0) if loan else 0
+        loan_open = bool(loan and (loan.get("balance") or 0) > 0)
     except Exception:
         freed = 0
 
@@ -43,7 +47,7 @@ def fire_projection():
     growth = P._pct_setting("income_growth_pct", 3.0) / 100
     tax = P.capital_gains_tax_pct() / 100
     # month the loan installment is freed: from Cash-flow (the actual payoff month), not "in a year"
-    freed_from = 12
+    freed_from = 12 if loan_open else 0
     try:
         lp = P.cashflow().get("target_paid_month")
         if lp:
@@ -133,7 +137,8 @@ def fire_projection():
               for k in ("propert", "house", "home", "apartment", "flat", "down payment", "mortgage"))), None)
     property_target = (ig and ig.get("target_amount")) or 200000
     property_start = (ig and ig.get("current_amount")) or 0
-    delay = 5
+    # Loan already paid off: accumulation starts now. While it runs: from the payoff month.
+    delay = 5 if loan_open else 0
     try:
         cf = P.cashflow()
         lp = cf.get("loan_paid_month")
@@ -177,11 +182,17 @@ def fire_projection():
         "freed_from_month": label_at(freed_from),
         "property": {"target": round(property_target), "start": round(property_start),
                   "crossover": property_cross, "series": property_series, "delay_months": delay,
-                  "note": "Down-payment accumulation starts after the loan is paid off (~" + (label_at(delay)) + "). Cautious 4% return (funds close to the goal). NOTE: the same surpluses as work-optional — buying the house delays reaching 3M."},
+                  "note": (("Down-payment accumulation starts after the loan is paid off (~" + label_at(delay) + "). ")
+                           if loan_open else
+                           "The loan is paid off, so down-payment accumulation is already running. ")
+                          + "Cautious 4% return (funds close to the goal). NOTE: the same surpluses as work-optional — buying the house delays reaching 3M."},
         "tracking": tracking,
         "assumptions": {"base_return": "6.5% nominal", "inflation": f"{infl * 100:g}% (target indexed)",
                         "income_growth": f"{growth * 100:g}%/yr (contributions grow with income)", "tax": f"{tax * 100:g}% on gains at withdrawal",
-                        "contrib_note": f"{round(contrib)}/mo (savings {round(base_month)} + net bonus/RSU {round(extras)}); after the loan payoff (+{round(freed)}) from {label_at(freed_from)}"},
+                        "contrib_note": (f"{round(contrib)}/mo (savings {round(base_month)} + net bonus/RSU {round(extras)})"
+                                         + (f"; after the loan payoff (+{round(freed)}) from {label_at(freed_from)}"
+                                            if loan_open and freed else
+                                            "; the freed loan installment is already included in savings"))},
     }
 
 
