@@ -145,7 +145,9 @@ def compute():
     essential, debt_service = planner.essential_monthly()
     surplus = float(planner.monthly_surplus() or 0)
     total_exp = float(exp.get("total_mine") or 0)
-    net_income = surplus + total_exp + float(debt_service or 0)
+    # fixed expenses already carry your loan installments (your share on a joint loan); adding the
+    # loan's full payment on top inflated income and shrank the cushion. No expenses: loans alone.
+    net_income = surplus + (total_exp or float(debt_service or 0))
     assets = float(w.get("total") or 0) - float((w.get("totals") or {}).get("income", 0) or 0)
     base = float(alloc["total"]) if alloc and alloc.get("total") else assets
     invest = vals.get("etf", 0) + vals.get("rsu", 0) + vals.get("retirement", 0)
@@ -177,7 +179,7 @@ def compute():
     raw = {
         "savings_rate_pct": (surplus / net_income * 100) if net_income > 0 else None,
         "essential_share_pct": (float(essential) / total_exp * 100) if total_exp > 0 and essential else None,
-        "cushion_months": (lc["total"] / (float(essential) + float(debt_service or 0))) if (essential or debt_service) else None,
+        "cushion_months": (lc["total"] / float(essential)) if essential else None,
         "dti_pct": (float(debt_service or 0) / net_income * 100) if net_income > 0 else None,
         "liquid_to_debt_pct": (liquid / debt_total * 100) if debt_total > 0 else None,
         "invest_share_pct": (invest / base * 100) if base > 0 else None,
@@ -191,7 +193,7 @@ def compute():
     explain = {
         "savings_rate_pct": {
             "what": "The share of net income you actually put aside each month — the surplus after fixed expenses and loan payments.",
-            "how": f"surplus {_m(surplus)} / net income {_m(net_income)} (= surplus {_m(surplus)} + fixed expenses {_m(total_exp)} + loan payments {_m(debt_service)}) = {_p(raw['savings_rate_pct'])}%",
+            "how": f"surplus {_m(surplus)} / net income {_m(net_income)} (= surplus {_m(surplus)} + fixed expenses incl. your loan installments {_m(total_exp)}) = {_p(raw['savings_rate_pct'])}%",
             "why": "≥ 30% makes real progress toward your goal; below 15% net worth grows mostly from the market, not from you."},
         "essential_share_pct": {
             "what": "How much of your fixed spending cannot be cut quickly (items flagged as essential).",
@@ -199,7 +201,7 @@ def compute():
             "why": "The higher it is, the less room you have when income drops; above 75% the budget is rigid."},
         "cushion_months": {
             "what": "How many months of essential costs and loan payments the liquid reserve would cover if income stopped.",
-            "how": f"cushion {_m(lc['total'])} (cash + 80% of the brokerage portfolio) / (essential {_m(essential)} + loan payments {_m(debt_service)}) = {_p(raw['cushion_months'])} months",
+            "how": f"cushion {_m(lc['total'])} (cash + 80% of the brokerage portfolio) / essential incl. loan installments {_m(essential)} = {_p(raw['cushion_months'])} months",
             "why": "Six months is the standard with a single income source; three is the minimum."},
         "dti_pct": {
             "what": "The share of net income consumed by loan payments and loan insurance.",

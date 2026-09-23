@@ -67,6 +67,8 @@ def liquid_cushion(w=None):
             broker += v
         elif cls == "retirement":
             retire += v
+    # the tax reserve (capital-gains tax due) sits in cash but is a liability, not a cushion
+    cash = max(0.0, cash - (w.get("tax_reserve") or 0))
     return {"cash": round(cash), "brokerage": round(broker), "brokerage_counted": round(broker * BROKERAGE_HAIRCUT),
             "retirement": round(retire), "total": round(cash + broker * BROKERAGE_HAIRCUT), "haircut": BROKERAGE_HAIRCUT}
 

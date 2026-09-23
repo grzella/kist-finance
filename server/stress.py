@@ -65,7 +65,7 @@ def run():
         "icon": "🪫", "title": "Income stops",
         "impact": f"{runway} months" if runway is not None else "—",
         "detail": (f"Liquid assets ({zl(liquid)}) cover about {runway} months of essential "
-                   f"costs ({zl(essential)}/mo incl. debt payments {zl(monthly_debt)}). "
+                   f"costs ({zl(essential)}/mo, incl. your share of loan installments). "
                    + ("Solid — 6+ months is the usual bar." if (runway or 0) >= 6
                       else "Below the usual 6-month bar — see the emergency-fund recommendation."))
         if essential else "Set your fixed costs (Cash-flow tab) to compute the runway."})

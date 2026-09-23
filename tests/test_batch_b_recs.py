@@ -22,6 +22,14 @@ def test_liquid_cushion_haircuts_brokerage_and_excludes_retirement(client):
         planner.delete_wealth_item(i)
 
 
+def test_liquid_cushion_excludes_tax_reserve(client):
+    import planner
+    w = {"items": [{"name": "Cash", "kind": "cushion", "latest_value": 100000}], "tax_reserve": 63310}
+    assert planner.liquid_cushion(w)["cash"] == 36690
+    w["tax_reserve"] = 150000
+    assert planner.liquid_cushion(w)["cash"] == 0
+
+
 def test_recommendation_memory_and_after_tax_text(client):
     import planner
     rec = client.get("/api/recommendation").get_json()
