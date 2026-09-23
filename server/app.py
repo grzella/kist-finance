@@ -28,6 +28,36 @@ except Exception:
 STATIC = Path(__file__).resolve().parent.parent / "static"
 app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
 
+# A04 Insecure Design / CWE-770: without a cap `get_json(force=True)` (~40 endpoints) buffers an
+# arbitrarily large body into the single Flask worker's memory (memory DoS: a local process or a
+# same-origin script passes the guard without an Origin). 256 KiB leaves headroom for the largest
+# legitimate body (settings blob, a long AI question); CSV/MT940/OFX import is a CLI path.
+MAX_REQUEST_BYTES = 256 * 1024
+app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BYTES
+
+# Semantic cap on fields that reach the EXPENSIVE LLM sinks (local model / paid cloud in 'both'
+# mode). A 200 KiB prompt fits under the body cap but would burn cloud budget or freeze the local
+# model. A real finance question is far below 16 KiB.
+MAX_PROMPT_CHARS = 16_000
+
+
+def _cap_prompt_fields(*fields):
+    """Return (json, 413) when a text field exceeds MAX_PROMPT_CHARS, else None.
+    Fail-closed before the LLM/RAG sink (embedding is expensive too)."""
+    for name, val in fields:
+        if isinstance(val, str) and len(val) > MAX_PROMPT_CHARS:
+            return jsonify({"error": f"{name} too large",
+                            "max_chars": MAX_PROMPT_CHARS,
+                            "got_chars": len(val)}), 413
+    return None
+
+
+@app.errorhandler(413)
+def _too_large(e):
+    # JSON instead of Werkzeug's default HTML, consistent with the rest of /api
+    return jsonify({"error": "request too large",
+                    "max_bytes": MAX_REQUEST_BYTES}), 413
+
 
 @app.get("/")
 def index():
@@ -658,7 +688,11 @@ def llm_status():
 def llm_chat():
     import llm_local
     b = request.get_json(force=True)
-    out = llm_local.chat(b.get("prompt", ""), system=b.get("system"))
+    prompt, system = b.get("prompt", ""), b.get("system")
+    too_big = _cap_prompt_fields(("prompt", prompt), ("system", system))
+    if too_big:
+        return too_big
+    out = llm_local.chat(prompt, system=system)
     return jsonify({"ok": out is not None, "text": out})
 
 
@@ -683,8 +717,11 @@ def llm_ask():
     """Ask a question per the AI mode: 'local' = local model only;
     'both' = local AND Claude (for comparison — best result from the pair)."""
     b = request.get_json(force=True)
-    return jsonify(_ai_answer(b.get("prompt", ""), system=b.get("system"),
-                              use_rag=b.get("rag", True)))
+    prompt, system = b.get("prompt", ""), b.get("system")
+    too_big = _cap_prompt_fields(("prompt", prompt), ("system", system))
+    if too_big:
+        return too_big
+    return jsonify(_ai_answer(prompt, system=system, use_rag=b.get("rag", True)))
 
 
 def _ai_answer(prompt, system=None, use_rag=True):

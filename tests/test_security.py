@@ -248,3 +248,62 @@ def test_tracked_files_have_no_secrets_or_private_paths():
         for m in bad.finditer(txt):
             hits.append(f"{f}: {m.group(0)[:40]}")
     assert not hits, hits
+
+
+# ---------------------------------------------------------------------------
+# Request caps (A04 Insecure Design / CWE-770). Without MAX_CONTENT_LENGTH
+# `get_json(force=True)` buffers any body (memory DoS of the single worker);
+# without a prompt cap a huge `prompt` reaches the LLM sink (local model / paid
+# cloud in 'both' mode) = cost/compute DoS. Tests run on the throwaway DB.
+# ---------------------------------------------------------------------------
+
+
+def test_max_content_length_is_set(client):
+    import app as _app
+    cap = _app.app.config.get("MAX_CONTENT_LENGTH")
+    assert isinstance(cap, int) and 0 < cap <= 4 * 1024 * 1024, f"MAX_CONTENT_LENGTH={cap!r}"
+
+
+def test_oversized_body_rejected_413(client):
+    over = "A" * (5 * 1024 * 1024)
+    r = client.post("/api/goals", data=over, content_type="application/json")
+    assert r.status_code == 413, f"5 MiB body got {r.status_code}, expected 413"
+
+
+def test_llm_ask_prompt_over_cap_rejected(client):
+    import app as _app
+    huge = "x" * (_app.MAX_PROMPT_CHARS + 1)
+    r = client.post("/api/llm/ask", json={"prompt": huge, "rag": False})
+    assert r.status_code == 413, f"huge prompt /api/llm/ask got {r.status_code}"
+
+
+def test_llm_chat_prompt_over_cap_rejected(client):
+    import app as _app
+    huge = "x" * (_app.MAX_PROMPT_CHARS + 1)
+    r = client.post("/api/llm/chat", json={"prompt": huge})
+    assert r.status_code == 413, f"huge prompt /api/llm/chat got {r.status_code}"
+
+
+def test_llm_system_field_also_capped(client):
+    import app as _app
+    huge = "y" * (_app.MAX_PROMPT_CHARS + 1)
+    r = client.post("/api/llm/chat", json={"prompt": "hi", "system": huge})
+    assert r.status_code == 413, f"huge system got {r.status_code}"
+
+
+def test_legit_small_body_and_prompt_still_work(client):
+    r = client.post("/api/goals", json={"name": "cap-regr", "target_amount": 100})
+    assert r.status_code in (200, 201)
+    gid = r.get_json().get("id")
+    if gid:
+        client.delete(f"/api/goals/{gid}")
+    r2 = client.post("/api/llm/ask", json={"prompt": "how much have I saved?", "rag": False})
+    assert r2.status_code == 200
+
+
+def test_request_caps_convergence_check_recognises_hardened(client):
+    import security_review as sr
+    items = sr._check_request_caps()
+    fails = [i for i in items if i["status"] == "fail"]
+    assert not fails, f"hardened caps reported as fail: {fails}"
+    assert any("MAX_CONTENT_LENGTH" in i["title"] for i in items)

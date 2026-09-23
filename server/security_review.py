@@ -796,6 +796,73 @@ def _check_market_fetch():
     return out
 
 
+def _check_request_caps():
+    """Convergence check for request caps (A04 Insecure Design / CWE-770): the app must cap
+    the request body (MAX_CONTENT_LENGTH) AND the prompt fields that reach the expensive LLM
+    sinks (local model / paid cloud in 'both' mode). Active test-client probe: it must not
+    report a WORKING cap as a weakness."""
+    out = []
+
+    def f(sev, status, title, detail, fix=""):
+        out.append({"id": "reqcaps", "area": "REQUEST CAPS (DoS / CWE-770)",
+                    "severity": sev, "status": status, "title": title,
+                    "detail": detail, "fix": fix})
+
+    try:
+        import app as _app
+        c = _app.app.test_client()
+        cap = _app.app.config.get("MAX_CONTENT_LENGTH")
+        pcap = getattr(_app, "MAX_PROMPT_CHARS", None)
+    except Exception as e:
+        f("info", "pass", "App not importable for the caps probe", str(e)[:80])
+        return out
+
+    if isinstance(cap, int) and 0 < cap <= 4 * 1024 * 1024:
+        f("info", "pass", "MAX_CONTENT_LENGTH set",
+          f"body cap = {cap} B: get_json(force=True) will not buffer an arbitrary body")
+    else:
+        f("med", "fail", "MAX_CONTENT_LENGTH missing or invalid",
+          f"MAX_CONTENT_LENGTH={cap!r} → get_json(force=True) buffers any body (memory DoS)",
+          "app.config['MAX_CONTENT_LENGTH'] = 256*1024")
+
+    if isinstance(cap, int) and cap > 0:
+        over = "A" * (cap + 1024)
+        r = c.post("/api/goals", data=over, content_type="application/json")
+        if r.status_code == 413:
+            f("info", "pass", "Body over the cap rejected (413)", f"{len(over)} B → HTTP 413 (active probe)")
+        else:
+            f("med", "fail", "Body over the cap NOT rejected",
+              f"{len(over)} B → HTTP {r.status_code}, expected 413",
+              "Set MAX_CONTENT_LENGTH + errorhandler(413)")
+
+    if isinstance(pcap, int) and pcap > 0:
+        huge = "x" * (pcap + 1)
+        rask = c.post("/api/llm/ask", json={"prompt": huge, "rag": False})
+        rchat = c.post("/api/llm/chat", json={"prompt": huge})
+        if rask.status_code == 413 and rchat.status_code == 413:
+            f("info", "pass", "Prompt over the cap rejected before the LLM sink",
+              f"prompt {len(huge)} chars → /api/llm/ask=413, /api/llm/chat=413 (cap {pcap})")
+        else:
+            f("med", "fail", "LLM prompt without a size cap",
+              f"ask={rask.status_code} chat={rchat.status_code}, expected 413/413 "
+              "→ a huge prompt burns cloud budget ('both' mode) / freezes the local model",
+              "Gate with _cap_prompt_fields before _ai_answer/llm_local.chat")
+    else:
+        f("med", "fail", "MAX_PROMPT_CHARS missing",
+          "prompt/system fields reach the LLM without a length cap",
+          "Define MAX_PROMPT_CHARS and enforce it in /api/llm/ask + /api/llm/chat")
+
+    ok_small = c.post("/api/llm/ask", json={"prompt": "how much have I saved?", "rag": False})
+    if ok_small.status_code != 413:
+        f("info", "pass", "A legitimate small prompt passes",
+          f"real question → HTTP {ok_small.status_code} (no false positive)")
+    else:
+        f("med", "fail", "Cap too strict: blocks a legitimate prompt",
+          f"a small question got {ok_small.status_code}",
+          "Raise MAX_PROMPT_CHARS (a real question is far below 16 KiB)")
+    return out
+
+
 def run(full=True):
     # Make sure config (FINANCE_PROJECT_DIR, module sys.path) is initialised so
     # the functional imports work standalone (CLI/CI), not only inside the app.
@@ -819,6 +886,7 @@ def run(full=True):
         findings += _check_ai_tools()
         findings += _check_web_guard()
         findings += _check_market_fetch()
+        findings += _check_request_caps()
 
     findings.sort(key=lambda x: (_SEV_RANK.get(x["severity"], 9),
                                  0 if x["status"] == "fail" else 1))
