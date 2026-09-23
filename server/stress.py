@@ -22,6 +22,8 @@ def _liquid_and_equity():
             # unlinked investments (brokerage/ETF/stock); real estate carries
             # a linked loan and an equity figure, and doesn't crash like equities
             equity += val
+    # the tax reserve sits in cash but is already owed, the same rule as liquid_cushion()
+    liquid = max(0.0, liquid - (w.get("tax_reserve") or 0))
     return liquid, equity, w
 
 

@@ -206,22 +206,16 @@ def _auto_reminders():
                             "due_date": fu, "auto": True, "kind": "Loan"})
     except Exception:
         pass
-    # cushion: cash < 3 months of FULL costs (monthly_expenses setting + live
-    # debt service) — the threshold shrinks by itself as debts get paid off
+    # cash on hand < 3 months of essential costs (fixed expenses incl. your loan installments);
+    # the same definitions as Ratios and the recommendations, cash net of the tax reserve
     try:
-        expenses = float(P.get_setting("monthly_expenses") or 0)
-        if expenses > 0:
-            w = P.wealth_summary()
-            cash = sum((it.get("latest_value") or 0) for it in w["items"]
-                       if P._alloc_class(it.get("name", "")) == "cash"
-                       and (it.get("latest_value") or 0) > 0)
-            service = sum((d.get("monthly_cost_total") or 0)
-                          for d in P.list_debts()["debts"])
-            burn = expenses + service
-            months = cash / burn if burn else None
-            if months is not None and months < 3:
-                out.append({"title": f"Cushion: {months:.1f} months of full costs "
-                            f"({P._zl(cash)} / {P._zl(burn)}/mo) — below the 3-month target",
+        essential, _ = P.essential_monthly()
+        if essential > 0:
+            cash = P.liquid_cushion()["cash"]
+            months = cash / essential
+            if months < 3:
+                out.append({"title": f"Cash on hand: {months:.1f} months of essential costs "
+                            f"({P._zl(cash)} / {P._zl(essential)}/mo), below 3 months",
                             "due_date": today.isoformat(), "auto": True,
                             "kind": "Cushion"})
     except Exception:

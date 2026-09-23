@@ -45,14 +45,14 @@ def _post_month(debt, month, note="auto"):
     if debt.get("interest_month_actual") and debt.get("principal_month_actual"):
         interest = debt["interest_month_actual"]
         principal = round(min(balance, debt["principal_month_actual"]), 2)
-        note += " (wg banku)"
+        note += " (bank split)"
     else:
         r = (debt["interest_rate"] or 0) / 100 / 12
         interest = round(balance * r, 2)
         principal = round(min(balance, (debt["minimum_payment"] or 0) - interest), 2)
     if principal < 0:
         principal = 0  # payment below interest: balance would grow; keep flat, flag via note
-        note += " (rata < odsetki!)"
+        note += " (payment < interest!)"
     new_balance = round(balance - principal, 2)
     eb._exec(
         "insert into debt_values (id, debt_id, month, balance, principal_paid, "
@@ -175,7 +175,9 @@ def list_debts():
             "from debt_values where debt_id = ? order by month, created_at", (d["id"],))
         for h in d["history"]:
             n = (h.get("note") or "").lower()
-            h["kind"] = ("start" if "initial" in n or "opening" in n else
+            # auto installments first: their "(bank split)" note (older rows: "wg banku") is not a correction
+            h["kind"] = ("installment" if n.startswith("auto") else
+                         "start" if "initial" in n or "opening" in n else
                          "overpayment" if "overpay" in n else
                          "correction" if "correction" in n or "bank" in n else "installment")
     total = sum(d["balance"] for d in debts)

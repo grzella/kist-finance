@@ -368,15 +368,14 @@ def xtb_recommendation():
         if share > THEME_CAP:
             recs.append({
                 "area": "concentration", "priority": 2,
-                "text": (f"The '{theme}' theme is {share:.0f}% of the brokerage portfolio ({_zl(v)}) — "
-                         f"NASDAQ 100, MSCI IT, Semiconductor, Nvidia, Alphabet and Amazon "
-                         f"are largely the same companies bought several times. Real "
+                "text": (f"The '{theme}' theme is {share:.0f}% of the brokerage portfolio ({_zl(v)}). "
+                         f"Funds and stocks in one theme largely hold the same companies, so real "
                          f"diversification is much smaller than the number of positions suggests.")})
             break
 
     # 3. single-stock cap
     for p in pos:
-        if p["container"] == "Akcje" and p["theme"] != "world":
+        if p["container"] in ("Stocks", "Akcje") and p["theme"] != "world":  # "Akcje": older imports
             share = p["value"] / total * 100
             if share > SINGLE_POSITION_CAP:
                 recs.append({
@@ -384,7 +383,7 @@ def xtb_recommendation():
                     "text": (f"{p['name']} = {share:.0f}% of the brokerage portfolio — above "
                              f"the reasonable {SINGLE_POSITION_CAP:.0f}% cap per single "
                              f"stock. Consider trimming at the next rebalance "
-                             f"(mind the 19% capital gains tax on the profit).")})
+                             f"(mind the {capital_gains_tax_pct():g}% capital gains tax on the profit).")})
 
     # 4. contribution steering: broad-world sleeve underweight
     world = by_theme.get("world", 0)
@@ -392,12 +391,9 @@ def xtb_recommendation():
     if world_share < 20:
         recs.append({
             "area": "contributions", "priority": 4,
-            "text": (f"The broad market is only {world_share:.0f}% of the portfolio. The fix "
-                     f"(tax-free): freeze contributions to Plans 1 and 2 (do not sell — "
-                     f"moving = capital gains tax), open Plan 3 with VWCE (Vanguard FTSE "
-                     f"All-World, 100%) and direct the full 2,000 PLN/mo there. In a year world "
-                     f"~25%, in two ~40%, tech drops from {by_theme.get('tech', 0) / total * 100:.0f}% "
-                     f"to ~50%. Full instructions in the backlog (Recommendations tab).")})
+            "text": (f"The broad market is only {world_share:.0f}% of the portfolio. To raise it "
+                     f"without selling (a sale triggers capital gains tax), send new contributions "
+                     f"to a broad world ETF until it reaches your target share.")})
 
     recs.sort(key=lambda r: r["priority"])
     return {

@@ -108,24 +108,29 @@ def health():
     except Exception as e:
         task("Market barometer (EM/Head openings)", "monthly (Claude)", "—", "error", str(e)[:80])
 
-    # 5. data backup (monthly)
+    # 5. data backup (monthly) — read where data_backup actually writes (its folder, .db or .db.enc)
     try:
-        bdir = repo / "backups"
-        enc = sorted(bdir.glob("finance-*.db.enc"), key=lambda p: p.stat().st_mtime) if bdir.exists() else []
-        if enc:
-            mt = datetime.fromtimestamp(enc[-1].stat().st_mtime)
+        import data_backup
+        bs = data_backup.status()
+        if bs["last"]:
+            mt = datetime.fromisoformat(bs["last"]["when"])
             d = (datetime.now() - mt).days
             st = "ok" if d <= 35 else "warn"
-            task("Data backup (encrypted)", "monthly", mt.strftime("%Y-%m-%d %H:%M"), st,
-                 f"{len(enc)} copies; last one {d} days ago")
+            task("Data backup", "monthly", mt.strftime("%Y-%m-%d %H:%M"), st,
+                 f"{bs['count']} copies; last one {d} days ago")
         else:
-            task("Data backup (encrypted)", "monthly", "—", "error", "no copies — run backup.sh")
+            task("Data backup", "monthly", "—", "warn" if bs["configured"] else "info",
+                 "no copies yet — Control Center → Data → Backup" if bs["configured"]
+                 else "not configured — Control Center → Data → Backup")
     except Exception as e:
         task("Data backup (encrypted)", "monthly", "—", "error", str(e)[:80])
 
     # 6. sensitive-data audit in git
     try:
-        out = subprocess.run(["git", "-C", str(repo), "ls-files"],
+        # the code repo, not the data dir: on a fresh install data lives outside any git repo,
+        # so ls-files there returned nothing and the audit always reported "clean"
+        import security_review
+        out = subprocess.run(["git", "-C", security_review._repo_root(), "ls-files"],
                              capture_output=True, text=True, timeout=10)
         tracked = out.stdout.splitlines()
         bad = [f for f in tracked if any(s in f.lower() for s in
@@ -376,8 +381,8 @@ def data_inventory():
 def git_status(do_fetch=True):
     import subprocess
     from pathlib import Path
-    import market as _mkt
-    repo = str(_mkt._finance_dir().parent)
+    import security_review
+    repo = security_review._repo_root()
 
     def g(args, timeout=10):
         try:
@@ -604,8 +609,8 @@ def security_scan():
     import subprocess, re
     from pathlib import Path
     from datetime import datetime
-    import market as _mkt
-    repo = str(_mkt._finance_dir().parent)
+    import security_review
+    repo = security_review._repo_root()
     findings = []
 
     def g(args, timeout=20):

@@ -17,7 +17,7 @@ def add_expense_item(data):
         "currency, entity, invoice, billing, created_at) values (?,?,?,?,?,?,?,?,?,?)",
         (item_id, data["name"], data.get("category", ""),
          data.get("payer", "me"), 1 if data.get("essential", True) else 0,
-         data.get("currency", "USD"), data.get("entity", "personal"),
+         data.get("currency") or P.get_setting("base_currency") or "PLN", data.get("entity", "personal"),
          1 if data.get("invoice") else 0,
          "yearly" if data.get("billing") == "yearly" else "monthly", P._now()))
     P._audit("expense_item", item_id, "add", data)

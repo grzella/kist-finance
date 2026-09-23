@@ -68,17 +68,18 @@ def test_allocation_leverage_contract(client):
 
 
 def test_cushion_alert_reacts_to_expenses(client):
-    """Cushion alert: present with inflated expenses, gone with negligible ones.
-    Creates an explicit cash item — the seed may have none (then cash=0 and
-    the alert rightly stays on forever)."""
+    """Cushion alert: present when essential costs dwarf cash, gone when they are negligible.
+    Driven by an essential fixed expense, the same source as Ratios and the recommendations."""
     client.post("/api/wealth/items", json={
         "name": "Cash buffer (test)", "kind": "cushion", "currency": "PLN"})
     items = client.get("/api/wealth/summary").get_json()["items"]
     it = next(i for i in items if i["name"] == "Cash buffer (test)")
     client.post(f"/api/wealth/items/{it['id']}/values", json={"value": 1000000})
-    client.put("/api/settings", json={"monthly_expenses": "999999999"})
+    eid = client.post("/api/expenses/items", json={
+        "name": "Huge essential (test)", "essential": True, "currency": "PLN", "amount": 999999999}).get_json()["id"]
     kinds = [r.get("kind") for r in client.get("/api/reminders").get_json()["reminders"]]
     assert "Cushion" in kinds
-    client.put("/api/settings", json={"monthly_expenses": "1"})
+    client.delete(f"/api/expenses/items/{eid}")
+    client.post(f"/api/wealth/items/{it['id']}/values", json={"value": 999999999})
     kinds = [r.get("kind") for r in client.get("/api/reminders").get_json()["reminders"]]
     assert "Cushion" not in kinds
