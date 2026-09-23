@@ -130,16 +130,10 @@ def barometer_config():
     career_role_a/b settings (the two roles you already track); geography is
     user-set (empty until configured). The n8n collector uses each role's
     `query` (title-match string) to count postings on job boards."""
-    import json as _json
-    raw = P.get_setting("barometer_config")
-    if raw:
-        try:
-            cfg = _json.loads(raw)
-            if cfg.get("roles"):
-                cfg.setdefault("geo", [])
-                return cfg
-        except ValueError:
-            pass
+    cfg = P.get_json_setting("barometer_config")
+    if cfg and cfg.get("roles"):
+        cfg.setdefault("geo", [])
+        return cfg
     a = P.get_setting("career_role_a") or "Senior / Staff Engineer"
     b = P.get_setting("career_role_b") or "Engineering Manager / Head"
     return {"geo": [], "roles": [

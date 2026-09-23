@@ -183,41 +183,13 @@ def _alert_if_hot(reading, comment=None):
 
 
 
-def _yahoo_fetch(ticker, days=5):
-    """Fallback fetch straight from Yahoo (keyless, public data) —
-    when a ticker isn't in the cache yet (e.g. before the first nightly sync).
-    Results land in market_prices_cache, so the rest of the app benefits too."""
-    import json as _json
-    import urllib.parse
-    import urllib.request
-    url = ("https://query1.finance.yahoo.com/v8/finance/chart/"
-           + urllib.parse.quote(ticker) + f"?range={days}d&interval=1d")
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    try:
-        with urllib.request.urlopen(req, timeout=8) as r:
-            data = _json.loads(r.read())["chart"]["result"][0]
-        stamps = data.get("timestamp") or []
-        closes = (data.get("indicators", {}).get("quote") or [{}])[0].get("close") or []
-    except Exception:
-        return 0
-    from datetime import datetime, timezone
-    n = 0
-    for ts, close in zip(stamps, closes):
-        if close is None:
-            continue
-        d = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
-        eb._exec("insert or replace into market_prices_cache (ticker, date, close, currency) "
-                 "values (?,?,?,?)", (ticker, d, float(close), "USD"))
-        n += 1
-    return n
-
-
 def fetch_missing(reading=None):
     """Fetch missing components right away (Yahoo). Returns the fetched list."""
+    import market
     reading = reading or compute()
     got = []
     for t in reading["missing"]:
-        if _yahoo_fetch(t):
+        if market.fetch_yahoo_history(t, "5d"):
             got.append(t)
     return got
 
@@ -228,9 +200,10 @@ def backfill(days=32):
     """Backfill the history: fetch ~45 days of quotes (Yahoo) and compute the
     composite for each day. No AI comments (those are for live readings only).
     Idempotent — existing dates stay."""
+    import market
     ensure_tables()
     for c in COMPONENTS:
-        _yahoo_fetch(c["ticker"], days=days + 14)
+        market.fetch_yahoo_history(c["ticker"], "3mo")  # Yahoo takes fixed ranges only; 3mo covers days + 14
     series = {}
     for c in COMPONENTS:
         rows = eb._rows("select date, close from market_prices_cache where ticker=? "

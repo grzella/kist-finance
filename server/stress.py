@@ -27,15 +27,10 @@ def _liquid_and_equity():
     return liquid, equity, w
 
 
-def _essential_monthly():
-    """One definition of essential costs — planner.essential_monthly()."""
-    return planner.essential_monthly()
-
-
 def run():
     zl = planner._zl
     liquid, equity, w = _liquid_and_equity()
-    essential, monthly_debt = _essential_monthly()
+    essential, monthly_debt = planner.essential_monthly()
     d = planner.list_debts()
     total = w.get("total") or 0
 
@@ -83,7 +78,7 @@ def withdrawal_policy(liquid=None, equity=None, essential=None):
     of a plan (classic G-K provision — noted, not modeled)."""
     if liquid is None:
         liquid, equity, _ = _liquid_and_equity()
-        essential, _md = _essential_monthly()
+        essential, _md = planner.essential_monthly()
     zl = planner._zl
     portfolio = (liquid or 0) + (equity or 0)
     init = planner._num(planner.get_setting("wd_initial_pct")) or 5.0

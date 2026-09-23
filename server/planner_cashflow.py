@@ -13,8 +13,6 @@ CF_DEFAULTS = {  # generic starting values — real ones live in the DB (git-ign
     "cf_liquid_start": 0,          # starting liquid funds
     "cf_bonus_month": 9,           # bonus month
     "cf_sweep_target": "debt",  # where surplus is swept: loan name/fragment, 'debt' (highest rate) or 'none'
-    "capital_gains_tax_pct": 19,   # capital gains tax on share sales
-    "cash_vest_net_factor": 0.55,  # share of the cash-vest left net on the payslip     # where surplus goes: loan | property | none
 }
 
 
@@ -37,19 +35,15 @@ def cashflow(months=15, today=None):
     import market as _mkt
     from datetime import date
 
-    def _cf(key):
-        v = P._num(P.get_setting(key))
-        return v if v is not None else CF_DEFAULTS[key]
-
     surplus = P.monthly_surplus() if P.monthly_surplus() is not None else CF_DEFAULTS["cf_monthly_surplus"]
-    buffer = _cf("cf_safety_buffer")
+    buffer = P._pct_setting("cf_safety_buffer", CF_DEFAULTS["cf_safety_buffer"])
     manual_start = P._num(P.get_setting("cf_liquid_start"))
     auto_start = _cash_liquid_now()
     if manual_start is not None and manual_start > 0:
         liquid, liquid_source = manual_start, "manual"
     else:
         liquid, liquid_source = (auto_start if auto_start is not None else CF_DEFAULTS["cf_liquid_start"]), "wealth"
-    bonus_month = int(_cf("cf_bonus_month"))
+    bonus_month = int(P._pct_setting("cf_bonus_month", CF_DEFAULTS["cf_bonus_month"]))
     bonus = P._num(P.get_setting("annual_bonus_net")) or 0
     sweep_cfg = (P.get_setting("cf_sweep_target") or CF_DEFAULTS["cf_sweep_target"] or "none").strip().lower()
 
@@ -121,10 +115,10 @@ def cashflow(months=15, today=None):
             "inflow": round(inflow, 0),
             "inflow_parts": " · ".join(parts),
             "vest_net": round(vest_net, 0), "cash_vest_net": round(cash_net, 0),
-            "overpay_loan": round(overpay, 0), "overpay": round(overpay, 0),
+            "overpay": round(overpay, 0),
             "liquid": round(liquid, 0),
             "tax_reserve": round(reserve, 0),
-            "loan_balance": round(loan_bal, 0), "target_balance": round(loan_bal, 0),
+            "target_balance": round(loan_bal, 0),
             "below_buffer": liquid < buffer - 1,
             "is_vest": bool(vest_row) and vest_net > 0,
             "is_bonus": mm == bonus_month and bool(bonus),
@@ -135,9 +129,7 @@ def cashflow(months=15, today=None):
         "sweep_mode": sweep_mode,
         "sweep_target_name": target["name"] if target else None,
         "sweep_setting": sweep_cfg,
-        "loan_start": target["balance"] if target else 0,
         "loan_paid_month": loan_paid_month,
-        "loan_freed_monthly": loan_freed,
         "target_start": target["balance"] if target else 0,
         "target_paid_month": loan_paid_month,
         "target_freed_monthly": loan_freed,
@@ -171,8 +163,7 @@ TAX_DEFAULTS = {  # generic starting values — real ones live in the DB (git-ig
 def tax_summary():
     from datetime import date
     def _t(k):
-        v = P._num(P.get_setting(k))
-        return v if v is not None else TAX_DEFAULTS[k]
+        return P._pct_setting(k, TAX_DEFAULTS[k])
     rental_m = _t("tax_rental_monthly"); rate = _t("tax_rental_rate")
     zus = _t("tax_zus_monthly"); salary = _t("tax_salary_gross_annual")
     try:

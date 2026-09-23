@@ -137,7 +137,7 @@ def _guard_local_only():
     # Fetch-metadata CSRF defense: the browser stamps Sec-Fetch-Site on every
     # request (including <img>/<form>, which carry NO Origin), and JS cannot forge
     # it. Reject any cross-site hit to /api — this closes side-effecting GETs
-    # (e.g. /api/health -> run_due, /api/security-scan, /api/git?fetch) that the
+    # (e.g. /api/health -> run_due, /api/git?fetch) that the
     # Origin check below misses (mutating methods only, and no Origin on <img>).
     # Local tooling (curl, n8n, the test client) sends no Sec-Fetch-Site and passes.
     if request.path.startswith("/api/"):
@@ -160,7 +160,6 @@ def _guard_local_only():
 def dashboard_summary():
     data = eb.dashboard_summary()
     # planned figures: income items from wealth + fixed costs from settings
-    import json as _json
     w = planner.wealth_summary()
     # net worth from wealth items (source of truth), not the skill's empty
     # accounts/holdings tables
@@ -190,22 +189,18 @@ def dashboard_summary():
             + ([{"category": "other", "total": round(rest, 2)}] if rest else []))
     else:
         # fallback: legacy fixed_costs blob, until the new list has items
-        fc_raw = planner.get_setting("fixed_costs")
-        if fc_raw:
-            try:
-                fc = _json.loads(fc_raw)
-                data["planned_costs"] = fc.get("total_mine")
-                data["planned_essential"] = fc.get("essential_mine")
-                items = fc.get("items", [])
-                mine = sorted((i for i in items if i.get("payer") == "me"),
-                              key=lambda i: -i["monthly"])
-                top = mine[:8]
-                rest = sum(i["monthly"] for i in mine[8:])
-                data["planned_categories"] = (
-                    [{"category": i["name"], "total": i["monthly"]} for i in top]
-                    + ([{"category": "other", "total": round(rest, 2)}] if rest else []))
-            except ValueError:
-                pass
+        fc = planner.get_json_setting("fixed_costs")
+        if fc is not None:
+            data["planned_costs"] = fc.get("total_mine")
+            data["planned_essential"] = fc.get("essential_mine")
+            items = fc.get("items", [])
+            mine = sorted((i for i in items if i.get("payer") == "me"),
+                          key=lambda i: -i["monthly"])
+            top = mine[:8]
+            rest = sum(i["monthly"] for i in mine[8:])
+            data["planned_categories"] = (
+                [{"category": i["name"], "total": i["monthly"]} for i in top]
+                + ([{"category": "other", "total": round(rest, 2)}] if rest else []))
     if data.get("planned_costs") and data["planned_income"]:
         data["planned_surplus"] = round(data["planned_income"] - data["planned_costs"], 2)
     planner.ensure_monthly_snapshot()
@@ -215,49 +210,6 @@ def dashboard_summary():
 @app.get("/api/dashboard/net-worth-history")
 def net_worth_history():
     return jsonify(eb.net_worth_history())
-
-
-@app.get("/api/dashboard/spending-trends")
-def spending_trends():
-    months = int(request.args.get("months", 6))
-    return jsonify(eb.spending_trends(months))
-
-
-# ---------- transactions ----------
-
-@app.get("/api/transactions")
-def list_transactions():
-    return jsonify(eb.list_transactions(
-        month=request.args.get("month"),
-        category=request.args.get("category")))
-
-
-@app.post("/api/transactions")
-def add_transaction():
-    tx_id = eb.add_transaction(request.get_json(force=True))
-    return jsonify({"id": tx_id}), 201
-
-
-@app.put("/api/transactions/<tx_id>")
-def update_transaction(tx_id):
-    eb.update_transaction(tx_id, request.get_json(force=True))
-    return jsonify({"ok": True})
-
-
-@app.delete("/api/transactions/<tx_id>")
-def delete_transaction(tx_id):
-    eb.delete_transaction(tx_id)
-    return jsonify({"ok": True})
-
-
-@app.get("/api/categories")
-def categories():
-    return jsonify(eb.categories())
-
-
-@app.get("/api/budget/vs-actual")
-def budget_vs_actual():
-    return jsonify(eb.budget_vs_actual(request.args.get("month")))
 
 
 # ---------- market / watchlist ----------
@@ -630,11 +582,6 @@ def git_status():
     return jsonify(planner.git_status(do_fetch=request.args.get("fetch", "1") != "0"))
 
 
-@app.get("/api/security-scan")
-def security_scan():
-    return jsonify(planner.security_scan())
-
-
 @app.get("/api/app-config")
 def app_config_get():
     cfg = planner.get_app_config()
@@ -792,9 +739,7 @@ def _ai_answer(prompt, system=None, use_rag=True):
 
 @app.get("/api/recommendation/ai")
 def recommendation_ai_last():
-    import json as _json
-    raw = planner.get_setting("ai_recs_opinion")
-    return jsonify(_json.loads(raw) if raw else {})
+    return jsonify(planner.get_json_setting("ai_recs_opinion", {}))
 
 
 @app.post("/api/recommendation/ai")
@@ -894,12 +839,7 @@ def backup_auto():
 
 @app.get("/api/security-review")
 def security_review_last():
-    import json as _json
-    raw = planner.get_setting("last_security_review")
-    try:
-        return jsonify(_json.loads(raw) if raw else {})
-    except ValueError:
-        return jsonify({})
+    return jsonify(planner.get_json_setting("last_security_review", {}))
 
 
 @app.post("/api/security-review/run")
@@ -1206,12 +1146,7 @@ def _data_changed_at():
 
 
 def _analysis(key):
-    import json as _json
-    raw = planner.get_setting(key)
-    try:
-        data = _json.loads(raw) if raw else {}
-    except ValueError:
-        data = {}
+    data = planner.get_json_setting(key, {})
     if isinstance(data, dict) and data.get("as_of"):
         changed = _data_changed_at()
         as_of = str(data["as_of"])[:10]

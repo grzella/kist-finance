@@ -1,4 +1,4 @@
-"""planner_ops — Ops: health / Control Center, data inventory, git, GitHub activity, secrets scan.
+"""planner_ops — Ops: health / Control Center, data inventory, git, GitHub activity.
 
 Split out of planner.py on 2026-09-05 (code moved 1:1; other modules are reached through `P`).
 """
@@ -166,10 +166,19 @@ def health():
     except Exception as e:
         task("GitHub sync", "after code changes", "—", "warn", str(e)[:80])
 
-    # 9b. repo security scan (weekly)
+    # 9b. repo secrets: the last full security review when one is stored, else just its repo-leak checks
     try:
-        sc = security_scan()
-        task("Repo security scan (secrets)", "weekly", now, sc["status"], sc["summary"])
+        import security_review
+        rep = P.get_json_setting("last_security_review")
+        if rep:
+            task("Repo security review", "on demand", rep["generated_at"], rep["verdict"], rep["summary"])
+        else:
+            repo_root = security_review._repo_root()
+            ls = security_review._git(repo_root, ["ls-files"])
+            fails = [x["title"] for x in security_review._check_repo_leaks(
+                repo_root, ls.stdout.splitlines() if ls else []) if x["status"] == "fail"]
+            task("Repo security scan (secrets)", "weekly", now, "error" if fails else "ok",
+                 ("🚨 " + "; ".join(fails)) if fails else "clean — no secrets in the tree or history")
     except Exception as e:
         task("Repo security scan (secrets)", "weekly", "—", "warn", str(e)[:70])
 
@@ -226,13 +235,11 @@ def data_inventory():
         except Exception:
             return None, True
 
-    acc_c, acc_last = cnt_last("accounts", "updated_at")
     wv_c, wv_last = cnt_last("wealth_values", "created_at")
     wi_c, _ = cnt_last("wealth_items")
     debt_c, debt_last = cnt_last("debts", "updated_at")
     dv_c, dv_last = cnt_last("debt_values", "created_at")
     goal_c, goal_last = cnt_last("goals", "updated_at")
-    tx_c, tx_last = cnt_last("transactions", "created_at")
     off_c, off_last = cnt_last("job_offers", "created_at")
     biz_c, biz_last = cnt_last("biz_entries", "created_at")
     px_c, px_last = cnt_last("market_prices_cache", "date")
@@ -240,7 +247,6 @@ def data_inventory():
     pred_c, pred_last = cnt_last("rsu_predictions", "made_on")
     snap_c, snap_last = cnt_last("snapshots", "date")
     fire_c, fire_last = cnt_last("fire_snapshots", "month")
-    ins_c, _ = cnt_last("insurance_policies")
     brief_asof, brief_has = setting_asof("analysis_market_brief")
     vest_asof, vest_has = setting_asof("rsu_vest_analysis", "vest_month")
     prop_asof, prop_has = setting_asof("analysis_property")
@@ -330,8 +336,6 @@ def data_inventory():
                  "rarely", None, minutes=0, note="updated on grant/vest"),
             item("Watchlist + price targets", "manual", "you (Market tab)",
                  "occasionally", None, minutes=0, note="you add a ticker/target when you want to track it"),
-            item("Insurance", "manual", "insurance_policies",
-                 "rarely", None, ins_c, minutes=0, note="policies \u2014 change on renewal"),
          ]},
     ]
 
@@ -601,75 +605,3 @@ def github_activity(days=90):
         "github": ({"connected": True, **gh_cal["totals"], "pr_list": gh_cal.get("pr_list") or []} if gh_cal
                    else {"connected": False}),
     }
-
-
-# ---------- security scan (sekrety w repo) ----------
-
-def security_scan():
-    import subprocess, re
-    from pathlib import Path
-    from datetime import datetime
-    import security_review
-    repo = security_review._repo_root()
-    findings = []
-
-    def g(args, timeout=20):
-        try:
-            return subprocess.run(["git", "-C", repo] + args, capture_output=True, text=True, timeout=timeout)
-        except Exception:
-            return None
-
-    ls = g(["ls-files"])
-    tracked = ls.stdout.splitlines() if ls else []
-
-    # 1. tracked secret files
-    bad = [f for f in tracked if re.search(r"(^|/)\.env($|\.)(?!example)|\.pem$|\.key$|id_rsa|\.p12$|secret", f, re.I)]
-    if bad:
-        findings.append({"sev": "high", "what": "Tracked secret files", "detail": ", ".join(bad[:5])})
-
-    # 2. sensitive paths not git-ignored
-    for p in ("private", ".finance", "doc-raw", "backups"):
-        ci = g(["check-ignore", p + "/"])
-        leaked = [f for f in tracked if f.startswith(p + "/")]
-        if leaked:
-            findings.append({"sev": "high", "what": f"Tracked files in {p}/", "detail": ", ".join(leaked[:3])})
-
-    # 3. leak-check: real .env values in tracked files
-    env = Path(repo) / ".env"
-    checked = 0
-    if env.exists():
-        for line in env.read_text().splitlines():
-            line = line.strip()
-            if "=" not in line or line.startswith("#"):
-                continue
-            k, _, v = line.partition("=")
-            v = v.strip().strip('"').strip("'")
-            if len(v) < 12:  # skip short ones (PORT etc.)
-                continue
-            checked += 1
-            r = g(["grep", "-F", v, "--", "."])
-            if r and r.stdout.strip():
-                findings.append({"sev": "critical", "what": f"LEAK of the {k.strip()} value", "detail": "a value from .env found in a tracked file!"})
-
-    # 4. secret patterns (excluding base64/blogs). Literals split so the scanner doesn't match itself.
-    pat = "|".join([
-        "eyJ" + "hbGciOiJ",                       # JWT header
-        r"https://[a-z0-9]{15,}\.supabase\.co",   # realny URL Supabase
-        r"/webhook/[a-f0-9-]{36}",                # webhook n8n
-        "sk" + r"-[A-Za-z0-9]{20,}",              # OpenAI-style
-        "ghp" + r"_[A-Za-z0-9]{20,}",             # GitHub token
-        "AKI" + r"A[0-9A-Z]{16}",                 # AWS
-        "-----" + "BEGIN (RSA |OPENSSH |EC )?PRIVATE",
-    ])
-    r = g(["grep", "-nIE", pat,
-           "--", ".", ":(exclude)posts/*", ":(exclude)*.html", ":(exclude)doc-raw/*"])
-    if r and r.stdout.strip():
-        for ln in r.stdout.strip().splitlines()[:5]:
-            findings.append({"sev": "high", "what": "Secret pattern", "detail": ln[:100]})
-
-    crit = sum(1 for f in findings if f["sev"] == "critical")
-    high = sum(1 for f in findings if f["sev"] == "high")
-    status = "error" if (crit or high) else "ok"
-    return {"status": status, "findings": findings, "tracked_files": len(tracked),
-            "secrets_checked": checked, "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "summary": ("🚨 " + str(crit + high) + " findings — check!") if findings else f"Clean — {len(tracked)} files, {checked} .env values verified, zero leaks"}

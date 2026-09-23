@@ -9,14 +9,11 @@ was an extrapolation from a single quarter.
 """
 import json
 import random
-from datetime import date, datetime
+from datetime import date
 
 import engine_bridge as eb
 import planner
-
-
-def _now():
-    return datetime.now().isoformat(timespec="seconds")
+from planner_core import _now
 
 
 def ensure_tables():
@@ -404,15 +401,4 @@ def trajectory(months=24, bonus=True, team_shock_pct=0.0, usd_shock_pct=0.0, rea
         end = base_end + delta0 * ((1 + drift_m) ** months if delta0 < 0 else 1) + (b - bonus_net) * max(1, months // 12)
         out["variants"].append({"key": key, "label": label, "p50_end": round(end),
                                 "delta_vs_base": round(end - base_end)})
-    try:  # the engine's `scenarios` table stops being dead: the last run is stored
-        eb._exec("insert or replace into scenarios (slug, name, type, inputs, result, profile_snapshot, saved_at) "
-                 "values (?,?,?,?,?,?,?)",
-                 ("trajectory-%dm" % months, "Net-worth trajectory", "trajectory",
-                  json.dumps({"months": months, "bonus": bonus, "team_shock_pct": team_shock_pct,
-                              "usd_shock_pct": usd_shock_pct, "real": real}),
-                  json.dumps({"start": out["start"], "p10_end": sim["p10"][-1], "p50_end": base_end,
-                              "p90_end": sim["p90"][-1]}),
-                  json.dumps(out["assumptions"]), _now()))
-    except Exception:
-        pass
     return out

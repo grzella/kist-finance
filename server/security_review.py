@@ -111,14 +111,18 @@ _SCAN_EXCLUDES = [":(exclude)*.md", ":(exclude)posts/*", ":(exclude)doc-raw/*",
                   ":(exclude)**/security_review.py"]
 
 
+def _finder(out, id_, area):
+    def f(sev, status, title, detail, fix=""):
+        out.append({"id": id_, "area": area, "severity": sev,
+                    "status": status, "title": title, "detail": detail, "fix": fix})
+    return f
+
+
 # ---------------------------------------------------------------- 1. REPO LEAKS
 
 def _check_repo_leaks(repo, tracked):
     out = []
-
-    def f(sev, status, title, detail, fix=""):
-        out.append({"id": "leak", "area": "REPO LEAKS", "severity": sev,
-                    "status": status, "title": title, "detail": detail, "fix": fix})
+    f = _finder(out, "leak", "REPO LEAKS")
 
     # 1a. sensitive files tracked right now
     tracked_bad = [t for t in tracked
@@ -204,11 +208,7 @@ def _check_repo_leaks(repo, tracked):
 
 def _check_personal_data(repo):
     out = []
-
-    def f(sev, status, title, detail, fix=""):
-        out.append({"id": "pii", "area": "PERSONAL-DATA AUDIT (public repo)",
-                    "severity": sev, "status": status, "title": title,
-                    "detail": detail, "fix": fix})
+    f = _finder(out, "pii", "PERSONAL-DATA AUDIT (public repo)")
 
     # LICENSE/NOTICE legitimately carry the author's name (MIT copyright line) —
     # that is expected authorship, not a data leak; exclude them from this audit.
@@ -234,10 +234,7 @@ def _check_personal_data(repo):
 
 def _check_code(repo):
     out = []
-
-    def f(sev, status, title, detail, fix=""):
-        out.append({"id": "code", "area": "CODE (contributors)", "severity": sev,
-                    "status": status, "title": title, "detail": detail, "fix": fix})
+    f = _finder(out, "code", "CODE (contributors)")
 
     # dangerous-pattern grep across python + js (docs/vendor excluded)
     checks = [
@@ -318,10 +315,7 @@ def _check_code(repo):
 
 def _check_config(repo, tracked):
     out = []
-
-    def f(sev, status, title, detail, fix=""):
-        out.append({"id": "config", "area": "CONFIGURATION / CONNECTIONS", "severity": sev,
-                    "status": status, "title": title, "detail": detail, "fix": fix})
+    f = _finder(out, "config", "CONFIGURATION / CONNECTIONS")
 
     root = Path(repo)
     # .gitignore covers sensitive paths
@@ -374,10 +368,7 @@ def _check_config(repo, tracked):
 
 def _check_functional():
     out = []
-
-    def f(sev, status, title, detail, fix=""):
-        out.append({"id": "func", "area": "FUNCTIONAL TESTS", "severity": sev,
-                    "status": status, "title": title, "detail": detail, "fix": fix})
+    f = _finder(out, "func", "FUNCTIONAL TESTS")
 
     # DB schema intact
     try:
@@ -479,10 +470,7 @@ def _check_local_services():
     import os as _os
     import urllib.request as _u
     out = []
-
-    def f(sev, status, title, detail, fix=""):
-        out.append({"id": "llm", "area": "LOCAL SERVICES / LLM", "severity": sev,
-                    "status": status, "title": title, "detail": detail, "fix": fix})
+    f = _finder(out, "llm", "LOCAL SERVICES / LLM")
 
     base = _os.environ.get("LOCAL_LLM_URL", "http://127.0.0.1:8080/v1")
     host = base.split("//", 1)[-1].split("/", 1)[0].split(":")[0]
@@ -538,10 +526,7 @@ def _check_ai_tools():
     and multi-statement injection — not just assumed. This is the highest-value
     new surface: a compromised or jailbroken model reaches the DB through here."""
     out = []
-
-    def f(sev, status, title, detail, fix=""):
-        out.append({"id": "aitools", "area": "AI TOOL-CALLING (SQL guard)", "severity": sev,
-                    "status": status, "title": title, "detail": detail, "fix": fix})
+    f = _finder(out, "aitools", "AI TOOL-CALLING (SQL guard)")
 
     try:
         import db_tools
@@ -662,10 +647,7 @@ def _check_web_guard():
     (DNS-rebinding) and a cross-origin state-changing request (CSRF) — while NOT
     blocking legitimate same-origin writes."""
     out = []
-
-    def f(sev, status, title, detail, fix=""):
-        out.append({"id": "webguard", "area": "WEB GUARD (DNS-rebind / CSRF)", "severity": sev,
-                    "status": status, "title": title, "detail": detail, "fix": fix})
+    f = _finder(out, "webguard", "WEB GUARD (DNS-rebind / CSRF)")
 
     try:
         import app as _app
@@ -722,7 +704,7 @@ def _check_web_guard():
     # Fetch-metadata: a cross-site request (incl. <img>/<form>, which send NO
     # Origin) is stamped Sec-Fetch-Site: cross-site by the browser and must be
     # refused on /api — this closes side-effecting GETs (e.g. /api/health ->
-    # run_due, /api/security-scan, /api/git?fetch) that the Origin check (which
+    # run_due, /api/git?fetch) that the Origin check (which
     # only inspects mutating methods, and sees no Origin on <img>) would miss.
     # The guard rejects BEFORE the route runs, so probing /api/health is safe.
     xsite = c.get("/api/health", headers={"Sec-Fetch-Site": "cross-site"})
@@ -753,11 +735,7 @@ def _check_market_fetch():
     `@`, `:`, CR/LF → no host/path injection) and clamp the range to Yahoo's
     closed set (no query-param smuggling). Pure — no network."""
     out = []
-
-    def f(sev, status, title, detail, fix=""):
-        out.append({"id": "marketfetch", "area": "OUTBOUND FETCH (SSRF/param-injection)",
-                    "severity": sev, "status": status, "title": title,
-                    "detail": detail, "fix": fix})
+    f = _finder(out, "marketfetch", "OUTBOUND FETCH (SSRF/param-injection)")
 
     try:
         import market
@@ -802,11 +780,7 @@ def _check_request_caps():
     sinks (local model / paid cloud in 'both' mode). Active test-client probe: it must not
     report a WORKING cap as a weakness."""
     out = []
-
-    def f(sev, status, title, detail, fix=""):
-        out.append({"id": "reqcaps", "area": "REQUEST CAPS (DoS / CWE-770)",
-                    "severity": sev, "status": status, "title": title,
-                    "detail": detail, "fix": fix})
+    f = _finder(out, "reqcaps", "REQUEST CAPS (DoS / CWE-770)")
 
     try:
         import app as _app

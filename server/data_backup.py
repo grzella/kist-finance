@@ -243,23 +243,6 @@ def set_auto(enabled):
     return {"ok": True, "auto": bool(enabled)}
 
 
-def maybe_auto_backup(min_hours=24):
-    """If auto-backup is on and the newest snapshot is older than min_hours (or
-    none exists), create one. Best-effort; safe to call on every app start."""
-    try:
-        if not planner.get_setting("backup_auto") or not _folder():
-            return None
-        st = status()
-        last = st.get("last")
-        if last:
-            age_h = (datetime.now() - datetime.fromisoformat(last["when"])).total_seconds() / 3600
-            if age_h < min_hours:
-                return None
-        return create_backup()
-    except Exception:
-        return None
-
-
 def status():
     d = planner.get_setting("backup_dir") or ""
     folder = _folder()

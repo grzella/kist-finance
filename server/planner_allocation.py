@@ -42,17 +42,11 @@ def _alloc_class(name):
 def alloc_targets():
     """Targets from the alloc_targets setting (UI-editable), falling back to
     the built-in defaults. Values are % of net wealth."""
-    import json as _json
     t = dict(ALLOC_TARGETS)
-    raw = P.get_setting("alloc_targets")
-    if raw:
-        try:
-            for k, v in _json.loads(raw).items():
-                k = _ALLOC_LEGACY.get(k, k)
-                if k in t and P._num(v) is not None:
-                    t[k] = float(v)
-        except ValueError:
-            pass
+    for k, v in (P.get_json_setting("alloc_targets") or {}).items():
+        k = _ALLOC_LEGACY.get(k, k)
+        if k in t and P._num(v) is not None:
+            t[k] = float(v)
     return t
 
 

@@ -166,13 +166,10 @@ def list_debts():
             (d["minimum_payment"] or 0) + (d["extra_monthly"] or 0)
             + (d["insurance_repayment"] or 0) + (d["insurance_property"] or 0), 2)
         d["variable_projection"] = _variable_projection(d)
-        hist = eb._rows(
-            "select month, balance, note from debt_values where debt_id = ? "
-            "order by month, created_at", (d["id"],))
-        d["pace"] = _debt_pace(d, hist)
         d["history"] = eb._rows(
             "select month, balance, principal_paid, interest_paid, note, created_at "
             "from debt_values where debt_id = ? order by month, created_at", (d["id"],))
+        d["pace"] = _debt_pace(d, d["history"])
         for h in d["history"]:
             n = (h.get("note") or "").lower()
             # auto installments first: their "(bank split)" note (older rows: "wg banku") is not a correction
@@ -186,12 +183,7 @@ def list_debts():
 
 
 def _market_rates():
-    import json as _json
-    raw = P.get_setting("market_rates")
-    try:
-        return _json.loads(raw) if raw else {}
-    except ValueError:
-        return {}
+    return P.get_json_setting("market_rates", {})
 
 
 def _annuity(balance, annual_pct, months):

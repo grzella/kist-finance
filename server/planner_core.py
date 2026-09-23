@@ -140,6 +140,15 @@ def get_setting(key, default=None):
     return rows[0]["value"] if rows else default
 
 
+def get_json_setting(key, default=None):
+    import json as _json
+    raw = get_setting(key)
+    try:
+        return _json.loads(raw) if raw else default
+    except (ValueError, TypeError):
+        return default
+
+
 def set_settings(data):
     data = dict(data)
     # mirror: one savings pace under two historical keys
@@ -243,12 +252,7 @@ CORE_VIEWS = ["dashboard", "cashflow", "recs", "wealth", "expenses", "allocation
 
 
 def get_app_config():
-    import json as _json
-    raw = get_setting("app_config")
-    try:
-        cfg = _json.loads(raw) if raw else {}
-    except ValueError:
-        cfg = {}
+    cfg = get_json_setting("app_config", {})
     mods = cfg.get("modules") or {m["id"]: m["default"] for m in MODULES}
     enabled_views = list(CORE_VIEWS)
     for m in MODULES:

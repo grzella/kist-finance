@@ -14,6 +14,7 @@ from statistics import mean, pstdev
 
 import db  # skill module (sys.path set by engine_bridge import in app.py)
 from config import setup
+from forecast_models import _quantile
 
 _CFG = None
 
@@ -335,8 +336,16 @@ _RSU_DEFAULT = {
 }
 
 
+def _load_grant():
+    p = _rsu_path()
+    grant = dict(_RSU_DEFAULT)
+    if p.exists():
+        grant.update(json.loads(p.read_text()))
+    return grant
+
+
 def _months_iter(start_ym, count, vest_months):
-    """Successive vesting months from start_ym (inclusive), count of them.""" if not True else """Successive vesting months from start_ym (inclusive), count of them."""
+    """Successive vesting months from start_ym (inclusive), count of them."""
     y, m = int(start_ym[:4]), int(start_ym[5:7])
     out = []
     while len(out) < count:
@@ -454,15 +463,6 @@ def _net_factors():
     return {"tax_pct": tax, "shares": round(1 - tax / 100, 4), "cash": cash}
 
 
-def _rsu_vest_stream(grant, hist):
-    """Backward compatibility: (extras_computed, extras_per_vest, shares in the NEXT vest)
-    — now from the grant schedule (vest_schedule), not a flat sum."""
-    sch = vest_schedule(grant, hist)
-    nxt = sch["months"][0] if sch["months"] else None
-    extras_sh = sum((e.get("shares_per_vest") or 0) for e in sch["extras"])
-    return sch["extras"], extras_sh, (nxt["shares"] if nxt else 0.0)
-
-
 def _shares_per_vest(grant, hist, month=None):
     """Shares landing in a given vest month (default: the next one) — from the schedule.
     `shares_next_vest` from rsu.json (the broker's number) wins for the next vest until
@@ -477,10 +477,7 @@ def _shares_per_vest(grant, hist, month=None):
 
 
 def get_rsu():
-    p = _rsu_path()
-    grant = dict(_RSU_DEFAULT)
-    if p.exists():
-        grant.update(json.loads(p.read_text()))
+    grant = _load_grant()
     auto_sync()
     hist = prices(grant["ticker"], days=400)
     window = [r for r in hist if r["date"].startswith(grant["pricing_window"])]
@@ -555,15 +552,11 @@ def refresh_market_rates():
     import json as _json
     import re as _re
     import urllib.request
-    from planner import get_setting, set_settings
+    from planner import get_setting, get_json_setting, set_settings
     base = (get_setting("base_currency") or "PLN").upper()
     if base != "PLN":
         return {"ok": True, "skipped": f"base {base} — NBP/WIBOR do not apply"}
-    try:
-        cur = _json.loads(get_setting("market_rates") or "{}")
-    except ValueError:
-        cur = {}
-    out = dict(cur)
+    out = dict(get_json_setting("market_rates", {}))
     errors = []
     try:
         req = urllib.request.Request("https://static.nbp.pl/dane/stopy/stopy_procentowe.xml",
@@ -694,10 +687,7 @@ def _log_rsu_shares(shares):
 
 def rsu_shares_history(grant=None):
     if grant is None:
-        p = _rsu_path()
-        grant = dict(_RSU_DEFAULT)
-        if p.exists():
-            grant.update(json.loads(p.read_text()))
+        grant = _load_grant()
     _ensure_cache()
     with db.get_conn() as conn:
         try:
@@ -729,14 +719,11 @@ _RSU_EXTRA_KEYS = ("legacy_shares_per_vest", "legacy_until", "extra_grants", "ne
 
 
 def update_rsu(data):
-    p = _rsu_path()
-    grant = dict(_RSU_DEFAULT)
-    if p.exists():
-        grant.update(json.loads(p.read_text()))
+    grant = _load_grant()
     for k in list(_RSU_DEFAULT) + list(_RSU_EXTRA_KEYS):
         if k in data:
             grant[k] = data[k]
-    p.write_text(json.dumps(grant, indent=2, ensure_ascii=False))
+    _rsu_path().write_text(json.dumps(grant, indent=2, ensure_ascii=False))
     if "shares_held" in data:
         try:
             _log_rsu_shares(float(data["shares_held"]))
@@ -788,10 +775,7 @@ def log_rsu_sale(data):
                       data.get("note") or "", _dt.now().isoformat(timespec="seconds")))
         conn.commit()
     if data.get("adjust_holdings", True):
-        p = _rsu_path()
-        grant = dict(_RSU_DEFAULT)
-        if p.exists():
-            grant.update(json.loads(p.read_text()))
+        grant = _load_grant()
         held = max(0.0, float(grant.get("shares_held") or 0) - shares)
         update_rsu({"shares_held": int(round(held))})
     return {"id": sid, "gross_pln": gross, "usdpln": fx}
@@ -867,7 +851,7 @@ def _bootstrap_quantiles(closes, days, sims=400, seed=20260717, drift_annual=0.0
     if not paths:
         return None
     ps = sorted(paths[0])
-    return {0.10: _percentile(ps, 0.10), 0.50: _percentile(ps, 0.50), 0.90: _percentile(ps, 0.90)}
+    return {0.10: _quantile(ps, 0.10), 0.50: _quantile(ps, 0.50), 0.90: _quantile(ps, 0.90)}
 
 
 
@@ -1017,10 +1001,7 @@ def _live_track_record():
 
 def rsu_accuracy(grant=None):
     if grant is None:
-        p = _rsu_path()
-        grant = dict(_RSU_DEFAULT)
-        if p.exists():
-            grant.update(json.loads(p.read_text()))
+        grant = _load_grant()
     hist = prices(grant["ticker"], days=400)
     if not hist:
         return {"error": "brak danych"}
@@ -1044,24 +1025,10 @@ def _annualized_vol(closes):
     return round(daily * math.sqrt(252), 4), round(mean(rets) * 252, 4)
 
 
-def _percentile(sorted_vals, q):
-    if not sorted_vals:
-        return None
-    idx = q * (len(sorted_vals) - 1)
-    lo = int(math.floor(idx))
-    hi = int(math.ceil(idx))
-    if lo == hi:
-        return sorted_vals[lo]
-    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (idx - lo)
-
-
 def rsu_advanced():
     """Probabilistic RSU trajectory: Monte Carlo price paths on real
     volatility + analyst anchors + performance-scaled grant accumulation."""
-    p = _rsu_path()
-    grant = dict(_RSU_DEFAULT)
-    if p.exists():
-        grant.update(json.loads(p.read_text()))
+    grant = _load_grant()
     ticker = grant["ticker"]
     hist = prices(ticker, days=400)
     if not hist:
@@ -1155,13 +1122,13 @@ def rsu_advanced():
             "shares_base": round(shares_base),
             "shares_perf": round(shares_perf),
             "shares_in": round(w["shares_in"], 1),
-            "p10_price": round(_percentile(ps, 0.10), 1),
-            "p50_price": round(_percentile(ps, 0.50), 1),
-            "p90_price": round(_percentile(ps, 0.90), 1),
+            "p10_price": round(_quantile(ps, 0.10), 1),
+            "p50_price": round(_quantile(ps, 0.50), 1),
+            "p90_price": round(_quantile(ps, 0.90), 1),
         }
         for tag, q in (("p10", 0.10), ("p25", 0.25), ("p50", 0.50),
                        ("p75", 0.75), ("p90", 0.90)):
-            price = _percentile(ps, q)
+            price = _quantile(ps, q)
             row[tag] = round(shares_base * price * usdpln, 0)
             row[tag + "_perf"] = round(shares_perf * price * usdpln, 0)
         # analyst anchors (discrete fundamental view, not vol-driven)
@@ -1627,14 +1594,8 @@ def generate_brief(kind="daily"):
 
 
 def get_briefs():
-    from planner import get_setting
-    out = {}
-    for kind, key in BRIEF_KEYS.items():
-        try:
-            out[kind] = json.loads(get_setting(key) or "null")
-        except Exception:
-            out[kind] = None
-    return out
+    from planner import get_json_setting
+    return {kind: get_json_setting(key) for kind, key in BRIEF_KEYS.items()}
 
 
 

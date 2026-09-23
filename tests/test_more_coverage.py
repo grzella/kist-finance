@@ -74,13 +74,6 @@ def test_llm_local_chat_and_embed_over_fake_http(monkeypatch):
     assert llm_local.embed("pension") == [0.6, 0.8]
 
 
-def test_llm_local_categorize_uses_schema(monkeypatch):
-    import llm_local
-    monkeypatch.setattr(llm_local.urllib.request, "urlopen", _fake_urlopen_factory(
-        {"choices": [{"message": {"content": '{"category": "Groceries"}'}}]}))
-    assert llm_local.categorize_transaction("STORE 42", 100, ["Groceries", "Transport"]) == "Groceries"
-
-
 def test_llm_cloud_chat_and_refusal(monkeypatch):
     import llm_cloud
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
@@ -166,11 +159,12 @@ def test_risk_radar_scoring_on_seeded_prices(client):
 
 def test_risk_radar_endpoint_and_snapshot(client, monkeypatch):
     import llm_local
+    import market
     import risk_radar
     import engine_bridge as eb
     from datetime import date
     monkeypatch.setattr(llm_local, "chat", lambda *a, **k: "elevated risk, stay the course")
-    monkeypatch.setattr(risk_radar, "_yahoo_fetch", lambda *a, **k: 0)  # no network
+    monkeypatch.setattr(market, "fetch_yahoo_history", lambda *a, **k: 0)  # no network
     r = client.get("/api/risk-radar").get_json()
     assert "score" in r and "components" in r and "history" in r
     # earlier endpoint sweeps / run_due may have stored today's row (AI offline);

@@ -20,7 +20,7 @@ planner.ensure_tables()
 
 existing = eb._rows("select count(*) c from wealth_items")
 if existing and existing[0]["c"] > 0:
-    # Seeding overwrites settings (fixed costs, salary, buffers) — never do that
+    # Seeding overwrites settings (salary, buffers) — never do that
     # to a database that already holds data, even with --force.
     print("DB already has data — refusing to seed over it (it would overwrite your settings).")
     print("For a fresh demo, delete the database file and run seed.py again.")
@@ -37,15 +37,6 @@ planner.set_settings({
     "cf_monthly_surplus": 6000,
     "cf_safety_buffer": 30000,
     "cf_liquid_start": 40000,
-    "fixed_costs": '{"total_mine": 9000, "essential_mine": 7000, "items": ['
-                   '{"name": "Mortgage (Sample City)", "monthly": 3500, "payer": "me", "essential": true},'
-                   '{"name": "Groceries", "monthly": 1500, "payer": "me", "essential": true},'
-                   '{"name": "Utilities", "monthly": 900, "payer": "me", "essential": true},'
-                   '{"name": "Transport", "monthly": 700, "payer": "me", "essential": true},'
-                   '{"name": "Insurance", "monthly": 400, "payer": "me", "essential": true},'
-                   '{"name": "Subscriptions", "monthly": 300, "payer": "me", "essential": false},'
-                   '{"name": "Fun / misc", "monthly": 700, "payer": "me", "essential": false},'
-                   '{"name": "Auto-invest (ETF)", "monthly": 1000, "payer": "me", "essential": false}]}',
 })
 
 # --- fixed expenses (new module: entity grouping + subscriptions + invoices) ---

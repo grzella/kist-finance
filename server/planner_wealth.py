@@ -133,7 +133,7 @@ def wealth_summary():
         tx = _mkt.rsu_tax_summary()
         if tx.get("tax_due_pln"):
             reserve = float(tx["tax_due_pln"])
-            reserve_note = f"PIT-38 {tx['year']} ({tx['shares_sold']:.0f} szt., do {tx['deadline']})" if not True else f"capital gains tax {tx['year']} ({tx['shares_sold']:.0f} shares, due {tx['deadline']})"
+            reserve_note = f"capital gains tax {tx['year']} ({tx['shares_sold']:.0f} shares, due {tx['deadline']})"
     except Exception:
         pass
     return {

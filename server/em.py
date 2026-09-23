@@ -7,17 +7,14 @@ scope conversations and any "AI operating model" page you build for your org.
 """
 import json
 import uuid
-from datetime import date, datetime
+from datetime import date
 
 import engine_bridge as eb
 import planner
+from planner_core import _now
 
 KINDS = ("impact", "visibility", "scope", "feedback", "learning")
 WEEK_FIELDS = ("energy", "deep_hours", "one_on_ones", "decisions")
-
-
-def _now():
-    return datetime.now().isoformat(timespec="seconds")
 
 
 def ensure_tables():
@@ -92,10 +89,7 @@ def put_week(data):
 # ---------------------------------------------------------------- 90-day plan (state)
 
 def plan_state():
-    try:
-        return json.loads(planner.get_setting("plan90_state") or "{}")
-    except ValueError:
-        return {}
+    return planner.get_json_setting("plan90_state", {})
 
 
 def set_plan_state(idx, status, note=""):

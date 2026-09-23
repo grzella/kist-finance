@@ -6,8 +6,8 @@ Start the server (after installing llama.cpp, e.g. `brew install llama.cpp`):
       --spec-type ngram-simple
 
 The app never *requires* an LLM. When one is running it stays 100% local, so
-sensitive numbers never leave the machine — used for things like transaction
-categorization and narrating why a forecast band was missed. Everything degrades
+sensitive numbers never leave the machine — used for things like the AI answers
+and the market brief. Everything degrades
 gracefully to "offline" when no server is up.
 """
 import json
@@ -196,47 +196,3 @@ def embed(text):
         return out["data"][0]["embedding"]
     except Exception:
         return None
-
-
-def categorize_transaction(description, amount, categories):
-    """Categorize a transaction locally (data does not leave the machine).
-
-    Uses GBNF (an enum in the JSON Schema) — the model MUST pick one of the
-    given categories, so the result is always valid (no free-text parsing).
-    """
-    cats = list(categories)
-    schema = {"type": "object", "additionalProperties": False,
-              "required": ["category"],
-              "properties": {"category": {"type": "string", "enum": cats}}}
-    data = chat_json(
-        f'Transaction: "{description}", amount {amount}. '
-        f'Pick the best category from: {", ".join(cats)}.',
-        schema,
-        system="You are an expense-categorization assistant.",
-        max_tokens=30, think=False)
-    if data and data.get("category") in cats:
-        return data["category"]
-    # Fallback for servers without response_format support: text matching.
-    ans = chat(
-        f'Transaction: "{description}", amount {amount}. '
-        f'Pick exactly ONE category from: {", ".join(cats)}. '
-        f'Answer with the category name only.',
-        system="You are an expense-categorization assistant. Answer in one word.",
-        max_tokens=20)
-    if ans:
-        ans = ans.strip().strip('."')
-        for c in cats:
-            if c.lower() in ans.lower():
-                return c
-    return None
-
-
-def explain_forecast_miss(ticker, horizon_days, predicted_band, realized):
-    """Narrate why a forecast band was missed (commentary, not math — the
-    calibration itself is computed in forecast_models)."""
-    return chat(
-        f"Forecast band for {ticker} over {horizon_days} sessions: "
-        f"{predicted_band}. Actual: {realized}. In 2-3 sentences: what could have "
-        f"driven the move outside the band, and what it teaches about this asset's volatility.",
-        system="You are a concise market analyst. No disclaimers.",
-        max_tokens=150)

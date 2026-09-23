@@ -177,18 +177,14 @@ def rag_dirs():
     or the defaults from config (e.g. a `notes/` folder next to the app)."""
     import planner
     try:
-        raw = planner.get_setting("rag_dirs")
-        if raw:
-            lst = json.loads(raw)
-            if isinstance(lst, list):
-                return [str(x) for x in lst if x]
+        lst = planner.get_json_setting("rag_dirs")
+        if isinstance(lst, list):
+            return [str(x) for x in lst if x]
     except Exception:
         pass
     try:
         import config
-        if hasattr(config, "rag_default_dirs"):
-            return [str(d) for d in config.rag_default_dirs()]
-        return [str(d) for d in getattr(config, "RAG_DIRS", [])]
+        return [str(d) for d in config.rag_default_dirs()]
     except Exception:
         return []
 

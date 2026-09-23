@@ -48,12 +48,13 @@ def fire_projection():
     tax = P.capital_gains_tax_pct() / 100
     # month the loan installment is freed: from Cash-flow (the actual payoff month), not "in a year"
     freed_from = 12 if loan_open else 0
+    lp = None
     try:
         lp = P.cashflow().get("target_paid_month")
-        if lp:
-            freed_from = max(0, (int(lp[:4]) - today.year) * 12 + (int(lp[5:7]) - today.month))
     except Exception:
         pass
+    if lp:
+        freed_from = max(0, (int(lp[:4]) - today.year) * 12 + (int(lp[5:7]) - today.month))
 
     def label_at(m):
         yy = today.year + (today.month - 1 + m) // 12
@@ -138,14 +139,7 @@ def fire_projection():
     property_target = (ig and ig.get("target_amount")) or 200000
     property_start = (ig and ig.get("current_amount")) or 0
     # Loan already paid off: accumulation starts now. While it runs: from the payoff month.
-    delay = 5 if loan_open else 0
-    try:
-        cf = P.cashflow()
-        lp = cf.get("loan_paid_month")
-        if lp:
-            delay = max(0, (int(lp[:4]) - today.year) * 12 + (int(lp[5:7]) - today.month))
-    except Exception:
-        pass
+    delay = freed_from if lp else (5 if loan_open else 0)
     property_r = 0.04 / 12  # close to the goal → more cautious/liquid
     property_contrib = contrib + freed
     bal = property_start
@@ -217,7 +211,8 @@ def record_fire_snapshot(fallback_liquid=None):
         liquid = fallback_liquid or 0
     nw = None
     try:
-        nw = P.wealth_summary()["total"] - P.wealth_summary()["debt_total"]
+        w = P.wealth_summary()
+        nw = w["total"] - w["debt_total"]
     except Exception:
         pass
     eb._exec("insert into fire_snapshots (month, liquid, net_worth, created_at) values (?,?,?,?)",

@@ -34,20 +34,14 @@ def expected_return_after_tax():
 def essential_monthly():
     """ONE definition of essential monthly costs (fixed expenses marked essential → legacy
     fixed_costs blob → debt service alone). Returns (essential, debt_service)."""
-    import json as _json
     d = P.list_debts()
     monthly_debt = d.get("monthly_cost_total") or 0
     exp_essential = P.expense_summary().get("essential_mine")
     if exp_essential:
         return float(exp_essential), monthly_debt
-    fc_raw = P.get_setting("fixed_costs")
-    if fc_raw:
-        try:
-            fc = _json.loads(fc_raw).get("essential_mine")
-            if fc:
-                return float(fc), monthly_debt
-        except ValueError:
-            pass
+    fc = P._num((P.get_json_setting("fixed_costs") or {}).get("essential_mine"))
+    if fc:
+        return fc, monthly_debt
     return float(monthly_debt), monthly_debt
 
 
@@ -331,13 +325,8 @@ THEME_CAP = 60.0             # % per theme before it's flagged
 
 
 def xtb_recommendation():
-    import json as _json
-    raw = P.get_setting("xtb_portfolio")
-    if not raw:
-        return None
-    try:
-        pf = _json.loads(raw)
-    except ValueError:
+    pf = P.get_json_setting("xtb_portfolio")
+    if not pf:
         return None
     pos = pf.get("positions", [])
     total = sum(p["value"] for p in pos)

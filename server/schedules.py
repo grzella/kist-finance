@@ -112,10 +112,7 @@ EXTERNAL = [
 
 
 def _cfgs():
-    try:
-        return json.loads(planner.get_setting("schedules") or "{}")
-    except Exception:
-        return {}
+    return planner.get_json_setting("schedules", {})
 
 
 def get_schedules():
