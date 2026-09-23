@@ -21,7 +21,7 @@ async function renderWizard(el) {
         You can re-run this anytime by opening <code>#wizard</code>.</div>
 
       <div class="card" style="border-left:4px solid var(--accent)">
-        <h3 style="margin-top:0">1 · Which areas do you want to track?</h3>
+        <h3>1 · Which areas do you want to track?</h3>
         <div class="muted" style="font-size:.85em;margin-bottom:10px">Core (dashboard, cash-flow, wealth,
           goals, forecasts) is always on. Toggle the rest — you can change this later.</div>
         <div class="grid cols-2" style="gap:10px">
@@ -30,7 +30,7 @@ async function renderWizard(el) {
       </div>
 
       <div class="card mt" style="border-left:4px solid var(--warn)">
-        <h3 style="margin-top:0">2 · Start with data</h3>
+        <h3>2 · Start with data</h3>
         ${cfg.has_data ? `
           <div class="muted">You already have data in the local database — skipping this step.</div>
           <input type="hidden" id="wzData" value="keep">` : `
@@ -59,7 +59,7 @@ async function renderWizard(el) {
       </div>
 
       <div class="card mt" style="border-left:4px solid var(--pos)">
-        <h3 style="margin-top:0">3 · Optional integrations <span class="muted" style="font-weight:normal;font-size:.7em">— skip freely, the app is fully functional offline</span></h3>
+        <h3>3 · Optional integrations <span class="muted" style="font-weight:normal;font-size:.7em">— skip freely, the app is fully functional offline</span></h3>
         <div style="font-size:.9em">
           <p><b>📈 Live market data (Supabase)</b> — the Markets/FX/RSU tabs read daily quotes from a free
           <a href="https://supabase.com" target="_blank">Supabase</a> table. Create a project, add
@@ -72,7 +72,7 @@ async function renderWizard(el) {
       </div>
 
             <div class="card mt" style="border-left:4px solid var(--accent)">
-        <h3 style="margin-top:0">💱 Base currency</h3>
+        <h3>💱 Base currency</h3>
         <div class="row" style="align-items:center;gap:10px">
           <select id="wzCur">${["PLN","EUR","USD","GBP","CHF"].map((c) => `<option ${c === (cfg.currency || "PLN") ? "selected" : ""}>${c}</option>`).join("")}</select>
           <span class="muted" style="font-size:.85em">Used everywhere amounts are shown. Change later in Control Center.</span>

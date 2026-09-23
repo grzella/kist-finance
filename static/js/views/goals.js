@@ -49,8 +49,7 @@ async function renderGoals(el) {
         </div>
         <div class="muted">${eta}</div>
         ${/propert|house|home|apartment|flat|down.?payment|mortgage/i.test(g.name) ? `<div class="mt">
-          <a href="#property" style="text-decoration:none;display:inline-block;padding:6px 12px;
-            border:1px solid ${CHART_COLORS[1]};border-radius:6px;color:${CHART_COLORS[1]};font-size:.9em">
+          <a href="#property" class="pill pos">
             🇮🇹 Location analysis — where to buy →</a></div>` : ""}
         <div class="row mt">
           <input data-num data-gcur="${g.id}" placeholder="new saved amount" style="width:200px">

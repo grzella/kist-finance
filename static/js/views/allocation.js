@@ -13,7 +13,7 @@ async function renderAllocation(el) {
     <div class="muted" style="margin-bottom:12px">Net wealth ${fmt.pln(d.total)} (real estate counted as equity net of loans).</div>
 
     ${d.leverage ? `<div class="card" style="margin-bottom:12px">
-      <h3 style="margin-top:0">🏦 Debt vs value</h3>
+      <h3>🏦 Debt vs value</h3>
       <div class="row" style="gap:24px;flex-wrap:wrap">
         <div><div class="muted">Debt / assets</div><div class="value">${d.leverage.debt_to_assets_pct}%</div>
           <div class="muted">${fmt.pln(d.leverage.debt_total)} / ${fmt.pln(d.leverage.assets_total)}</div></div>
@@ -47,7 +47,7 @@ async function renderAllocation(el) {
     </div>
 
     <div class="card mt" style="border-left:4px solid var(--warn)">
-      <h3 style="margin-top:0">💡 Takeaways and rebalancing</h3>
+      <h3>💡 Takeaways and rebalancing</h3>
       <ul style="padding-left:18px">${d.hints.map((h) => `<li class="mt" style="font-size:.93em">${h}</li>`).join("")}</ul>
       <div class="muted mt" style="font-size:.85em">A vehicle counts as an asset here, but it is a consumable (it depreciates) — in reality "investment" wealth is usually more concentrated in real estate.</div>
     </div>`;

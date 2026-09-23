@@ -33,7 +33,7 @@ async function renderCurrency(el) {
       ? `Signal accuracy (backtest): <b class="${bt.hit_rate >= 65 ? "pos" : bt.hit_rate >= 50 ? "" : "neg"}">${bt.hit_rate}%</b> hits (n=${bt.n}). Avg rate move after the signal: ${bt.avg_fwd_move}% <span class="muted">(negative = you catch it near the extreme, good)</span>.`
       : `Backtest: ${bt.status || "—"}`;
     return `<div class="card">
-      <h3 style="margin-top:0">${p.title} <span class="muted" style="font-weight:normal;font-size:.6em">${p.conv}</span></h3>
+      <h3>${p.title} <span class="muted" style="font-weight:normal;font-size:.6em">${p.conv}</span></h3>
       <div class="value" style="font-size:1.5em"><b>${fmt.num(p.last, 3)}</b></div>
       <div class="mt" style="padding:6px 10px;border-radius:6px;background:var(--inset)">
         <b class="${p.vcls}">${p.verdict}</b></div>
@@ -46,7 +46,7 @@ async function renderCurrency(el) {
         <span>⚡ mom 30d: <b class="${p.mom30 >= 0 ? "pos" : "neg"}">${p.mom30}%</b></span>
         <span title="deviation from the 50-session average">📏 vs SMA50: <b>${p.dist50}%</b></span>
       </div>
-      <details class="mt"><summary class="muted" style="cursor:pointer;font-size:.85em">why (indicators)</summary>
+      <details class="mt"><summary class="muted" style="font-size:.85em">why (indicators)</summary>
         <ul style="padding-left:16px;font-size:.85em">${p.reasons.map((r) => `<li class="mt">${r}</li>`).join("")}</ul>
       </details>
       <div class="muted mt" style="font-size:.8em">${btTxt}</div>

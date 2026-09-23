@@ -36,20 +36,20 @@ async function renderDashboard(el) {
         <div class="sub">+ Sep bonus and RSU vests (Feb/May/Aug/Nov) on top</div></div>
     </div>
     <div class="card mt" style="border-left:4px solid ${CHART_COLORS[2]}">
-      <h3 style="margin-top:0">🧭 3 decisions for today <span class="muted">out of ${openRecs.length} open · <a href="#recs">all →</a></span></h3>
+      <h3>🧭 3 decisions for today <span class="muted">out of ${openRecs.length} open · <a href="#recs">all →</a></span></h3>
       ${openRecs.length ? `<ol class="decisions">${openRecs.slice(0, 3).map((r, i) =>
         `<li><span class="n">${i + 1}</span>${recBody(r)}</li>`).join("")}</ol>`
         : `<div class="muted">${rec.items.length ? "Every recommendation already has an outcome." : rec.headline}</div>`}
       ${openRecs.length > 3 ? `<details class="help"><summary>${openRecs.length - 3} more</summary>
         <ol class="decisions">${openRecs.slice(3).map((r, i) => `<li><span class="n">${i + 4}</span>${recBody(r)}</li>`).join("")}</ol></details>` : ""}
     </div>
-    ${fresh && !fresh.complete ? `<div class="card mt" style="border-left:4px solid var(--amber)">
-      <div class="row" style="align-items:center;gap:10px">
+    ${fresh && !fresh.complete ? `<details class="card mt" style="border-left:4px solid var(--amber)">
+      <summary class="row" style="align-items:center;gap:10px">
         <b>📋 ${fresh.month}: ${fresh.due.length} item${fresh.due.length === 1 ? "" : "s"} to refresh (~${fresh.total_minutes} min)</b>
         <span class="muted" style="flex:1">${fresh.due.slice(0, 4).map((e) => e.label.split(":")[0]).join(" · ")}${fresh.due.length > 4 ? " · …" : ""}</span>
-        <button class="primary" id="freshOpen">Update →</button>
-      </div>
-      <div id="freshFlow" style="display:none" class="mt">
+        <span class="pill active">Update →</span>
+      </summary>
+      <div class="mt">
         ${[...fresh.due, ...fresh.ok.filter((e) => e.always_show)].map((e) => `<div class="row mt" style="align-items:center;gap:8px" data-fresh-row>
           <span style="flex:1">${e.label} <span class="muted">(${e.cadence}${e.last ? ", last " + e.last : ", never"})</span></span>
           ${e.action.type === "biz_month"
@@ -62,9 +62,9 @@ async function renderDashboard(el) {
           <span class="muted">Empty fields are skipped — enter only what changed.</span>
         </div>
       </div>
-    </div>` : fresh && fresh.complete ? `<div class="muted" style="margin:4px 0 8px">✅ ${fresh.month}: data complete — next ritual in a month.</div>` : ""}
+    </details>` : fresh && fresh.complete ? `<div class="muted" style="margin:4px 0 8px">✅ ${fresh.month}: data complete — next ritual in a month.</div>` : ""}
     ${xtb.headline ? `<details class="card mt" style="border-left:4px solid ${CHART_COLORS[4]}">
-      <summary style="cursor:pointer"><b>📈 brokerage (${fmt.pln(xtb.facts.total)}):</b>
+      <summary><b>📈 brokerage (${fmt.pln(xtb.facts.total)}):</b>
         ${xtb.headline.length > 120 ? xtb.headline.slice(0, 120) + "…" : xtb.headline}
         <span class="muted">(expand)</span></summary>
       <ul class="muted mt" style="padding-left:18px">
@@ -73,7 +73,7 @@ async function renderDashboard(el) {
       <div class="muted mt">Themes: ${Object.entries(xtb.facts.themes).map(([k, v]) => `${k} ${v}%`).join(" · ")}</div>
     </details>` : ""}
     ${gs.goal ? `<div class="card mt" style="border-left:4px solid ${CHART_COLORS[1]}">
-      <h3 style="margin-top:0">🎯 ${gs.goal} — path to goal (${fmt.pln(gs.target_remaining)} to go, pace ${fmt.pln(gs.monthly_savings)}/mo)</h3>
+      <h3>🎯 ${gs.goal} — path to goal (${fmt.pln(gs.target_remaining)} to go, pace ${fmt.pln(gs.monthly_savings)}/mo)</h3>
       ${gs.extras ? `<div class="muted">Pace = savings ${fmt.pln(gs.base_savings)} + annual bonus ${fmt.pln(gs.extras.bonus_net)}/12 + RSU vests ${fmt.pln(gs.extras.rsu_annual)}/12 (${gs.extras.pct_to_goal}% of surplus toward the goal)</div>` : ""}
       <table><thead><tr><th>Scenario</th><th>Goal reached</th><th>Time</th><th>Loan paid off</th><th>Interest saved</th></tr></thead>
       <tbody>${gs.scenarios.map((sc) => `<tr>
@@ -87,7 +87,7 @@ async function renderDashboard(el) {
         (effective interest rate); after payoff the freed installment + insurance feed the goal.`, "how it is computed")}
     </div>` : ""}
     ${bizOn && biz ? `<details class="card mt" style="border-left:4px solid ${CHART_COLORS[6]}">
-      <summary style="cursor:pointer"><b>🚁 Business:</b>
+      <summary><b>🚁 Business:</b>
         result since launch <b class="${biz.total_result >= 0 ? "pos" : "neg"}">${fmt.pln(biz.total_result)}</b>
         ${!bizMkt.error && bizMkt.weeks.length ? `· last week of ads: €${bizMkt.weeks[0].spend_eur}
           <span class="muted">${esc((bizMkt.weeks[0].summary || "").slice(0, 90))}…</span>` : ""}
@@ -140,12 +140,7 @@ async function renderDashboard(el) {
 
 
 
-  // freshness guided flow: expand, save entered values, reload the view
-  const fo = el.querySelector("#freshOpen");
-  if (fo) fo.addEventListener("click", () => {
-    const ff = el.querySelector("#freshFlow");
-    ff.style.display = ff.style.display === "none" ? "" : "none";
-  });
+  // freshness guided flow: save entered values, reload the view
   const fs = el.querySelector("#freshSave");
   if (fs) fs.addEventListener("click", async () => {
     const acts = [...el.querySelectorAll("[data-fresh-act]")]

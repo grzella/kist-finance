@@ -58,7 +58,7 @@ async function renderRsu(el) {
           new quotes daily ~22:35 (n8n) · sync: ${r.cache_synced ? r.cache_synced.slice(0, 16).replace("T", " ") : "—"}</div></div>
     </div>
     <div class="card mt" style="border-left:4px solid ${CHART_COLORS[1]}">
-      <h3 style="margin-top:0">📅 Vest schedule — from the list of grants, not one number</h3>
+      <h3>📅 Vest schedule — from the list of grants, not one number</h3>
       ${r.legacy_open_ended ? `<div class="mt" style="padding:6px 10px;border-radius:6px;background:rgba(242,199,79,.12);font-size:.88em">
         ⚠️ Legacy grants (${r.legacy_shares_per_vest} shares/quarter) have no expiry date — the projection assumes they vest forever.
         Enter <b>"legacy grants until"</b> in the parameters (the last vest month from your broker) and the schedule, Cash-flow, Goals and FIRE recompute.</div>` : ""}
@@ -73,7 +73,7 @@ async function renderRsu(el) {
         Net = shares × (1 − ${r.tax_pct}% tax at sale) + cash-vest × ${Math.round((r.cash_vest_net_factor || 0.55) * 100)}% (payslip).</div>
     </div>
     <div class="card mt" style="border-left:4px solid var(--amber)">
-      <h3 style="margin-top:0">🧾 Sales and tax — capital gains ${r.tax ? r.tax.year : ""}</h3>
+      <h3>🧾 Sales and tax — capital gains ${r.tax ? r.tax.year : ""}</h3>
       <div class="grid cols-3">
         <div class="card kpi"><div class="label">Sold in ${r.tax ? r.tax.year : "—"}</div><div class="value">${r.tax ? fmt.num(r.tax.shares_sold, 0) : "—"} shares</div><div class="sub">${r.tax ? fmt.pln(r.tax.gross_pln) + " gross" : ""}</div></div>
         <div class="card kpi"><div class="label">Tax ${r.tax ? r.tax.tax_pct + "%" : ""} (reserve)</div><div class="value neg">${r.tax ? fmt.pln(r.tax.tax_due_pln) : "—"}</div><div class="sub">on the FULL sale amount · deducted from net worth</div></div>
@@ -94,7 +94,7 @@ async function renderRsu(el) {
           <td><button class="danger" data-sdel="${x.id}">✕</button></td></tr>`).join("")}</tbody></table>` : ""}
     </div>
     ${(r.shares_history || []).length ? `<div class="card mt">
-      <h3 style="margin-top:0">🧾 Share-count history (from the strip, monthly)</h3>
+      <h3>🧾 Share-count history (from the strip, monthly)</h3>
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Month</th><th style="text-align:right">Shares</th><th style="text-align:right">Δ</th><th>Reading</th></tr></thead>
         <tbody>${r.shares_history.slice(-12).map((h) => `<tr>
@@ -109,16 +109,16 @@ async function renderRsu(el) {
       <div class="muted mt">You only report the current count — vests and sales are inferred from the delta and the vest calendar.</div>
     </div>` : ""}
     <div class="card mt" style="border-left:4px solid var(--warn)">
-      <h3 style="margin-top:0">💡 Recommendation</h3>
+      <h3>💡 Recommendation</h3>
       <div>${rec}</div>
     </div>
     ${deep.headline ? `<div class="card mt" style="border-left:4px solid var(--accent)">
-      <h3 style="margin-top:0">🔬 Deep-dive analysis — ${deep.vest_month} vest
+      <h3>🔬 Deep-dive analysis — ${deep.vest_month} vest
         <span class="muted" style="font-weight:normal;font-size:.75em">(as of ${deep.as_of}, price $${deep.price})</span></h3>
       <div><b>${deep.headline}</b></div>
       ${analysisStaleBanner(deep)}
       ${(deep.sections || []).map((s) => `<details class="mt" ${s === deep.sections[0] ? "open" : ""}>
-        <summary style="cursor:pointer"><b>${s.title}</b></summary>
+        <summary><b>${s.title}</b></summary>
         <div class="mt" style="font-size:.93em">${s.text}</div>
       </details>`).join("")}
       <div class="muted mt" style="font-size:.8em">A research snapshot (earnings, guidance, analyst targets) —
@@ -126,7 +126,7 @@ async function renderRsu(el) {
         ${(deep.sources || []).length ? `Sources: ${deep.sources.map((u, i) => `<a href="${u}" target="_blank">[${i + 1}]</a>`).join(" ")}` : ""}</div>
     </div>` : ""}
     ${bands && bands.horizons ? `<div class="card mt" style="border-left:4px solid var(--accent)">
-      <h3 style="margin-top:0">📏 Short horizon — range, not direction
+      <h3>📏 Short horizon — range, not direction
         <span class="muted" style="font-weight:normal;font-size:.7em">(a single stock's direction cannot be predicted — we manage risk, not timing)</span></h3>
       <table><thead><tr><th>Window</th><th>Pessimistic (p10)</th><th>Middle</th><th>Optimistic (p90)</th><th>Model</th></tr></thead>
       <tbody>${bands.horizons.map((h) => `<tr>
@@ -140,7 +140,7 @@ async function renderRsu(el) {
         ${bands.coverage ? `Historical 1M band coverage: <b>${bands.coverage.band_coverage_pct}%</b> (target ~80%).` : ""}</div>
     </div>` : ""}
     ${adv && !adv.error ? `<div class="card mt">
-      <h3 style="margin-top:0">📈 Probabilistic prediction — Monte Carlo (${fmt.grouped(adv.sims)} paths)</h3>
+      <h3>📈 Probabilistic prediction — Monte Carlo (${fmt.grouped(adv.sims)} paths)</h3>
       <div class="grid cols-4">
         <div class="card kpi"><div class="label">Annual volatility</div>
           <div class="value">${adv.vol_annual_pct}%</div>
@@ -178,7 +178,7 @@ async function renderRsu(el) {
         <td class="${covCls(h.band_coverage_pct)}"><b>${h.band_coverage_pct}%</b> <span class="muted">(ideal ~80%)</span></td>
         <td>${h.directional_pct}%</td><td>${h.median_abs_err_pct}%</td><td class="muted">${h.n}</td></tr>` : "";
       return `<div class="card mt" style="border-left:4px solid var(--warn)">
-      <h3 style="margin-top:0">🎯 How accurate my predictions are (learning from data)</h3>
+      <h3>🎯 How accurate my predictions are (learning from data)</h3>
       <div class="muted" style="font-size:.88em;margin-bottom:8px">Every day the stock price is fetched and the bands are scored.
         \"Calibration\" = how often the actual price fell inside my p10–p90 band (ideal ~80%).
         At ${adv.vol_annual_pct}% volatility the short-term move is almost random — so the honest measure is calibration, not \"hitting the price\".</div>
@@ -235,7 +235,7 @@ async function renderRsu(el) {
         so net ≈ ${r.next_vest_value_net_pln ? fmt.pln(r.next_vest_value_net_pln) : "—"} per quarter${r.next_cash_vest_net_pln ? ` + cash-vest ${fmt.pln(r.next_cash_vest_net_pln)} net` : ""}.</div>
     </div>
     <div class="card mt">
-      <details><summary style="cursor:pointer"><b>⚙️ Grant parameters</b> <span class="muted" style="font-size:.85em">(rarely change — expand after a vest, or ask the AI to update them)</span></summary>
+      <details><summary><b>⚙️ Grant parameters</b> <span class="muted" style="font-size:.85em">(rarely change — expand after a vest, or ask the AI to update them)</span></summary>
       <div class="row">
         <input type="number" id="rHeld" value="${r.shares_held}" title="shares held" style="width:110px">
         <input type="number" id="rNext" value="${r.shares_next_vest}" title="shares in the next vest" style="width:110px">
@@ -259,16 +259,16 @@ async function renderRsu(el) {
         datasets: [
           { label: "p90 (optimistic)", data: pj.map((p) => p.p90),
             borderColor: "transparent", backgroundColor: "rgba(62,207,142,0.13)",
-            fill: "+1", pointRadius: 0, tension: 0.2 },
+            fill: "+1", tension: 0.2 },
           { label: "p10 (pessimistic)", data: pj.map((p) => p.p10),
             borderColor: "transparent", backgroundColor: "transparent",
-            fill: false, pointRadius: 0, tension: 0.2 },
+            fill: false, tension: 0.2 },
           { label: "Median (p50)", data: pj.map((p) => p.p50),
             borderColor: CHART_COLORS[0], backgroundColor: "transparent",
             borderWidth: 3, pointRadius: 3, tension: 0.2 },
           { label: "Analyst consensus ($" + adv.analyst.mid + ")", data: pj.map((p) => p.mid_analyst),
             borderColor: CHART_COLORS[1], backgroundColor: "transparent",
-            borderDash: [6, 4], pointRadius: 0, tension: 0.2 },
+            borderDash: [6, 4], tension: 0.2 },
         ],
       },
       options: { plugins: { legend: { labels: { filter: (i) => !i.text.startsWith("p10") } } },

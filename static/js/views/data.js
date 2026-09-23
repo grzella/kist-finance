@@ -18,7 +18,7 @@ async function renderData(el) {
 
   const groupCard = (g) => `
     <div class="card mt">
-      <h3 style="margin-top:0">${g.title}</h3>
+      <h3>${g.title}</h3>
       <div class="muted" style="margin:-4px 0 10px;font-size:.9em">${g.note}</div>
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Data</th><th>Mode</th><th>Source</th><th>Frequency</th>
@@ -38,11 +38,7 @@ async function renderData(el) {
 
   el.innerHTML = `
     <h2>🛠️ Control Center</h2>
-    <div class="row" style="gap:8px;margin-bottom:12px">
-      <a href="#control" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid var(--border);color:var(--text)">🛠️ Automation &amp; health</a>
-      <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid var(--border);color:var(--text)">🔔 Reminders</a>
-      <a href="#data" style="text-decoration:none;padding:5px 12px;border-radius:6px;background:${CHART_COLORS[0]};color:#fff">📊 Data in the app</a>
-    </div>
+    ${ctrlTabs("data")}
     <div class="muted" style="margin-bottom:12px">What is pulled in automatically, what you have to enter yourself and how often.
       Goal: as much as possible fully automated, with only the absolute monthly minimum done by hand. As of: ${d.generated_at}.</div>
 
@@ -58,7 +54,7 @@ async function renderData(el) {
     </div>
 
     ${sched ? `<div class="card mt" style="border-left:4px solid var(--accent)">
-      <h3 style="margin-top:0">⏰ Schedules — when things run</h3>
+      <h3>⏰ Schedules — when things run</h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">Change frequency, day and hour — saved instantly. 'app' tasks run at the first app-open past the chosen time; external ones are read-only.</div>
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Task</th><th>Frequency</th><th>Day</th><th>Hour</th><th>Last run</th><th></th></tr></thead>
@@ -93,7 +89,7 @@ async function renderData(el) {
     ${d.groups.map(groupCard).join("")}
 
     <div class="card mt" style="border-left:4px solid var(--warn)">
-      <h3 style="margin-top:0">🚀 Automation roadmap — getting down to the minimum</h3>
+      <h3>🚀 Automation roadmap — getting down to the minimum</h3>
       <div class="muted" style="margin:-4px 0 10px;font-size:.9em">Priority: eliminate monthly data entry.
         Ordered by impact-to-effort ratio.</div>
       <div style="overflow-x:auto"><table>

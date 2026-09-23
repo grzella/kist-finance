@@ -17,7 +17,7 @@ async function renderDebts(el) {
     </div>
     <div id="dList" class="mt"></div>
     <details class="card mt">
-      <summary style="cursor:pointer;color:var(--muted,#9aa)">➕ Add a loan (rare action)</summary>
+      <summary style="color:var(--muted,#9aa)">➕ Add a loan (rare action)</summary>
       <div class="row mt">
         <input id="dName" placeholder="name (e.g. mBank mortgage)" style="flex:1">
         <input data-num id="dBalance" placeholder="balance PLN">
@@ -124,7 +124,7 @@ async function renderDebts(el) {
               return p ? p.model : null;
             }),
             borderColor: "#8a8fa8", borderDash: [6, 4], backgroundColor: "transparent",
-            tension: 0.25, pointRadius: 0 }] : [])],
+            tension: 0.25 }] : [])],
         },
         options: { plugins: { legend: { display: d.pace && !d.pace.insufficient },
           tooltip: { callbacks: { afterLabel: (c) => (c.raw && c.raw.note) ? c.raw.note : "" } } } },

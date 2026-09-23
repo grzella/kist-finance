@@ -70,7 +70,7 @@ async function renderForecasts(el) {
     </div>
 
     ${fire ? `<div class="card mt" style="border-left:4px solid var(--pos)">
-      <h3 style="margin-top:0">🏁 Path to work-optional (${fmt.pln(fire.target)} liquid portfolio)</h3>
+      <h3>🏁 Path to work-optional (${fmt.pln(fire.target)} liquid portfolio)</h3>
       <div class="muted" style="font-size:.88em;margin-bottom:8px">
         Liquid portfolio today ${fmt.pln(fire.start)} → target ${fmt.pln(fire.target)}. Contribution: ${fire.assumptions.contrib_note}.
         Three return scenarios + the target line. When a line crosses the target = you are work-optional.</div>
@@ -96,7 +96,7 @@ async function renderForecasts(el) {
 
     <div class="grid cols-2 mt">
       ${fire.property ? `<div class="card" style="border-left:4px solid var(--amber)">
-        <h3 style="margin-top:0">Goal contribution (house)</h3>
+        <h3>Goal contribution (house)</h3>
         <table>
           <tr><td>Down-payment target (50%)</td><td><b>${fmt.pln(fire.property.target)}</b></td></tr>
           <tr><td>Saved so far</td><td>${fmt.pln(fire.property.start)}</td></tr>
@@ -108,7 +108,7 @@ async function renderForecasts(el) {
 
 
       ${fire.tracking ? `<div class="card" style="border-left:4px solid var(--accent)">
-        <h3 style="margin-top:0">📡 Progress vs plan (learning every month)</h3>
+        <h3>📡 Progress vs plan (learning every month)</h3>
         ${fire.tracking.status === "ok" ? `
           <div style="font-size:1.05em"><b class="${fire.tracking.cum_delta >= 0 ? "pos" : "neg"}">${fire.tracking.verdict}</b>
             — total ${fire.tracking.cum_delta >= 0 ? "+" : ""}${fmt.pln(fire.tracking.cum_delta)} vs plan</div>
@@ -124,7 +124,7 @@ async function renderForecasts(el) {
     </div>` : ""}
 
     ${stress ? `<div class="card mt" style="border-left:4px solid #ff8c66">
-      <h3 style="margin-top:0">🧯 Stress test — financial fire drill</h3>
+      <h3>🧯 Stress test — financial fire drill</h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">Deterministic what-ifs computed from your data (no simulation, no AI). The point: know the answers <i>before</i> markets ask the questions.</div>
       <div class="grid cols-3">
         ${stress.scenarios.map((sc) => `<div class="card" style="margin:0">
@@ -139,7 +139,7 @@ async function renderForecasts(el) {
     </div>` : ""}
 
     ${traj0 ? `<div class="card mt" style="border-left:4px solid var(--violet)">
-      <h3 style="margin-top:0">🌫️ Net-worth trajectory — ${traj0.months}-month cone with scenarios</h3>
+      <h3>🌫️ Net-worth trajectory — ${traj0.months}-month cone with scenarios</h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">The invested part (ETF + employer stock + retirement) grows with a ${traj0.assumptions.drift_annual_pct}%/yr drift
         + ${traj0.assumptions.method}; the rest accrues the surplus and net vest cash (${fmt.pln(traj0.assumptions.flow_monthly)}/mo), the bonus lands in month ${traj0.assumptions.bonus_month}.
         Stock/USD shocks are one-off today — they show how much they matter, not where they go.</div>
@@ -154,7 +154,7 @@ async function renderForecasts(el) {
     </div>` : ""}
 
     ${calib && calib.by_horizon && calib.by_horizon.length ? `<div class="card mt" style="border-left:4px solid var(--accent)">
-      <h3 style="margin-top:0">🎯 Forecast calibration — per ticker × horizon <span class="muted" style="font-weight:normal;font-size:.75em">(${calib.total_scored} settled · volatility regime: ${calib.regime.label})</span></h3>
+      <h3>🎯 Forecast calibration — per ticker × horizon <span class="muted" style="font-weight:normal;font-size:.75em">(${calib.total_scored} settled · volatility regime: ${calib.regime.label})</span></h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">The p10–p90 band should cover ~80%. "Too narrow" = volatility underestimated (the miss direction tells which way),
         "too wide" = a uselessly cautious band. Winkler = band width + a penalty per miss, as % of price — lower is better. New bands use a rolling window of 120 own settlements
         per horizon and a VIX regime multiplier; the "self-cal." column shows how the already-calibrated ones score.</div>
@@ -163,7 +163,7 @@ async function renderForecasts(el) {
           <td style="text-align:right" class="${h.verdict === "ok" ? "pos" : "warn"}"><b>${h.coverage_pct}%</b></td>
           <td style="text-align:right" class="muted">${h.below_pct}% / ${h.above_pct}%</td><td style="text-align:right">${h.winkler_pct}%</td>
           <td>${h.verdict === "ok" ? "🟢" : "🟡"} ${h.verdict}</td></tr>`).join("")}</tbody></table>
-      <details class="mt"><summary class="muted" style="cursor:pointer">Per ticker (${calib.by_ticker.length} pairs)</summary>
+      <details class="mt"><summary class="muted">Per ticker (${calib.by_ticker.length} pairs)</summary>
         <div style="overflow-x:auto"><table class="mt" style="font-size:.88em"><thead><tr><th>Ticker</th><th>Horizon</th><th style="text-align:right">n</th><th style="text-align:right">Coverage</th><th style="text-align:right">↓ / ↑</th><th style="text-align:right">Winkler</th><th style="text-align:right">self-cal.</th><th>Verdict</th></tr></thead>
           <tbody>${calib.by_ticker.map((r) => `<tr><td><b>${r.ticker}</b></td><td>${r.horizon_days} d</td><td style="text-align:right">${r.n}</td>
             <td style="text-align:right" class="${r.verdict === "ok" ? "pos" : "warn"}">${r.coverage_pct}%</td>
@@ -212,9 +212,9 @@ async function renderForecasts(el) {
     tjChart = new Chart(document.getElementById("tjChart"), {
       type: "line",
       data: { labels: t.labels, datasets: [
-        { label: "p10", data: t.p10, borderColor: TOKENS.neg, backgroundColor: "transparent", borderWidth: 1, pointRadius: 0, tension: 0.2 },
-        { label: "p90", data: t.p90, borderColor: TOKENS.pos, backgroundColor: "rgba(110,168,254,0.12)", fill: "-1", borderWidth: 1, pointRadius: 0, tension: 0.2 },
-        { label: "median", data: t.p50, borderColor: TOKENS.accent, backgroundColor: "transparent", borderWidth: 3, pointRadius: 0, tension: 0.2 },
+        { label: "p10", data: t.p10, borderColor: TOKENS.neg, backgroundColor: "transparent", borderWidth: 1, tension: 0.2 },
+        { label: "p90", data: t.p90, borderColor: TOKENS.pos, backgroundColor: "rgba(110,168,254,0.12)", fill: "-1", borderWidth: 1, tension: 0.2 },
+        { label: "median", data: t.p50, borderColor: TOKENS.accent, backgroundColor: "transparent", borderWidth: 3, tension: 0.2 },
       ] },
       options: { interaction: { mode: "index", intersect: false },
         plugins: { tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt.pln(c.parsed.y)}` } } },
@@ -242,10 +242,10 @@ async function renderForecasts(el) {
         datasets: [
           ...names.map((n, i) => ({
             label: n, data: fire.series[n], borderColor: colors[i],
-            backgroundColor: "transparent", borderWidth: i === 1 ? 3 : 2, pointRadius: 0, tension: 0.2,
+            backgroundColor: "transparent", borderWidth: i === 1 ? 3 : 2, tension: 0.2,
           })),
           { label: "target", data: fire.labels.map(() => fire.target),
-            borderColor: "#888", borderDash: [6, 4], pointRadius: 0, borderWidth: 1 },
+            borderColor: "#888", borderDash: [6, 4], borderWidth: 1 },
         ],
       },
       options: {
@@ -268,7 +268,7 @@ async function renderForecasts(el) {
           { label: "Saved so far", data: fire.property.series, borderColor: CHART_COLORS[4],
             backgroundColor: "transparent", borderWidth: 3, pointRadius: 2, tension: 0.2 },
           { label: "down-payment target", data: yrs.map(() => fire.property.target),
-            borderColor: "#888", borderDash: [6, 4], pointRadius: 0, borderWidth: 1 },
+            borderColor: "#888", borderDash: [6, 4], borderWidth: 1 },
         ],
       },
       options: {

@@ -1,21 +1,10 @@
 function marketBriefHtml(b, controls) {
-  if (!b || !b.headline) {
-    return `<div class="card"><div class="row" style="align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">🧭 Market brief</h3>${controls || ""}</div>
-      <div class="muted">No saved brief yet — key moves, macro context and a per-position stance,
-        authored by you or any AI assistant. Fill it with the box below.</div>
-      <details class="mt"><summary style="cursor:pointer"><b>➕ Fill it now</b> (paste JSON from any AI assistant)</summary>
-        <div class="muted mt" style="font-size:.85em">1) <b>Copy AI prompt</b> → paste into any assistant. 2) Paste the returned JSON below. 3) Save.</div>
-        <div class="row mt" style="gap:8px"><button data-copyprompt="analysis_market_brief">📋 Copy AI prompt</button><span class="muted" data-copied style="font-size:.8em"></span></div>
-        <textarea data-paste="analysis_market_brief" rows="5" class="mt" style="width:100%"></textarea>
-        <button class="primary mt" data-savejson="analysis_market_brief">Save</button>
-      </details></div>`;
-  }
   const hi = (b.highlights || []).map((h) => `<div class="card" style="margin:0">
       <div style="font-size:1.4em">${h.icon || "•"}</div>
       <div style="font-weight:600;margin:2px 0">${h.title}</div>
       <div class="muted" style="font-size:.9em">${h.text}</div></div>`).join("");
   const geo = (b.geopolitics || []).map((g) => `<details class="mt">
-      <summary style="cursor:pointer;font-weight:600">${g.title}</summary>
+      <summary style="font-weight:600">${g.title}</summary>
       <div class="muted mt" style="font-size:.92em">${g.text}</div></details>`).join("");
   const stanceColor = (s) => /sell/i.test(s) ? TOKENS.pos : /hold|core/i.test(s) ? TOKENS.accent
     : /accumulate|dca|buduj|stopniowo/i.test(s) ? TOKENS.warn : "#9aa";
@@ -47,8 +36,8 @@ function marketBriefHtml(b, controls) {
       <div class="mt">${b.headline}</div>
     </div>
     ${hi ? `<div class="grid cols-4 mt">${hi}</div>` : ""}
-    ${geo ? `<div class="card mt"><h3 style="margin-top:0">🌍 Context — what drives the moves</h3>${geo}</div>` : ""}
-    ${pos ? `<div class="card mt"><h3 style="margin-top:0">🎯 What to do about it — per position</h3>
+    ${geo ? `<div class="card mt"><h3>🌍 Context — what drives the moves</h3>${geo}</div>` : ""}
+    ${pos ? `<div class="card mt"><h3>🎯 What to do about it — per position</h3>
       <table><thead><tr><th>Ticker</th><th>Stance</th><th>Rationale</th></tr></thead>
       <tbody>${pos}</tbody></table>
       ${b.fx_note ? `<div class="muted mt" style="border-left:3px solid var(--amber);padding-left:8px">💱 ${b.fx_note}</div>` : ""}</div>` : ""}
@@ -131,7 +120,7 @@ async function renderMarket(el) {
               const w = a.slice(Math.max(0, i - 6), i + 1);
               return +(w.reduce((x, h) => x + h.score, 0) / w.length).toFixed(2);
             }), borderColor: TOKENS.accent, backgroundColor: "transparent",
-            tension: 0.35, pointRadius: 0, borderDash: [5, 4] }] },
+            tension: 0.35, borderDash: [5, 4] }] },
       options: { plugins: { legend: { display: false } },
         scales: { y: { min: 0, max: radar.max_score } } },
     }));
@@ -276,11 +265,11 @@ async function renderMarket(el) {
       data: {
         labels: shown.map((h) => h.date),
         datasets: [
-          { label: "Bollinger upper", data: bUp, borderColor: "#35c98a55", borderDash: [2, 3], pointRadius: 0, fill: false },
-          { label: "Bollinger lower", data: bLow, borderColor: "#35c98a55", borderDash: [2, 3], pointRadius: 0, fill: "-1", backgroundColor: "#35c98a12" },
-          { label: ticker, data: closes, borderColor: TOKENS.accent, tension: 0.2, pointRadius: 0 },
-          { label: "SMA50", data: smaShown(50), borderColor: TOKENS.warn, borderDash: [4, 4], pointRadius: 0 },
-          { label: "SMA200", data: smaShown(200), borderColor: "#b78cff", borderDash: [4, 4], pointRadius: 0 },
+          { label: "Bollinger upper", data: bUp, borderColor: "#35c98a55", borderDash: [2, 3], fill: false },
+          { label: "Bollinger lower", data: bLow, borderColor: "#35c98a55", borderDash: [2, 3], fill: "-1", backgroundColor: "#35c98a12" },
+          { label: ticker, data: closes, borderColor: TOKENS.accent, tension: 0.2 },
+          { label: "SMA50", data: smaShown(50), borderColor: TOKENS.warn, borderDash: [4, 4] },
+          { label: "SMA200", data: smaShown(200), borderColor: "#b78cff", borderDash: [4, 4] },
         ],
       },
       options: { interaction: { mode: "index", intersect: false },
@@ -301,9 +290,9 @@ async function renderMarket(el) {
     rsiChart = trackChart(new Chart(rsiEl, {
       type: "line",
       data: { labels: shown.map((h) => h.date), datasets: [
-        { label: "RSI(14)", data: rsi, borderColor: TOKENS.amber, pointRadius: 0, tension: 0.2 },
-        { label: "70", data: shown.map(() => 70), borderColor: "#ff7b7b33", borderDash: [3, 3], pointRadius: 0 },
-        { label: "30", data: shown.map(() => 30), borderColor: "#35c98a33", borderDash: [3, 3], pointRadius: 0 },
+        { label: "RSI(14)", data: rsi, borderColor: TOKENS.amber, tension: 0.2 },
+        { label: "70", data: shown.map(() => 70), borderColor: "#ff7b7b33", borderDash: [3, 3] },
+        { label: "30", data: shown.map(() => 30), borderColor: "#35c98a33", borderDash: [3, 3] },
       ] },
       options: { interaction: { mode: "index", intersect: false }, scales: { y: { min: 0, max: 100 } },
         plugins: { legend: { labels: { filter: (i) => i.text === "RSI(14)" } } } },
@@ -327,21 +316,6 @@ async function renderMarket(el) {
   });
 
   await loadTable();
-
-  const PROMPTS = {
-    analysis_market_brief: `Write a short market brief for my portfolio and return ONLY valid JSON: {"headline": str, "as_of": "YYYY-MM-DD", "highlights": [{"icon": "emoji", "title": str, "text": str}], "geopolitics": [{"title": str, "text": str}], "positions": [{"ticker": str, "stance": "hold|add|trim|watch", "text": str}]}. Ask me for my tickers first.`,
-  };
-  el.querySelectorAll("[data-copyprompt]").forEach((b) => b.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(PROMPTS[b.dataset.copyprompt] || "");
-    const hint = b.parentElement.querySelector("[data-copied]"); if (hint) hint.textContent = "copied ✓";
-  }));
-  el.querySelectorAll("[data-savejson]").forEach((b) => b.addEventListener("click", async () => {
-    const key = b.dataset.savejson;
-    const raw = el.querySelector(`[data-paste="${key}"]`).value.trim();
-    try { JSON.parse(raw); } catch (e) { alert("That is not valid JSON: " + e.message); return; }
-    await api.put("/api/settings", { [key]: raw });
-    route();
-  }));
 
   el.querySelectorAll("[data-briefview]").forEach((b) => b.addEventListener("click", () => {
     localStorage.setItem("brief_view", b.dataset.briefview); route();

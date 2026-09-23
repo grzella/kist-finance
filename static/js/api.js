@@ -73,7 +73,6 @@ const api = {
 };
 
 const fmt = {
-  pln: (v) => v == null ? "—" : new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN", maximumFractionDigits: 0 }).format(v),
   usd: (v) => v == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v),
   num: (v, d = 2) => v == null ? "—" : Number(v).toLocaleString("pl-PL", { maximumFractionDigits: d }),
   pct: (v, d = 1) => v == null ? "—" : `${Number(v).toFixed(d)}%`,
@@ -120,6 +119,39 @@ function esc(s) {
 // ---------- collapsible explanations: short label, details on click ----------
 function help(html, label = "ℹ️ how to read this") {
   return `<details class="help"><summary>${label}</summary><div>${html}</div></details>`;
+}
+
+// ---------- optional research as JSON: copy the AI prompt, paste the answer, save it into /api/settings[key] ----------
+function aiJsonBox(key, prompt) {
+  return `<details class="mt"><summary><b>➕ Fill it now</b> (paste JSON from any AI assistant)</summary>
+    <div class="muted mt" style="font-size:.85em">1) Click <b>Copy AI prompt</b> and paste it into any assistant (ChatGPT, Claude, the local model…). 2) Paste the JSON it returns below. 3) Save.</div>
+    <div class="row mt" style="gap:8px">
+      <button data-copyprompt="${esc(prompt)}">📋 Copy AI prompt</button>
+      <span class="muted" data-copied style="font-size:.8em"></span>
+    </div>
+    <textarea data-paste rows="5" class="mt" style="width:100%" placeholder='{"headline": "...", ...}'></textarea>
+    <button class="primary mt" data-savejson="${key}">Save</button>
+  </details>`;
+}
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest && e.target.closest("[data-copyprompt],[data-savejson]");
+  if (!b) return;
+  const box = b.closest("details");
+  if (b.dataset.copyprompt) {
+    await navigator.clipboard.writeText(b.dataset.copyprompt);
+    box.querySelector("[data-copied]").textContent = "copied ✓";
+    return;
+  }
+  const raw = box.querySelector("[data-paste]").value.trim();
+  try { JSON.parse(raw); } catch (err) { alert("That is not valid JSON: " + err.message); return; }
+  await api.put("/api/settings", { [b.dataset.savejson]: raw });
+  route();
+});
+
+// Control Center sub-navigation, shared by #control, #reminders and #data.
+function ctrlTabs(active) {
+  return `<div class="row" style="gap:8px;margin-bottom:12px">${[["control", "🛠️ Automation &amp; health"], ["reminders", "🔔 Reminders"], ["data", "📊 Data in the app"]]
+    .map(([v, label]) => `<a href="#${v}" class="pill${v === active ? " active" : ""}">${label}</a>`).join("")}</div>`;
 }
 
 // ---------- inline editing (instead of prompt()): Enter saves, Esc cancels ----------
@@ -177,15 +209,14 @@ function toggleDemo(on) {
   location.reload();
 }
 
-function _maskInt(v) {
-  const d = Math.max(1, String(Math.floor(Math.abs(Number(v) || 0))).length);
-  let s = "";
-  for (let i = 0; i < d; i++) s += (i % 2 === 0 ? "0" : "1");
-  return s.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+function _mask01(digits) {  // "01010" in groups of 3, one char per digit
+  const d = Math.max(1, digits);
+  return "01".repeat(d).slice(0, d).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
+function _maskInt(v) { return _mask01(String(Math.floor(Math.abs(Number(v) || 0))).length); }
 function _maskDec(n) { return n > 0 ? "01".repeat(Math.ceil(n / 2)).slice(0, n) : ""; }
 (function wrapDemo() {
-  const o = { pln: fmt.pln, usd: fmt.usd, num: fmt.num, pct: fmt.pct, grouped: fmt.grouped, eur: fmt.eur };
+  const o = { usd: fmt.usd, num: fmt.num, pct: fmt.pct, grouped: fmt.grouped };
   const _CURSYM = { PLN: ["", " zł"], EUR: ["€", ""], USD: ["$", ""], GBP: ["£", ""], CHF: ["", " CHF"] };
   fmt.money = (v) => {
     if (v == null) return "—";
@@ -200,15 +231,14 @@ function _maskDec(n) { return n > 0 ? "01".repeat(Math.ceil(n / 2)).slice(0, n) 
   fmt.grouped = (v) => (v == null || v === "" || isNaN(Number(v))) ? "" : (demoOn() ? _maskInt(v) : o.grouped(v));
 })();
 
-// Semantic colors as HEX for canvas/Chart.js — <canvas> cannot resolve CSS variables
-// (a "var(--pos)" fill silently paints black). Keep in sync with :root in app.css.
-const TOKENS = { pos: "#35c98a", neg: "#ff7b7b", warn: "#f2c74f", accent: "#6ea8fe", violet: "#a78bfa", amber: "#e0a458", muted: "#98a1b3", text: "#e8eaf0", inset: "rgba(255,255,255,0.05)", empty: "rgba(255,255,255,0.08)" };
-const CHART_COLORS = ["#6ea8fe", "#35c98a", "#f2c74f", "#ff7b7b", "#a78bfa", "#5fd3d9", "#ff9f6b", "#98a1b3"];
+// <canvas> cannot resolve CSS variables (a "var(--pos)" fill silently paints black), so
+// applyChartTheme() copies the current theme's values from :root in app.css into
+// TOKENS/CHART_COLORS (const object/array — mutating the contents is fine).
+const TOKENS = {};
+const CHART_COLORS = [];
 // Charts in the same "voice" as the rest of the UI: thin grids, no axis borders, 2px lines,
 // no points, point-style legend. Set once, globally — views need not repeat it.
 if (window.Chart) {
-  Chart.defaults.color = "#98a1b3";
-  Chart.defaults.borderColor = "rgba(255,255,255,0.06)";
   Chart.defaults.font.family = '"Inter", "SF Pro Text", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
   Chart.defaults.font.size = 11.5;
   Chart.defaults.elements.line.borderWidth = 2;
@@ -219,40 +249,27 @@ if (window.Chart) {
   Chart.defaults.plugins.legend.labels.usePointStyle = true;
   Chart.defaults.plugins.legend.labels.boxWidth = 6;
   Chart.defaults.plugins.legend.labels.padding = 14;
-  Chart.defaults.plugins.tooltip.backgroundColor = "#1e222c";
-  Chart.defaults.plugins.tooltip.titleColor = "#e8eaf0";
-  Chart.defaults.plugins.tooltip.bodyColor = "#e8eaf0";
-  Chart.defaults.plugins.tooltip.borderColor = "rgba(255,255,255,0.08)";
   Chart.defaults.plugins.tooltip.borderWidth = 1;
   Chart.defaults.plugins.tooltip.cornerRadius = 8;
   Chart.defaults.plugins.tooltip.padding = 10;
-  Chart.defaults.scale.grid.color = "rgba(255,255,255,0.05)";
   Chart.defaults.scale.grid.drawBorder = false;
   Chart.defaults.scale.border = { display: false };
   Chart.defaults.scale.ticks.padding = 6;
 }
 
-// Chart colours per theme: canvas cannot read CSS variables, so TOKENS/CHART_COLORS are
-// swapped in place (const object/array — mutating the contents is fine).
-const _CHART_THEMES = {
-  dark: { tokens: { muted: "#98a1b3", text: "#e8eaf0", inset: "rgba(255,255,255,0.05)", pos: "#35c98a", neg: "#ff7b7b", warn: "#f2c74f", accent: "#6ea8fe", violet: "#a78bfa", amber: "#e0a458" },
-    colors: ["#6ea8fe", "#35c98a", "#f2c74f", "#ff7b7b", "#a78bfa", "#5fd3d9", "#ff9f6b", "#98a1b3"],
-    grid: "rgba(255,255,255,0.05)", border: "rgba(255,255,255,0.06)", tipBg: "#1e222c", tipText: "#e8eaf0", tipBorder: "rgba(255,255,255,0.08)" },
-  light: { tokens: { muted: "#5c6577", text: "#151a26", inset: "rgba(15,23,42,0.05)", pos: "#178a5c", neg: "#d64545", warn: "#b7860b", accent: "#2f6fe4", violet: "#6d4fd6", amber: "#b8742a" },
-    colors: ["#2f6fe4", "#178a5c", "#b7860b", "#d64545", "#6d4fd6", "#1f9aa5", "#d8682b", "#5c6577"],
-    grid: "rgba(15,23,42,0.07)", border: "rgba(15,23,42,0.08)", tipBg: "#ffffff", tipText: "#151a26", tipBorder: "rgba(15,23,42,0.12)" },
-};
 function applyChartTheme(t) {
-  const th = _CHART_THEMES[t] || _CHART_THEMES.dark;
-  Object.assign(TOKENS, th.tokens);
-  CHART_COLORS.splice(0, CHART_COLORS.length, ...th.colors);
+  const css = getComputedStyle(document.documentElement);
+  const v = (name) => css.getPropertyValue("--" + name).trim();
+  const dark = t !== "light", ink = dark ? "255,255,255" : "15,23,42";  // hairline tints, no CSS var
+  ["pos", "neg", "warn", "accent", "violet", "amber", "muted", "text"].forEach((k) => { TOKENS[k] = v(k); });
+  TOKENS.empty = `rgba(${ink},0.08)`;
+  CHART_COLORS.splice(0, CHART_COLORS.length, ...["accent", "pos", "warn", "neg", "violet", "teal", "orange", "muted"].map(v));
   if (!window.Chart) return;
-  Chart.defaults.color = th.tokens.muted;
-  Chart.defaults.borderColor = th.border;
-  Chart.defaults.scale.grid.color = th.grid;
-  Chart.defaults.plugins.tooltip.backgroundColor = th.tipBg;
-  Chart.defaults.plugins.tooltip.titleColor = th.tipText;
-  Chart.defaults.plugins.tooltip.bodyColor = th.tipText;
-  Chart.defaults.plugins.tooltip.borderColor = th.tipBorder;
+  Chart.defaults.color = TOKENS.muted;
+  Chart.defaults.borderColor = `rgba(${ink},${dark ? 0.06 : 0.08})`;
+  Chart.defaults.scale.grid.color = `rgba(${ink},${dark ? 0.05 : 0.07})`;
+  Chart.defaults.plugins.tooltip.backgroundColor = v(dark ? "panel2" : "panel");
+  Chart.defaults.plugins.tooltip.titleColor = Chart.defaults.plugins.tooltip.bodyColor = TOKENS.text;
+  Chart.defaults.plugins.tooltip.borderColor = `rgba(${ink},${dark ? 0.08 : 0.12})`;
 }
 applyTheme(themeGet());

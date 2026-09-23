@@ -67,23 +67,21 @@ async function renderRecs(el) {
         ${engineItems.map((r, i) => `<tr>
           <td><span class="badge">${r.area}</span>${r.since ? `<div class="muted" style="font-size:.75em;margin-top:3px">since ${r.since}</div>` : ""}</td>
           <td style="font-size:.92em">${r.title
-            ? `<b>${esc(r.title)}</b><details><summary class="muted" style="cursor:pointer">details</summary><div class="mt" style="white-space:pre-line">${esc(r.text)}</div></details>`
+            ? `<b>${esc(r.title)}</b><details><summary class="muted">details</summary><div class="mt" style="white-space:pre-line">${esc(r.text)}</div></details>`
             : r.text.length > 160
-            ? `${esc(r.text.slice(0, 160))}… <details style="display:inline"><summary class="muted" style="display:inline;cursor:pointer">more</summary><div class="mt">${esc(r.text)}</div></details>`
+            ? `${esc(r.text.slice(0, 160))}… <details style="display:inline"><summary class="muted" style="display:inline">more</summary><div class="mt">${esc(r.text)}</div></details>`
             : esc(r.text)}</td>
           <td><button data-eadd="${i}">→ backlog</button><div class="mt">${outcomeSel(r.key, r.outcome)}</div></td>
         </tr>`).join("")}
         </tbody>
       </table>
-      ${(rec.history || []).length ? `<details class="mt"><summary class="muted" style="cursor:pointer">✅ Resolved / gone (${rec.history.length})</summary>
+      ${(rec.history || []).length ? `<details class="mt"><summary class="muted">✅ Resolved / gone (${rec.history.length})</summary>
         <ul class="muted mt" style="padding-left:18px;font-size:.88em">${rec.history.map((h) => `<li><b>[${h.area}]</b> ${h.text.slice(0, 140)}${h.text.length > 140 ? "…" : ""} <span style="opacity:.7">(${h.since} → ${h.resolved})</span> ${outcomeSel(h.key, h.outcome)}</li>`).join("")}</ul></details>` : ""}
-      ${review ? `<details class="mt"><summary class="muted" style="cursor:pointer">📋 Monthly recommendation review — execution ${review.execution_rate_pct != null ? review.execution_rate_pct + "%" : "—"} (${review.executed}/${review.total} done${review.pending.length ? `, <b class="warn">${review.pending.length} without an outcome</b>` : ""})</summary>
+      ${review ? `<details class="mt"><summary class="muted">📋 Monthly recommendation review — execution ${review.execution_rate_pct != null ? review.execution_rate_pct + "%" : "—"} (${review.executed}/${review.total} done${review.pending.length ? `, <b class="warn">${review.pending.length} without an outcome</b>` : ""})</summary>
         ${help(`A recommendation that disappeared is not yet a success — the outcome (done / rejected / obsolete) says whether the engine was worth following. Resolved ones without an outcome land in Reminders after 7 days.`, "what “disappeared” means")}
         <table class="mt" style="font-size:.88em"><thead><tr><th>Month</th><th style="text-align:right">new</th><th style="text-align:right">resolved</th><th style="text-align:right">done</th><th style="text-align:right">rejected</th><th style="text-align:right">obsolete</th><th style="text-align:right">no outcome</th></tr></thead>
           <tbody>${review.months.map((m) => `<tr><td><b>${m.month}</b></td><td style="text-align:right">${m.new}</td><td style="text-align:right">${m.resolved}</td><td style="text-align:right" class="pos">${m.executed}</td><td style="text-align:right">${m.rejected}</td><td style="text-align:right" class="muted">${m.stale}</td><td style="text-align:right" class="${m.no_outcome ? "warn" : "muted"}">${m.no_outcome}</td></tr>`).join("")}</tbody></table>
       </details>` : ""}
-      <table style="display:none"><tbody>
-      </table>
     </div>
 
     <div class="card mt" style="border-left:4px solid #b78cff">

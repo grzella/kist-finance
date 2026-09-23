@@ -12,11 +12,7 @@ async function renderReminders(el) {
       (upcoming vests, a fixed-rate period ending, periodic security/backup nudges; they can't be deleted, they disappear
       when the underlying fact changes) — and <b>manual</b> ones you add below. All reminders are also indexed into the
       AI's private memory, so AI answers and the recommendations review can take them into account.</div>
-    <div class="row" style="gap:8px;margin-bottom:12px">
-      <a href="#control" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid var(--border);color:var(--text)">🛠️ Automation &amp; health</a>
-      <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;background:${CHART_COLORS[0]};color:#fff">🔔 Reminders</a>
-      <a href="#data" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid var(--border);color:var(--text)">📊 Data in the app</a>
-    </div>
+    ${ctrlTabs("reminders")}
     <div class="muted" style="margin-bottom:12px">Automatic (from data: vests, bonus, fixed-rate end, targets, reviews)
       + your own. Sorted by due date.</div>
 

@@ -23,30 +23,18 @@ async function renderOffers(el) {
     </div>` : "";
   el.innerHTML = `
     <h2>💼 Career — offers, market, growth</h2>
-    <details style="margin:6px 0 12px;padding:8px 12px;background:var(--accent)14;border-radius:8px">
-      <summary style="cursor:pointer;font-size:.9em"><b>👀 What this tab is (and is not)</b> — market monitoring, not job hunting <span class="muted" style="font-weight:normal">· click for details</span></summary>
-      <div class="muted" style="font-size:.87em;margin-top:6px">This tab watches the <b>job market as a signal</b>, the same way the Market tab watches stock prices:
-        what is the sentiment around your role, how many offers reach you <i>without applying anywhere</i>, and how demand shifts over time —
-        especially as AI reshapes engineering roles. Tracking inbound offers measures your market value and the health of your niche;
-        it is not a sign of looking for a new job. Think of it as a personal labor-market index.</div>
-    </details>
+    ${CAREER_TAB_INFO}
     <div style="margin-bottom:10px">
-      <a href="#career" style="text-decoration:none;display:inline-block;padding:6px 12px;
-        border:1px solid ${CHART_COLORS[1]};border-radius:6px;color:${CHART_COLORS[1]};font-size:.9em">
-        🧭 Long-term career analysis →</a>
-      <a href="#commits" style="text-decoration:none;display:inline-block;padding:6px 12px;margin-left:6px;
-        border:1px solid var(--pos);border-radius:6px;color:var(--pos);font-size:.9em">
+      <a href="#career" class="pill pos">🧭 Long-term career analysis →</a>
+      <a href="#commits" class="pill pos" style="margin-left:6px">
         🧑‍💻 Committing${gh ? ` — today ${gh.today}, streak ${gh.streak}🔥` : ""} →</a></div>
     ${statsBar}
     <div class="muted" style="margin:6px 0 12px;font-size:.88em">Reference point (auto): <b>${s ? fmt.pln(s.current) : "—"}</b>/mo —
       current total (base + bonus + RSU, computed dynamically from the RSU stock price). Offer deltas and goal impact are computed against this.</div>
     <div class="card" id="baroCard">
-      <div class="row" style="justify-content:space-between;align-items:baseline;flex-wrap:wrap">
-        <h3 style="margin:0">📈 Market barometer — demand for your roles (index + your inbound)</h3>
-        <button id="baroCfg" style="font-size:.78em">⚙️ roles / geography</button>
-      </div>
+      <h3 style="margin:0">📈 Market barometer — demand for your roles (index + your inbound)</h3>
       <div class="muted" style="font-size:.85em;margin:6px 0 8px" id="baroDesc">Demand trend for your roles as an <b>index (base 100)</b> — not a raw count, which depends on how it's collected and misleads. Against your inbound (bars) it shows whether growing inquiries are your brand or the market (and whether AI is shrinking it). Raw counts and source are in the tooltip.</div>
-      <div id="baroCfgBox" style="display:none" class="mt"></div>
+      <details class="mt"><summary class="pill" style="font-size:.78em">⚙️ roles / geography</summary><div id="baroCfgBox" class="mt"></div></details>
       <canvas id="baroChart" height="95" class="mt"></canvas>
       <div id="baroTable" class="mt"></div>
     </div>
@@ -130,26 +118,21 @@ async function renderOffers(el) {
   const bdesc = document.getElementById("baroDesc");
   if (bdesc) bdesc.innerHTML += ` <span class="muted">Geography: <b>${geoTxt}</b>. Two series: <b>📈 demand</b> (Google Trends, with history) and <b>🎯 openings</b> (JSearch, real counts from now on — needs a key).</span>`;
 
-  const cfgBtn = document.getElementById("baroCfg"); const cfgBox = document.getElementById("baroCfgBox");
-  if (cfgBtn && cfgBox) cfgBtn.addEventListener("click", () => {
-    if (cfgBox.style.display === "none") {
-      cfgBox.style.display = "block";
-      cfgBox.innerHTML = `<div class="muted" style="font-size:.82em">Geography (comma-separated) and roles (one per line, <code>Label = title query</code>). The n8n collector uses the <b>query</b> to count postings on job boards.</div>
-        <input id="baroGeo" value="${(baro.geo || []).join(", ")}" style="width:100%;margin-top:6px" placeholder="Remote, US, UK">
-        <textarea id="baroRoles" rows="3" style="width:100%;margin-top:6px" placeholder="Senior Engineer = senior software engineer">${esc(broles.map((r) => `${r.label} = ${r.query || r.label}`).join("\n"))}</textarea>
-        <button class="primary mt" id="baroSave" style="font-size:.85em">Save config</button>`;
-      document.getElementById("baroSave").addEventListener("click", async () => {
-        const geo = document.getElementById("baroGeo").value.split(",").map((s) => s.trim()).filter(Boolean);
-        const roles = document.getElementById("baroRoles").value.split("\n").map((ln) => {
-          const [label, query] = ln.split("=").map((s) => s.trim());
-          if (!label) return null;
-          return { key: label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "role",
-                   label, query: query || label };
-        }).filter(Boolean);
-        await api.put("/api/settings", { barometer_config: JSON.stringify({ geo, roles }) });
-        route();
-      });
-    } else { cfgBox.style.display = "none"; }
+  const cfgBox = document.getElementById("baroCfgBox");
+  cfgBox.innerHTML = `<div class="muted" style="font-size:.82em">Geography (comma-separated) and roles (one per line, <code>Label = title query</code>). The n8n collector uses the <b>query</b> to count postings on job boards.</div>
+    <input id="baroGeo" value="${(baro.geo || []).join(", ")}" style="width:100%;margin-top:6px" placeholder="Remote, US, UK">
+    <textarea id="baroRoles" rows="3" style="width:100%;margin-top:6px" placeholder="Senior Engineer = senior software engineer">${esc(broles.map((r) => `${r.label} = ${r.query || r.label}`).join("\n"))}</textarea>
+    <button class="primary mt" id="baroSave" style="font-size:.85em">Save config</button>`;
+  document.getElementById("baroSave").addEventListener("click", async () => {
+    const geo = document.getElementById("baroGeo").value.split(",").map((s) => s.trim()).filter(Boolean);
+    const roles = document.getElementById("baroRoles").value.split("\n").map((ln) => {
+      const [label, query] = ln.split("=").map((s) => s.trim());
+      if (!label) return null;
+      return { key: label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "role",
+               label, query: query || label };
+    }).filter(Boolean);
+    await api.put("/api/settings", { barometer_config: JSON.stringify({ geo, roles }) });
+    route();
   });
 
   const btbl = document.getElementById("baroTable");

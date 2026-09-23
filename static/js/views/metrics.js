@@ -44,7 +44,7 @@ async function renderMetrics(el) {
         : `<div class="muted">The first row appears after storing a point (button above) or at the next scheduled run.</div>`}
     </div>
 
-    <details class="card mt"><summary style="cursor:pointer"><b>Definitions and thresholds</b></summary>
+    <details class="card mt"><summary><b>Definitions and thresholds</b></summary>
       <table class="mt" style="font-size:.9em"><tbody>${cur.items.map((i) => `<tr><td><b>${i.label}</b></td><td class="muted">${i.note}${i.explain ? `<div class="mt" style="font-size:.93em"><b>What it means:</b> ${i.explain.what}<br><b>How it is computed:</b> ${i.explain.how}<br><b>Why it matters:</b> ${i.explain.why}</div>` : ""}</td><td style="white-space:nowrap">target ${i.target}</td></tr>`).join("")}</tbody></table>
     </details>`;
 
@@ -61,7 +61,7 @@ async function renderMetrics(el) {
         datasets: [
           { label: "net worth", data: pts.map((p) => p.net_worth), borderColor: TOKENS.pos, backgroundColor: "transparent", borderWidth: 3, pointRadius: 2, tension: 0.2 },
           { label: "liquid", data: pts.map((p) => p.liquid), borderColor: TOKENS.accent, backgroundColor: "transparent", borderWidth: 2, pointRadius: 2, tension: 0.2, spanGaps: true },
-          { label: "debt", data: pts.map((p) => p.debt), borderColor: TOKENS.neg, backgroundColor: "transparent", borderWidth: 1, borderDash: [5, 4], pointRadius: 0, tension: 0.2, spanGaps: true },
+          { label: "debt", data: pts.map((p) => p.debt), borderColor: TOKENS.neg, backgroundColor: "transparent", borderWidth: 1, borderDash: [5, 4], tension: 0.2, spanGaps: true },
         ],
       },
       options: { interaction: { mode: "index", intersect: false },

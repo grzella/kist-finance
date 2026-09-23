@@ -47,11 +47,7 @@ async function renderControl(el) {
   };
   el.innerHTML = `
     <h2>🛠️ Control Center</h2>
-    <div class="row" style="gap:8px;margin-bottom:12px">
-      <a href="#control" style="text-decoration:none;padding:5px 12px;border-radius:6px;background:${CHART_COLORS[0]};color:#fff">🛠️ Automation &amp; health</a>
-      <a href="#reminders" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid var(--border);color:var(--text)">🔔 Reminders</a>
-      <a href="#data" style="text-decoration:none;padding:5px 12px;border-radius:6px;border:1px solid var(--border);color:var(--text)">📊 Data in the app</a>
-    </div>
+    ${ctrlTabs("control")}
     <div class="muted" style="margin-bottom:12px">Everything that should happen automatically: frequency, last update (date+time) and status.
       Checked: ${d.checked_at}.</div>
 
@@ -65,7 +61,7 @@ async function renderControl(el) {
 
     <div class="grid cols-2 mt">
       <div class="card" style="border-left:4px solid var(--warn);margin:0">
-        <h3 style="margin-top:0">🔬 Demo mode</h3>
+        <h3>🔬 Demo mode</h3>
         <div class="row" style="align-items:center;gap:12px">
           <button class="${demoOn() ? "danger" : "primary"}" id="demoToggle">${demoOn() ? "Disable demo mode" : "Enable demo mode"}</button>
           <span class="muted" style="font-size:.85em">Masks amounts with a 0-1 pattern (e.g. "010 101 PLN") — for screenshots without revealing figures.
@@ -73,7 +69,7 @@ async function renderControl(el) {
         </div>
       </div>
       <div class="card" style="border-left:4px solid var(--accent);margin:0">
-        <h3 style="margin-top:0">🌐 Currency</h3>
+        <h3>🌐 Currency</h3>
         <div class="row" style="align-items:center;gap:8px">
           <span>💱 <select id="curSel">${["PLN","EUR","USD","GBP","CHF"].map((c) => `<option ${c === (window.APP_CURRENCY || "PLN") ? "selected" : ""}>${c}</option>`).join("")}</select></span>
           <span class="muted" style="font-size:.85em">Applies everywhere amounts are shown. The app's UI is English-only.</span>
@@ -82,7 +78,7 @@ async function renderControl(el) {
     </div>
 
     ${ai ? `<div class="card mt" style="border-left:4px solid ${ai.ai_mode === "both" ? "#b78cff" : TOKENS.pos}">
-      <h3 style="margin-top:0">🤖 AI mode
+      <h3>🤖 AI mode
         <span class="badge" style="background:${ai.ai_mode === "both" ? "#b78cff22;color:#b78cff" : "var(--pos)22;color:var(--pos)"}">${ai.ai_mode === "both" ? "local + cloud" : "local only"}</span></h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">This mode governs <b>every AI feature in the app</b>:
         the "AI second opinion" on Recommendations, forecast narration and questions typed below. The default is local only —
@@ -110,7 +106,7 @@ async function renderControl(el) {
           <span class="muted">(technically: RAG, ${ragStatus.engine}${ragStatus.embedded ? ", " + ragStatus.embedded + " embedded" : ""})</span></div>
       </div>` : ""}
       ${aiLog && aiLog.stats.total ? `<details class="mt" style="font-size:.85em">
-        <summary style="cursor:pointer">📊 AI prompt log (${aiLog.stats.total}) — ${aiLog.stats.rag_grounded} RAG-grounded · ${aiLog.stats.cloud_calls} cloud calls</summary>
+        <summary>📊 AI prompt log (${aiLog.stats.total}) — ${aiLog.stats.rag_grounded} RAG-grounded · ${aiLog.stats.cloud_calls} cloud calls</summary>
         <div class="mt">${aiLog.recent.slice(0, 8).map((e) => { const ans = e.synthesis_text || e.cloud_text || e.local_text; return `<div style="border-top:1px solid #2a2f45;padding:6px 0">
           <div class="muted" style="font-size:.8em">${e.ts} · ${e.mode}${e.rag_used ? " · RAG" : ""}</div>
           <div><b>${esc(e.prompt)}</b></div>
@@ -119,7 +115,7 @@ async function renderControl(el) {
       </details>` : ""}
 
       <details class="mt" style="font-size:.85em" ${exp && exp.experiences.length ? "open" : ""}>
-        <summary style="cursor:pointer">🧠 Learned experiences (${(exp && exp.experiences.length) || 0})</summary>
+        <summary>🧠 Learned experiences (${(exp && exp.experiences.length) || 0})</summary>
         <div class="muted mt" style="font-size:.82em">Lessons distilled from answers you marked as good. They're indexed into the AI's memory (RAG) and injected as guidance on similar questions — so the assistant improves without retraining. Prune any that don't hold up.</div>
         <div class="mt">${(exp && exp.experiences.length) ? exp.experiences.map((x) => `<div style="border-top:1px solid #2a2f45;padding:6px 0;display:flex;gap:8px;align-items:flex-start">
           <div style="flex:1"><div style="white-space:pre-wrap;color:#c9cee0">${esc(x.lesson)}</div>
@@ -130,7 +126,7 @@ async function renderControl(el) {
     </div>` : ""}
 
     ${bk ? `<div class="card mt" style="border-left:4px solid var(--accent)">
-      <h3 style="margin-top:0">💾 Data backup
+      <h3>💾 Data backup
         <span class="badge" style="background:${bk.configured ? "var(--pos)22;color:var(--pos)" : "var(--warn)22;color:var(--warn)"}">${bk.configured ? "configured" : "not set"}</span></h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">Writes a consistent snapshot of the database into a folder your
         Google Drive / Dropbox / iCloud client already syncs. No API keys — your desktop client pushes the file to the cloud.</div>
@@ -156,7 +152,7 @@ async function renderControl(el) {
     </div>` : ""}
 
     <div class="card mt" style="border-left:4px solid var(--neg)">
-      <h3 style="margin-top:0">🧨 Data — fresh start</h3>
+      <h3>🧨 Data — fresh start</h3>
       <div class="row" style="align-items:center;gap:12px;flex-wrap:wrap">
         <button class="danger" id="wipeBtn">Wipe all data</button>
         <span class="muted" style="font-size:.85em">Deletes the local database (sample or your own — everything, incl. settings)

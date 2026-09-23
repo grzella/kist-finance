@@ -71,11 +71,6 @@ function trackChart(c) {
 const _DEMO_WORDS = [
   // Add your own sensitive words to mask in demo mode, e.g. [/CityName/g, "City-A"]
 ];
-function _mask01(digits) {
-  let s = "";
-  for (let i = 0; i < Math.max(1, digits.length); i++) s += (i % 2 === 0 ? "0" : "1");
-  return s.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-}
 function maskSensitiveText(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = [];
@@ -85,10 +80,10 @@ function maskSensitiveText(root) {
     _DEMO_WORDS.forEach(([re, rep]) => { t = t.replace(re, rep); });
     // mask financial figures in free text (number + unit), sparing dates/counters
     t = t.replace(/(\d[\d   .,]*\d|\d)[   ]?(zł|zl|PLN|EUR|USD|\$|€|k|tys\.?|mln|mld|%|szt\.?)(?=$|\b|\/|\s|,|\.|\))/g,
-      (m, num, unit) => _mask01(num.replace(/[^\d]/g, "")) + (/^[a-zA-Zł]/.test(unit) ? " " + unit : unit));
+      (m, num, unit) => _mask01(num.replace(/[^\d]/g, "").length) + (/^[a-zA-Zł]/.test(unit) ? " " + unit : unit));
     // mask amounts with the currency symbol BEFORE the number (e.g. $93.29, €120)
     t = t.replace(/([$€])[   ]?(\d[\d   .,]*\d|\d)/g,
-      (m, sym, num) => sym + _mask01(num.replace(/[^\d]/g, "")));
+      (m, sym, num) => sym + _mask01(num.replace(/[^\d]/g, "").length));
     if (t !== n.nodeValue) n.nodeValue = t;
   });
 }

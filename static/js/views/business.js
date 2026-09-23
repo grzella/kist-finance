@@ -3,7 +3,6 @@ async function renderBusiness(el) {
     api.get("/api/business"),
     api.get("/api/business/marketing").catch(() => ({ error: "no data" }))]);
   const cur = b.current;
-  const KIND_LABELS = { cost: "cost", revenue: "revenue" };
   el.innerHTML = `
     <h2>Business</h2>
     <div class="grid cols-4">
@@ -36,7 +35,7 @@ async function renderBusiness(el) {
       <div class="card"><h3>Cumulative result</h3><canvas id="bCum"></canvas></div>
     </div>
     ${!mkt.error ? `<div class="card mt" style="border-left:4px solid ${CHART_COLORS[4]}">
-      <h3 style="margin-top:0">📣 Ads performance (weekly)</h3>
+      <h3>📣 Ads performance (weekly)</h3>
       <div class="row" style="gap:20px;flex-wrap:wrap">
         <span>Spend (recent weeks): <b>€${fmt.num(mkt.recent_spend_eur)}</b></span>
         <span>Clicks: <b>${mkt.recent_clicks}</b></span>
@@ -46,15 +45,15 @@ async function renderBusiness(el) {
         <div class="muted">${mkt.weeks[0].summary || "—"}</div>
         ${mkt.weeks[0].recommendation ? `<div class="mt">💡 <b>Recommendation of the week:</b> ${esc(mkt.weeks[0].recommendation)}</div>` : ""}
       </div>` : ""}
-      ${mkt.insights.length ? `<details class="mt"><summary style="cursor:pointer"><b>Insights</b> (${mkt.insights.length}) — what works</summary>
+      ${mkt.insights.length ? `<details class="mt"><summary><b>Insights</b> (${mkt.insights.length}) — what works</summary>
         <ul style="padding-left:18px">${mkt.insights.map((i) =>
           `<li class="mt"><span class="badge">${i.category}</span> ${i.insight} <span class="muted">(confidence ${Math.round(i.confidence * 100)}%)</span></li>`).join("")}</ul>
       </details>` : ""}
-      ${mkt.hypotheses.length ? `<details class="mt"><summary style="cursor:pointer"><b>Active hypotheses</b> (${mkt.hypotheses.length}) — to test</summary>
+      ${mkt.hypotheses.length ? `<details class="mt"><summary><b>Active hypotheses</b> (${mkt.hypotheses.length}) — to test</summary>
         <ul style="padding-left:18px">${mkt.hypotheses.map((h) =>
           `<li class="mt"><b>${h.title}</b><div class="muted">${h.predicted_outcome || ""}</div></li>`).join("")}</ul>
       </details>` : ""}
-      <details class="mt"><summary class="muted" style="cursor:pointer">previous weeks</summary>
+      <details class="mt"><summary class="muted">previous weeks</summary>
         <table class="mt"><thead><tr><th>Week</th><th>Spend</th><th>Summary</th></tr></thead>
         <tbody>${mkt.weeks.slice(1).map((w) => `<tr><td>${w.week}</td><td>€${w.spend_eur}</td>
           <td class="muted" style="font-size:.85em">${esc((w.summary || "—").slice(0, 180))}…</td></tr>`).join("")}</tbody></table>
@@ -89,7 +88,7 @@ async function renderBusiness(el) {
       <th style="text-align:right">Amount</th><th></th></tr></thead><tbody>` +
       b.entries.map((e) => `<tr>
         <td>${e.date}</td>
-        <td><span class="badge">${KIND_LABELS[e.kind] || e.kind}</span></td>
+        <td><span class="badge">${e.kind}</span></td>
         <td>${e.category}</td>
         <td>${esc(e.description || "—")}</td>
         <td style="text-align:right" class="${e.kind === "revenue" ? "pos" : "neg"}">${fmt.pln(e.amount)}</td>

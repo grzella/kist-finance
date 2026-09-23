@@ -31,24 +31,16 @@ async function renderProperty(el) {
 
     ${hasAnalysis ? `<div class="card" style="border-left:4px solid var(--pos)">
       <div style="font-size:1.05em"><b>${a.headline}</b></div>
-      <div class="muted mt" style="font-size:.85em">As of ${a.as_of}${a.budget_eur ? ` · budget ${fmt.eur ? fmt.eur(a.budget_eur) : "€" + fmt.grouped(a.budget_eur)}` : ""}
+      <div class="muted mt" style="font-size:.85em">As of ${a.as_of}${a.budget_eur ? ` · budget €${fmt.grouped(a.budget_eur)}` : ""}
         ${propertyGoal ? ` · goal progress: ${fmt.pln(propertyGoal.current_amount)} / ${fmt.pln(propertyGoal.target_amount)}` : ""}</div>
     </div>` : `<div class="card">
       <div class="muted">No saved location research yet — the calculator below works standalone.
       To add a ranked location comparison, use the box below.</div>
-      <details class="mt"><summary style="cursor:pointer"><b>➕ Fill it now</b> (paste JSON from any AI assistant)</summary>
-        <div class="muted mt" style="font-size:.85em">1) Click <b>Copy AI prompt</b> and paste it into any assistant (ChatGPT, Claude, the local model…). 2) Paste the JSON it returns below. 3) Save.</div>
-        <div class="row mt" style="gap:8px">
-          <button data-copyprompt="analysis_property">📋 Copy AI prompt</button>
-          <span class="muted" data-copied style="font-size:.8em"></span>
-        </div>
-        <textarea data-paste="analysis_property" rows="5" class="mt" style="width:100%" placeholder='{"headline": "...", ...}'></textarea>
-        <button class="primary mt" data-savejson="analysis_property">Save</button>
-      </details>
+      ${aiJsonBox("analysis_property", `Research property-purchase locations for me and return ONLY valid JSON (no prose) with this shape: {"headline": str, "as_of": "YYYY-MM-DD", "budget_eur": number, "criteria": [{"key": str, "label": str, "weight": 1-3}], "locations": [{"name": str, "region": str, "price_m2": str, "scores": {criteriaKey: 1-5}}], "recommendation": {"pick": str, "why": [str], "runner_up": str}}. Ask me clarifying questions first if you need my constraints.`)}
     </div>`}
 
     <div class="card mt" style="border-left:4px solid var(--accent)">
-      <h3 style="margin-top:0">🧮 Purchase calculator — real cost and balance</h3>
+      <h3>🧮 Purchase calculator — real cost and balance</h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">Computed live. Amounts in € with a local-currency
         conversion alongside (EUR/PLN ${fmt.num(fx, 3)}, from Market). Inputs are saved in your browser.</div>
       <div id="pcInputs" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"></div>
@@ -73,7 +65,7 @@ async function renderProperty(el) {
     </div>` : ""}
 
     ${hasAnalysis && a.recommendation ? `<div class="card mt" style="border-left:4px solid var(--warn)">
-      <h3 style="margin-top:0">✅ Recommendation: ${a.recommendation.pick}</h3>
+      <h3>✅ Recommendation: ${a.recommendation.pick}</h3>
       <ul style="padding-left:18px">${(a.recommendation.why || []).map((w) => `<li class="mt">${w}</li>`).join("")}</ul>
       ${a.recommendation.runner_up ? `<div class="mt muted"><b>Runner-up:</b> ${a.recommendation.runner_up}</div>` : ""}
     </div>` : ""}`;
@@ -118,7 +110,7 @@ async function renderProperty(el) {
     document.getElementById("pcOut").innerHTML = `
       <div class="grid cols-2">
         <div class="card" style="margin:0">
-          <h4 style="margin:0 0 6px">Loan and cash at the start</h4>
+          <h4>Loan and cash at the start</h4>
           <table>
             ${line("Loan", "€" + fmt.grouped(Math.round(loan)) + " · " + pln(loan))}
             ${line("Monthly installment", "€" + fmt.grouped(Math.round(rata)) + " · " + pln(rata))}
@@ -129,7 +121,7 @@ async function renderProperty(el) {
             Realistically you need ${fmt.pln(cashStartPln)} at the start — the ${fmt.pln(cashStartPln - goalTarget)} difference is transaction costs + improvements.</div>` : ""}
         </div>
         <div class="card" style="margin:0">
-          <h4 style="margin:0 0 6px">Annual balance (after all income)</h4>
+          <h4>Annual balance (after all income)</h4>
           <table>
             ${line("Net rent (after tax and management)", "€" + fmt.grouped(Math.round(rentNet)), "pos")}
             ${line("+ Other income", "€" + fmt.grouped(Math.round(v.other)), "pos")}
@@ -148,21 +140,4 @@ async function renderProperty(el) {
   }
   inputsEl.querySelectorAll("[data-pc]").forEach((i) => i.addEventListener("input", compute));
   compute();
-
-  const PROMPTS = {
-    analysis_property: `Research property-purchase locations for me and return ONLY valid JSON (no prose) with this shape: {"headline": str, "as_of": "YYYY-MM-DD", "budget_eur": number, "criteria": [{"key": str, "label": str, "weight": 1-3}], "locations": [{"name": str, "region": str, "price_m2": str, "scores": {criteriaKey: 1-5}}], "recommendation": {"pick": str, "why": [str], "runner_up": str}}. Ask me clarifying questions first if you need my constraints.`,
-    analysis_market_brief: `Write a short market brief for my portfolio and return ONLY valid JSON: {"headline": str, "as_of": "YYYY-MM-DD", "highlights": [{"icon": "emoji", "title": str, "text": str}], "geopolitics": [{"title": str, "text": str}], "positions": [{"ticker": str, "stance": "hold|add|trim|watch", "text": str}]}. Ask me for my tickers first.`,
-    analysis_career: `Prepare a long-term career analysis for me and return ONLY valid JSON: {"headline": str, "as_of": "YYYY-MM-DD", "target_role": str, "comp_levels": [{"role": str, "comp": str, "you": bool}], "money_paths": [{"tag": "A|B|C", "title": str, "verdict": str, "text": str}], "head_of_eng": str, "ai_impact": [str], "skills": [{"skill": str, "why": str}], "skills_note": str}. Interview me about my situation first.`,
-  };
-  el.querySelectorAll("[data-copyprompt]").forEach((b) => b.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(PROMPTS[b.dataset.copyprompt] || "");
-    const hint = b.parentElement.querySelector("[data-copied]"); if (hint) hint.textContent = "copied ✓";
-  }));
-  el.querySelectorAll("[data-savejson]").forEach((b) => b.addEventListener("click", async () => {
-    const key = b.dataset.savejson;
-    const raw = el.querySelector(`[data-paste="${key}"]`).value.trim();
-    try { JSON.parse(raw); } catch (e) { alert("That is not valid JSON: " + e.message); return; }
-    await api.put("/api/settings", { [key]: raw });
-    route();
-  }));
 }

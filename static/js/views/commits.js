@@ -15,7 +15,7 @@ async function renderCommits(el) {
     <h2>🧑‍💻 Committing — coding activity and open source</h2>
 
     ${gh && !gh.configured ? `<div class="card" style="border-left:4px solid var(--accent)">
-      <h3 style="margin-top:0">📊 Track your coding activity</h3>
+      <h3>📊 Track your coding activity</h3>
       <div class="muted" style="font-size:.9em">Not set up yet — so nothing is counted. This tab turns daily commits into a streak and an "I code with AI" profile, once you point it at <b>your</b> data (two independent options, use either or both):</div>
       <ol style="padding-left:18px;font-size:.92em">
         <li class="mt"><b>Connect GitHub</b> — run <code>gh auth login</code> with your account. Pulls your full contribution calendar (commits + PRs + issues + reviews, all repos).</li>
@@ -38,7 +38,7 @@ async function renderCommits(el) {
         <div class="card kpi"><div class="label">Active days</div><div class="value">${gh.active_pct}%</div><div class="sub">${gh.active_days}/${gh.days} days · ${gh.total} contributions</div></div>
       </div>
       <canvas id="ghChart" height="60" class="mt"></canvas>
-      ${gh.github && gh.github.pr_list && gh.github.pr_list.length ? `<details class="mt"><summary class="muted" style="cursor:pointer">🟣 Pull requests in the window (${gh.github.pr_list.length}) — purple triangles above the bars</summary>
+      ${gh.github && gh.github.pr_list && gh.github.pr_list.length ? `<details class="mt"><summary class="muted">🟣 Pull requests in the window (${gh.github.pr_list.length}) — purple triangles above the bars</summary>
         <table class="mt"><tbody>${gh.github.pr_list.slice(0, 30).map((p) => `<tr><td class="muted" style="width:100px">${p.date}</td>
           <td><span class="badge ${p.state === "merged" ? "pos" : p.state === "open" ? "" : "neg"}">${p.state}</span></td>
           <td class="muted" style="font-size:.9em">${p.repo}</td><td><a href="${p.url}" target="_blank">${p.title}</a></td></tr>`).join("")}</tbody></table></details>` : ""}
@@ -48,7 +48,7 @@ async function renderCommits(el) {
 
     ${c && c.goal ? `
     <div class="card mt" style="border-left:4px solid var(--accent)">
-      <h3 style="margin-top:0">🎯 Where to contribute (open source for the business)</h3>
+      <h3>🎯 Where to contribute (open source for the business)</h3>
       <div style="font-size:1.0em"><b>${c.goal}</b></div>
       <div class="muted mt" style="font-size:.85em">${c.method}</div>
       <div class="mt" style="display:grid;gap:10px">${reposSorted.map((r, i) => `
