@@ -9,7 +9,7 @@ minimal, and the repo stays generic (no maintainer-specific data).
 
 ```bash
 git clone https://github.com/grzella/kist-finance.git
-cd kist
+cd kist-finance
 pip install -r requirements.txt -r requirements-dev.txt
 ./run.sh                       # → http://127.0.0.1:8321
 ```
@@ -30,6 +30,15 @@ python -m pytest -q                          # tests must pass
 cd server && python -m security_review --ci  # must exit 0 (no blockers)
 ```
 
+### Tests that touch the AI: mock both local-model paths
+
+`_ai_answer` prefers tool-calling: when `db_tools.schema_summary()` returns a schema
+(almost always), it calls `llm_local.chat_with_tools`, not `llm_local.chat`. A test
+that mocks only `chat` **silently hits the real local model**. It passes in isolation
+(the model answers, ~35s) but fails in a full suite run when the model is busy, with
+a misleading `AI offline`. Mock both functions, which also keeps the test fast and
+independent of load, or mark the test as an integration test on purpose.
+
 ## Ground rules
 
 - **Runtime dependencies: Flask only.** Prefer the standard library. If a change
@@ -46,8 +55,8 @@ cd server && python -m security_review --ci  # must exit 0 (no blockers)
 
 ## Good first contributions
 
-- **i18n** — the UI is English-native with a Polish toggle; more strings and new
-  languages are welcome (`static/js/app.js` translation dictionaries).
+- **i18n** — the UI is English-only; translation dictionaries and new languages
+  are welcome (`static/js/app.js`).
 - **Market-data adapters** — alternatives to the Supabase reader (Stooq, Yahoo…).
 - **New forecast models** — the forecast journal grades itself; add a model and
   let it compete on band-coverage.

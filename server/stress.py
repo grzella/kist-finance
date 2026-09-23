@@ -44,7 +44,7 @@ def run():
         "impact": f"−{zl(loss)}",
         "detail": (f"Your equity-like holdings ({zl(equity)}) would lose {zl(loss)} "
                    f"— {pct_of_wealth}% of net wealth. Nothing to do if the horizon "
-                   "is long; the plan should survive this on paper, which is the point of checking now.")
+                   "is long, as long as the plan still works after this loss.")
         if equity else "No equity-like holdings found — this scenario doesn't touch you."})
 
     # 2. rates +2pp on all debt
@@ -64,7 +64,7 @@ def run():
         "detail": (f"Liquid assets ({zl(liquid)}) cover about {runway} months of essential "
                    f"costs ({zl(essential)}/mo, incl. your share of loan installments). "
                    + ("Solid — 6+ months is the usual bar." if (runway or 0) >= 6
-                      else "Below the usual 6-month bar — see the emergency-fund recommendation."))
+                      else "Below the usual 6-month bar — see the emergency cushion recommendation."))
         if essential else "Set your fixed costs (Cash-flow tab) to compute the runway."})
 
     return {"scenarios": scenarios, "policy": withdrawal_policy(liquid, equity, essential)}
@@ -103,5 +103,5 @@ def withdrawal_policy(liquid=None, equity=None, essential=None):
     else:
         out["verdict"] = (f"Today's implied withdrawal rate is {cur}%/yr — inside the "
                           f"{out['lower_pct']}–{out['upper_pct']}% guardrails around the {init}% start. "
-                          f"Work-optional is a policy, not a date: crossing a guardrail adjusts spending ±10%.")
+                          f"Crossing a guardrail adjusts spending by 10% either way.")
     return out

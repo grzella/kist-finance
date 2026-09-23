@@ -111,7 +111,7 @@ def _ai_one_liner(reading):
     No model = no comment — the radar works without AI."""
     try:
         import llm_local
-        parts = "; ".join(f"{p['label']}: {p['level']} ({p['chg_1d']}%/d, ocena {p['score']})"
+        parts = "; ".join(f"{p['label']}: {p['level']} ({p['chg_1d']}%/d, score {p['score']})"
                           for p in reading["components"] if p["level"] is not None)
         return llm_local.chat(
             f"Market risk radar: {reading['state']}, {reading['score']}/{reading['max_score']}. "

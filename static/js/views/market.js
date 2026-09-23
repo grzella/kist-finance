@@ -84,7 +84,7 @@ async function renderMarket(el) {
       return `<div class="card"><div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
         <h3 style="margin:0">🧭 Market brief</h3>${controls}</div>
         <div class="muted mt" id="briefEmptyMsg">No ${view} brief yet — generating it now from your cached quotes…
-          (needs a running AI and at least one ticker; daily regenerates each morning, weekly on Mondays — Data → Schedules)</div>
+          (needs a running AI and at least one ticker; daily regenerates each morning, weekly on Mondays; Control Center → Data → Schedules)</div>
       </div>`;
     })()}
     <h3 class="mt">Watchlist</h3>

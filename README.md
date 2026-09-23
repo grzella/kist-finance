@@ -17,15 +17,15 @@ Mostly my own. Too many apps to check, a spreadsheet I kept forgetting to update
 - **"When will I actually reach my goal?"** — month-by-month projections: goal ETA at your savings pace, FIRE/work-optional crossover, overpay-vs-invest scenarios with saved-interest math.
 - **"Should I sell my vested stock? Overpay the mortgage? Convert currency now?"** — opinionated, data-grounded guidance: an FX signal engine with a historical backtest, RSU Monte-Carlo on real volatility, debt-overpayment simulations.
 - **"I don't trust cloud finance apps"** — local-first by design; optional cloud integrations touch only *public market data*, never your numbers.
-- **"Is the world nervous today?"** — a 🌍 **Risk Radar** in the Markets tab: VIX, gold, oil and USD with explicit thresholds blended into one calm/elevated/hot reading, backfilled a month and refreshed daily — an honest, measurable take on the meme "pizza index" idea (it contextualizes; it doesn't predict).
+- **"Is the world nervous today?"** — a 🌍 **Risk Radar** in the Market tab: VIX, gold, oil and USD with explicit thresholds blended into one calm/elevated/hot reading, backfilled a month and refreshed daily — an honest, measurable take on the meme "pizza index" idea (it contextualizes; it doesn't predict).
 - **"AI assistants read my finances on someone else's server"** — here the AI is **built in and runs on your machine**: a local LLM reviews your recommendations, narrates forecasts and answers questions grounded in your own numbers — with an explicit, off-by-default switch if you ever want a cloud model's second opinion.
-- **"Forecasts that admit what they don't know"** — research-grounded modeling: short-horizon **range forecasts** (EWMA volatility + empirical quantiles — because direction of a single stock/FX is not predictable, and the app doesn't pretend otherwise) and long-horizon labeled scenario bands. The forecast journal **grades itself daily** (band-coverage vs an 80% target) and **self-calibrates on its own past errors** (conformal calibration) — no black box, every band is explainable in one sentence.
+- **"Forecasts that admit what they don't know"** — research-grounded modeling: short-horizon **range forecasts** (EWMA volatility + empirical quantiles, because the direction of a single stock or FX rate is not predictable and the app doesn't pretend otherwise) and long-horizon labeled scenario bands. The forecast journal **grades itself daily** (band-coverage vs an 80% target) and **self-calibrates on its own past errors** (conformal calibration). Every band can be explained in one sentence.
 
 ## Quick start
 
 ```bash
 git clone https://github.com/grzella/kist-finance.git
-cd kist
+cd kist-finance
 pip install -r requirements.txt
 ./run.sh                      # → opens http://127.0.0.1:8321 (prefers ./.venv if present)
 ```
@@ -44,26 +44,26 @@ Core (always on):
 | Module | What it does |
 |---|---|
 | 📊 Dashboard | net worth and key figures at a glance |
-| 💸 Cash-flow | income vs. expenses, monthly surplus |
+| 💧 Cash-flow | income vs. expenses, monthly surplus |
 | 💡 Recommendations | rule-engine guidance from your data (+ optional AI): loan-vs-market compared **after capital gains tax**, one definition of essential costs, a cushion that counts cash + a haircut on brokerage (retirement accounts separately), and a **memory** — each recommendation shows since when it has been open, resolved ones are kept, and each gets an **outcome** (done / rejected / obsolete) with a monthly review of the execution rate |
 | 💎 Wealth | assets and net worth over time, with snapshots |
 | 🧾 Fixed Expenses | recurring costs grouped by entity (personal/business/rental…) and subscription type (work/entertainment/health/other), each in its **own currency** (converted at the cached rate) with a **monthly/yearly billing** toggle, month-to-month trend, an "invoiced" tag for expense/tax tracking, and data-driven cost hints (e.g. which subscriptions bill monthly and what an annual plan would save) — an item you don't touch just carries its last amount forward, so there's no monthly copy-paste |
 | 🥧 Allocation | portfolio breakdown vs. targets, 5/25 drift |
 | 🎯 Goals | savings goals with ETA as a range |
 | 🔮 Forecasts | range forecasts, FIRE crossover with an inflation-indexed target, contribution growth, an after-tax series and a **cone bootstrapped from a benchmark's real returns**, a **24-month net-worth cone with scenario toggles** (bonus, employer stock ±30%, USD ±10%, real terms), **forecast calibration per ticker × horizon** (coverage, miss direction, Winkler score, VIX regime), stress test + guardrails |
-| 📐 Ratios | eleven personal-finance ratios with traffic lights vs targets (savings rate, essential share, cushion months, debt service / income, liquid / debt, investment share, employer concentration, real estate share, FX exposure, effective cost of debt, net worth m/m) — stored as a **monthly series** plus a **weekly wealth point**, so trends are measured, not guessed |
+| 📐 Ratios | eleven personal-finance ratios with traffic lights vs targets (savings rate, essential share, cushion months, debt service / income, liquid / debt, investment share, employer concentration, real estate share, FX exposure, effective cost of debt, net worth m/m) — stored as a **monthly series** plus a **weekly wealth point**, so you can see each trend over time |
 | 🛠️ Control Center | status, AI mode, prompt log, backups, security review; every scheduled task's last failure is visible here, and the app warns when the server runs older code than the files on disk (edit without restart) |
 
 Optional — toggle in the wizard, disabled ones disappear from the UI:
 
 | Module | What it adds |
 |---|---|
-| 🏠 Loans & mortgage | principal/interest split, effective rate, overpayment scenarios, history with event markers (overpayments and bank corrections drawn as points, not sawtooth), a monthly reference-rate refresh task (PLN base) |
+| 🏠 Loans | principal/interest split, effective rate, overpayment scenarios, history with event markers (overpayments and bank corrections drawn as points, not sawtooth), a monthly reference-rate refresh task (PLN base) |
 | 🏛️ Taxes | consolidated tax sources + payment calendar, including **capital gains tax on the year's RSU sales** — logged in the RSU tab, due next April, and deducted from net worth as a reserve until paid |
-| 📈 Markets & FX | watchlist, price analytics, currency signal engine with backtest, daily 🌍 Risk Radar, on-demand keyless history backfill |
+| 📈 Market & FX | watchlist, price analytics, currency signal engine with backtest, daily 🌍 Risk Radar, on-demand keyless history backfill |
 | 💎 Equity / RSU | a **vest schedule built from the grant list** (legacy grants expire, new ones start on their own dates, cash-vest included), a sales log that feeds the tax reserve, net-vs-gross values everywhere downstream (cash-flow, goals, FIRE), Monte-Carlo projection on a **block bootstrap of real returns** (the same engine scores its own backtest and forecast journal), sell-vs-hold guidance |
-| 🚁 Side business | revenue/costs of self-employment or a side company |
-| 💼 Career tracker | inbound job offers, market barometer (a missing month is called out with the collector's last error, never silently skipped), commit-activity tracker, and a **leader's evidence log**: dated impact / visibility / scope / feedback / learning entries with a metric and proof link, the week in four numbers, a 90-day plan checklist |
+| 🚁 Business | revenue/costs of self-employment or a side company |
+| 💼 Career | inbound job offers, market barometer (a missing month is called out with the collector's last error, never silently skipped), commit-activity tracker, and a **leader's evidence log**: dated impact / visibility / scope / feedback / learning entries with a metric and proof link, the week in four numbers, a 90-day plan checklist |
 | 🏡 Property analysis | deep-dive for a property-purchase goal |
 
 ## Connecting your own services (all optional)
@@ -84,9 +84,9 @@ The app **runs fully offline**. Live market data and alerts are opt-in:
 
 ## Built-in private AI
 
-The AI is not an add-on here — it's a core feature, designed so it **runs on your machine**. The app ships the whole AI stack (client, grounding, prompt log, safety checks); the only thing it cannot ship is the model weights themselves (gigabytes, licensed separately) — you fetch a model once with a single command below, and everything lights up. No model running? Every AI feature degrades gracefully to "offline" and the rest of the app is unaffected.
+AI is a core feature and is designed to **run on your machine**. The app ships the whole AI stack (client, grounding, prompt log, safety checks); the only thing it cannot ship is the model weights themselves (gigabytes, licensed separately) — you fetch a model once with a single command below, and everything lights up. No model running? Every AI feature degrades gracefully to "offline" and the rest of the app is unaffected.
 
-**How the local LLM works.** You run a small open model (recommended: **Qwen3 8B** — its toggleable thinking mode measurably helps multi-step financial math; any GGUF works) with [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server` — a local process exposing an OpenAI-compatible API on `localhost`. The app talks to it over HTTP; no API keys, no data egress, no per-call cost. Because it speaks the OpenAI API, the same setup works with LM Studio or Ollama. Where the answer must be machine-readable, the app sends a **JSON Schema and llama.cpp enforces it at the token level** (GBNF grammars) — the model physically cannot return malformed output. On Qwen3 the app toggles thinking per task: on for analysis, off for quick structured calls.
+**How the local LLM works.** You run a small open model (recommended: **Qwen3 8B** — its toggleable thinking mode measurably helps multi-step financial math; any GGUF works) with [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server` — a local process exposing an OpenAI-compatible API on `localhost`. The app talks to it over HTTP; no API keys, no data egress, no per-call cost. Because it speaks the OpenAI API, the same setup works with LM Studio or Ollama. Where the answer must be machine-readable, the app sends a **JSON Schema and llama.cpp enforces it at the token level** (GBNF grammars), so the output always parses against the schema. On Qwen3 the app toggles thinking per task: on for analysis, off for quick structured calls.
 
 ```bash
 brew install llama.cpp        # or build from source; any OpenAI-compatible server works
@@ -101,9 +101,9 @@ Then set `LOCAL_LLM_KEY=<secret>` (and optionally `LOCAL_LLM_URL`) in `.env`. Co
 - **AI second opinion on Recommendations** — the rule engine computes recommendations from your data; the AI reviews them (agrees/disagrees, what's missing) with your own numbers as context. One click in the Recommendations tab.
 - **Forecast narration** — turns the self-learning forecast journal into a plain-language *why*.
 - **A grounded ask-anything box** (Control Center) plus a keyless `/api/llm/chat` hook for your own scripts.
-- **It checks real numbers, not vibes** — the local model gets one tool: a **read-only SQL SELECT** against your database (`server/db_tools.py`). Asked "how far am I from my goals?", it queries the actual tables instead of guessing from text snippets. Defense in depth: the connection is opened read-only at the SQLite level, only a single SELECT passes validation, results are capped, and every round-trip lands in the prompt log — and the security review **actively pentests this guard** (injection/DDL/stacked-query payloads must all be refused). Servers without tool support just fall back to plain answers.
+- **It queries your actual numbers** — the local model gets one tool: a **read-only SQL SELECT** against your database (`server/db_tools.py`). Asked "how far am I from my goals?", it queries the actual tables instead of guessing from text snippets. Defense in depth: the connection is opened read-only at the SQLite level, only a single SELECT passes validation, results are capped, and every round-trip lands in the prompt log — and the security review **actively pentests this guard** (injection/DDL/stacked-query payloads must all be refused). Servers without tool support just fall back to plain answers.
 
-**AI mode — local by default, cloud strictly opt-in.** The Control Center **AI mode** switch governs *all* of the above. Default: **local only** — every AI call stays on your machine. Flip to **local + Claude** and the app asks *both* engines, then **synthesizes one verdict** from the two answers (typically the best of both); the cloud model defaults to Anthropic's newest (`claude-fable-5`, configurable via `CLOUD_LLM_MODEL`). The UI warns plainly that this mode **sends the prompt and snippets of your data to Anthropic** — set your own `ANTHROPIC_API_KEY` in `.env` to enable it. All AI answers are framed by a rigorous financial-analyst system prompt (explicit assumptions, scenario ranges, opportunity-cost/tax, a one-line bottom line), and every question/answer is recorded in a **local prompt log** (Control Center) so you can see what was asked and whether the AI helps.
+**AI mode — local by default, cloud strictly opt-in.** The Control Center **AI mode** switch governs *all* of the above. Default: **local only** — every AI call stays on your machine. Flip to **local + Claude** and the app asks *both* engines, then **synthesizes one verdict** from the two answers; the cloud model defaults to Anthropic's newest (`claude-fable-5`, configurable via `CLOUD_LLM_MODEL`). The UI warns plainly that this mode **sends the prompt and snippets of your data to Anthropic** — set your own `ANTHROPIC_API_KEY` in `.env` to enable it. All AI answers are framed by a financial-analyst system prompt (explicit assumptions, scenario ranges, opportunity-cost/tax, a one-line bottom line), and every question/answer is recorded in a **local prompt log** (Control Center) so you can see what was asked and whether the AI helps.
 
 **Local RAG — answers grounded in your own numbers.** Before the AI answers, the app hands it the matching snippets of *your* data — goals, wealth items, offers, business entries, saved analyses, plus computed recommendations and reminders — from a local `rag_chunks` index (pure stdlib, fully offline). So the model reasons about your figures, not generic advice. The index **maintains itself**: any data write marks it stale and it reindexes before the next AI answer (plus a scheduled refresh); the **Refresh memory** button in Control Center remains for forcing it.
 
@@ -129,7 +129,7 @@ LOCAL_RERANK_URL=http://127.0.0.1:8082/v1
 
 **Experience distillation — the assistant learns from its good answers.** When an answer is genuinely useful, one click (**💡 Learn from this**, in the Control Center prompt log) asks the model to compress that Q&A into a single *transferable* lesson — the method and the pitfall, not your specific numbers. The lesson is stored, indexed into the same RAG memory, and **injected as guidance on future similar questions** — so the assistant gets better over time without any retraining or weight changes (the pattern from *AI Agents in Depth*, ch. 8). It's deliberately human-gated: only answers you mark become lessons (no auto-noise), and a **🧠 Learned experiences** panel lets you prune any that don't hold up. Everything stays local.
 
-**Market brief — daily & weekly, written by the AI.** The Markets tab keeps two briefs: a **daily** one (regenerated every morning) and a **weekly** one (Monday mornings) — toggle between them in the tab. Each is generated from your cached quotes and the risk-radar state by the engine your **AI mode** selects (local only, or cloud-first with local fallback in local+Claude mode), schema-locked so it always renders. The daily view has a **🔄 Fetch latest** button: it pulls fresh quotes and rewrites the brief on the spot (e.g. you open the app at noon and want more than the morning run). You can still paste your own brief (weekly box) — a saved brief is never overwritten by a failed generation. Cadence is editable in Data → Schedules.
+**Market brief — daily & weekly, written by the AI.** The Market tab keeps two briefs: a **daily** one (regenerated every morning) and a **weekly** one (Monday mornings) — toggle between them in the tab. Each is generated from your cached quotes and the risk-radar state by the engine your **AI mode** selects (local only, or cloud-first with local fallback in local+Claude mode), schema-locked so it always renders. The daily view has a **🔄 Fetch latest** button: it pulls fresh quotes and rewrites the brief on the spot (e.g. you open the app at noon and want more than the morning run). You can still paste your own brief (weekly box) — a saved brief is never overwritten by a failed generation. Cadence is editable in Control Center → Data → Schedules.
 
 **Risk-radar Telegram alert.** When the radar composite goes hot (🔴, ≥4/8), the app can ping you on Telegram — **a signal to investigate, not to act**. Two ways, pick either:
 
@@ -176,15 +176,3 @@ Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the
 ## License
 
 MIT © Łukasz Grzella
-
-### Testing: mock BOTH local-model paths
-
-`_ai_answer` prefers tool-calling: when `db_tools.schema_summary()` returns a schema
-(almost always), it calls `llm_local.chat_with_tools`, not `llm_local.chat`. A test
-that mocks only `chat` **silently hits the real local model** — it passes in isolation
-(the model answers, ~35s) but fails in a full suite run when the model is busy, with
-a misleading `AI offline`.
-
-Found 2026-07-25 on two AI-pipeline tests: adding a `chat_with_tools` mock cut them
-from **130s to 4.3s** and made the result independent of load. When writing a test
-that touches AI, mock both functions — or mark it as an integration test on purpose.

@@ -73,8 +73,8 @@ async function renderDashboard(el) {
       <div class="muted mt">Themes: ${Object.entries(xtb.facts.themes).map(([k, v]) => `${k} ${v}%`).join(" · ")}</div>
     </details>` : ""}
     ${gs.goal ? `<div class="card mt" style="border-left:4px solid ${CHART_COLORS[1]}">
-      <h3>🎯 ${gs.goal} — path to goal (${fmt.pln(gs.target_remaining)} to go, pace ${fmt.pln(gs.monthly_savings)}/mo)</h3>
-      ${gs.extras ? `<div class="muted">Pace = savings ${fmt.pln(gs.base_savings)} + annual bonus ${fmt.pln(gs.extras.bonus_net)}/12 + RSU vests ${fmt.pln(gs.extras.rsu_annual)}/12 (${gs.extras.pct_to_goal}% of surplus toward the goal)</div>` : ""}
+      <h3>🎯 ${gs.goal} — path to goal (${fmt.pln(gs.target_remaining)} to go, total pace ${fmt.pln(gs.monthly_savings)}/mo)</h3>
+      ${gs.extras ? `<div class="muted">Total pace = base savings ${fmt.pln(gs.base_savings)} + annual bonus ${fmt.pln(gs.extras.bonus_net)}/12 + RSU vests ${fmt.pln(gs.extras.rsu_annual)}/12 (${gs.extras.pct_to_goal}% of surplus toward the goal)</div>` : ""}
       <table><thead><tr><th>Scenario</th><th>Goal reached</th><th>Time</th><th>Loan paid off</th><th>Interest saved</th></tr></thead>
       <tbody>${gs.scenarios.map((sc) => `<tr>
         <td>${sc.label}</td>

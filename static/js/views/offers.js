@@ -7,7 +7,7 @@ async function renderOffers(el) {
   const statsBar = s ? `
     <div class="card" style="padding:10px 16px">
       <div class="row" style="gap:22px;flex-wrap:wrap;align-items:baseline">
-        <span title="A known company + scope ≥ yours + range ≥ current. The most important market signal.">
+        <span title="A known company + scope ≥ yours + range ≥ current.">
           🏆 Tier-1: <b>${s.tier1_count}</b> <span class="muted">(${fmt.num(s.tier1_per_month, 1)}/mo)</span></span>
         <span title="All inbound, no applying.">📥 Total: <b>${s.total}</b>
           <span class="muted">(${fmt.num(s.per_month, 1)}/mo over ${s.span_months} mo)</span></span>
@@ -108,7 +108,7 @@ async function renderOffers(el) {
       const err = task && task.last_error ? ` Last attempt ${task.last_error.at}: <i>${esc(task.last_error.error)}</i>.` : "";
       const box = document.getElementById("baroDesc");
       if (box) box.insertAdjacentHTML("beforebegin", `<div class="mt" style="padding:6px 10px;border-radius:6px;background:rgba(255,107,107,0.15);font-size:.88em">
-        ⚠️ <b>No demand point for ${lastFull}</b> (last full month).${err} The collector retries on the next app open; see Control Center → Schedules.</div>`);
+        ⚠️ <b>No demand point for ${lastFull}</b> (last full month).${err} The collector retries on the next app open; see Control Center → Data → Schedules.</div>`);
     }
   }
   const bpts = baro.points || [];

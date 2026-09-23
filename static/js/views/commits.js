@@ -30,7 +30,7 @@ async function renderCommits(el) {
           ? `<b class="pos">Full GitHub activity</b> (commits + PRs + issues + reviews, all repos — including merged contributions to other projects) merged with local repos (${gh.repos}) over ${gh.days} days. In window: ${gh.github.prs} PRs · ${gh.github.issues} issues · ${gh.github.reviews} reviews.`
           : `Your commits from local repos (${gh.repos}) over ${gh.days} days (GitHub offline — local only).`}
         <div style="font-size:.82em;margin:4px 0;padding:6px 10px;background:var(--accent)18;border-radius:6px">⚠️ Whose data is this? Activity found on <b>this machine</b>: local git repos scanned here${gh.github && gh.github.connected && gh.github.login ? ` + the gh CLI account (<a href="https://github.com/${gh.github.login}" target="_blank">@${gh.github.login}</a>)` : ""}. If you cloned this app, these may be someone else's numbers — switch to yours: run <code>gh auth login</code> with your account and set <code>commit_repos</code> / <code>commit_author</code> in the Data tab → Settings.</div>
-        Goal: coding activity every day — builds an AI-native, "I code with AI" profile. Status also in Control → Automation.</div>
+        Goal: coding activity every day — builds an AI-native, "I code with AI" profile. Status also in Control Center → Automation &amp; health.</div>
       <div class="grid cols-4">
         <div class="card kpi"><div class="label">Today</div><div class="value ${gh.today > 0 ? "pos" : ""}">${gh.today}</div><div class="sub">contributions</div></div>
         <div class="card kpi"><div class="label">Streak</div><div class="value ${gh.streak >= 3 ? "pos" : ""}">${gh.streak} 🔥</div><div class="sub">days in a row · record ${gh.best_streak}</div></div>

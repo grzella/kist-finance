@@ -325,7 +325,7 @@ def data_inventory():
         {"key": "manual_rare", "title": "\u26AA Manual \u2014 rare / event-driven (setup)",
          "note": "Entered once or only when something actually changes \u2014 no monthly burden.",
          "items": [
-            item("Job offers", "manual", "you (Offers tab)",
+            item("Job offers", "manual", "you (Career tab)",
                  "as they arrive (event-driven)", off_last, off_c, minutes=0,
                  note="not recurring \u2014 you add one when a recruiter writes"),
             item("Fixed costs / budget plan", "manual", "Fixed Expenses tab",

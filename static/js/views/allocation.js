@@ -49,7 +49,7 @@ async function renderAllocation(el) {
     <div class="card mt" style="border-left:4px solid var(--warn)">
       <h3>💡 Takeaways and rebalancing</h3>
       <ul style="padding-left:18px">${d.hints.map((h) => `<li class="mt" style="font-size:.93em">${h}</li>`).join("")}</ul>
-      <div class="muted mt" style="font-size:.85em">A vehicle counts as an asset here, but it is a consumable (it depreciates) — in reality "investment" wealth is usually more concentrated in real estate.</div>
+      <div class="muted mt" style="font-size:.85em">A vehicle counts as an asset here, but it depreciates, so the wealth that actually grows is more concentrated in real estate than this chart shows.</div>
     </div>`;
 
   const palette = [TOKENS.accent, TOKENS.pos, TOKENS.warn, TOKENS.neg, TOKENS.violet, "#f59e0b"];

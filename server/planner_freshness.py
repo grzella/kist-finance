@@ -202,7 +202,7 @@ def _auto_reminders():
         for d in P.list_debts()["debts"]:
             fu = d.get("fixed_until")
             if fu and days_to(fu) is not None:
-                out.append({"title": f"{d['name']}: fixed rate ends — time for an annex/refinancing",
+                out.append({"title": f"{d['name']}: fixed rate ends — renegotiate the rate or refinance",
                             "due_date": fu, "auto": True, "kind": "Loan"})
     except Exception:
         pass
@@ -246,11 +246,11 @@ def _auto_reminders():
                 "due_date": nextweek, "auto": True, "kind": "Security"})
     # next month's 1st, reused for monthly tasks
     by, bm = (today.year, today.month + 1) if today.month < 12 else (today.year + 1, 1)
-    # monthly market barometer update (Claude task)
-    out.append({"title": "📈 Update the market barometer (the roles you track) — you or any AI assistant",
+    # monthly nudge to review the barometer the app collects
+    out.append({"title": "📈 Check the market barometer (collected monthly)",
                 "due_date": f"{by:04d}-{bm:02d}-05", "auto": True, "kind": "Barometer"})
-    # monthly market brief refresh (Claude task) — Markets tab
-    out.append({"title": "🧭 Refresh the market brief — authored by you or any AI assistant",
+    # monthly nudge to read the daily market brief (Market tab)
+    out.append({"title": "🧭 Check today's market brief",
                 "due_date": f"{by:04d}-{bm:02d}-05", "auto": True, "kind": "Market"})
     # monthly: verify backups exist (snapshots are automated via Schedules)
     out.append({"title": "💾 Verify backups (Control Center — snapshots run on a schedule)",

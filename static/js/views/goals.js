@@ -4,7 +4,7 @@ async function renderGoals(el) {
   el.innerHTML = `
     <h2>Goals</h2>
     <div class="card">
-      <h3>Savings pace (default for goals without their own)</h3>
+      <h3>Monthly savings (base), default for goals without their own</h3>
       <div class="row">
         <input data-num id="gSavings" placeholder="monthly savings PLN"
           value="${fmt.grouped(cfg.monthly_savings)}" style="width:220px">

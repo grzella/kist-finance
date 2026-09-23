@@ -61,7 +61,7 @@ async function renderWizard(el) {
       <div class="card mt" style="border-left:4px solid var(--pos)">
         <h3>3 · Optional integrations <span class="muted" style="font-weight:normal;font-size:.7em">— skip freely, the app is fully functional offline</span></h3>
         <div style="font-size:.9em">
-          <p><b>📈 Live market data (Supabase)</b> — the Markets/FX/RSU tabs read daily quotes from a free
+          <p><b>📈 Live market data (Supabase)</b> — the Market/FX/RSU tabs read daily quotes from a free
           <a href="https://supabase.com" target="_blank">Supabase</a> table. Create a project, add
           <code>SUPABASE_URL</code> + <code>SUPABASE_ANON_KEY</code> to <code>.env</code>, and feed it daily
           (e.g. with <a href="https://n8n.io" target="_blank">n8n</a>). Full guide in the README.</p>

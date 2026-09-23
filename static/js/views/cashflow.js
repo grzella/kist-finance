@@ -9,7 +9,7 @@ async function renderCashflow(el) {
 
   el.innerHTML = `
     <h2>💧 Liquidity timeline — cash-flow over time</h2>
-    <div class="muted" style="margin-bottom:12px">Base surplus + <b>net</b> vests from the grant schedule (× 1 − ${a.tax_pct}%) + net cash-vest + bonus.
+    <div class="muted" style="margin-bottom:12px">Monthly savings (base) + <b>net</b> vests from the grant schedule (× 1 − ${a.tax_pct}%) + net cash-vest + bonus.
       ${d.sweep_mode === "debt" ? `Surplus above the buffer is swept into <b>${d.sweep_target_name}</b> until payoff — then the liquid balance grows toward the goal.` : `No sweep target (setting <code>cf_sweep_target</code> = "${d.sweep_setting}") — the surplus accumulates.`}
       The tax reserve on sold shares is tracked separately — it is not your liquidity.</div>
 
@@ -31,7 +31,7 @@ async function renderCashflow(el) {
     <div class="card mt">
       <h3>Assumptions (editable)</h3>
       <div class="row" style="flex-wrap:wrap;gap:12px">
-        <label class="muted">Base surplus/mo<br><input data-num id="cfSurplus" value="${fmt.grouped(a.cf_monthly_surplus)}" style="width:140px"></label>
+        <label class="muted">Monthly savings (base)<br><input data-num id="cfSurplus" value="${fmt.grouped(a.cf_monthly_surplus)}" style="width:140px"></label>
         <label class="muted">Safety buffer<br><input data-num id="cfBuffer" value="${fmt.grouped(a.cf_safety_buffer)}" style="width:140px"></label>
         <label class="muted">Starting liquid balance ${d.liquid_start_source === "wealth" ? `<span class="badge pos" title="sum of cash from Wealth">auto from wealth</span>` : `<span class="badge" title="entered manually; clear to compute from wealth">manual</span>`}<br><input data-num id="cfStart" value="${a.cf_liquid_start ? fmt.grouped(a.cf_liquid_start) : ""}" placeholder="auto: ${fmt.grouped(d.liquid_start_auto || 0)}" style="width:140px"></label>
         <label class="muted">Sweep surplus into<br><input id="cfSweep" value="${a.cf_sweep_target || ""}" placeholder="loan / debt / none" style="width:140px"></label>

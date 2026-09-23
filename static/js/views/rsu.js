@@ -157,7 +157,7 @@ async function renderRsu(el) {
       </div>
       <canvas id="rsuCone" height="110" class="mt"></canvas>
       <div class="muted mt" style="font-size:.85em">Band = the distribution of the value of held + vested shares (base, not counting growing grants)
-        from ${fmt.grouped(adv.sims)} simulations of the price path (GBM on actual ${adv.vol_annual_pct}% volatility). The dark line = the median (p50);
+        from ${fmt.grouped(adv.sims)} simulations of the price path (block bootstrap of real returns, ${adv.vol_annual_pct}% annual volatility). The dark line = the median (p50);
         the band = p10–p90. Dashed = the path to the analyst consensus $${adv.analyst.mid} (fundamental view, 12 mo).
         ${adv.usdpln !== 1 ? `USD/${window.APP_CURRENCY || "PLN"} ${fmt.num(adv.usdpln, 2)}. ` : ""}Gross values — subtract ${adv.tax_pct || 19}% tax at sale (on the full amount). "base" = the grant schedule (legacy grants expire, new ones start); "perf" adds hypothetical future yearly grants.</div>
       <table class="mt"><thead><tr><th>Window</th><th>Shares (base)</th>
@@ -178,16 +178,16 @@ async function renderRsu(el) {
         <td class="${covCls(h.band_coverage_pct)}"><b>${h.band_coverage_pct}%</b> <span class="muted">(ideal ~80%)</span></td>
         <td>${h.directional_pct}%</td><td>${h.median_abs_err_pct}%</td><td class="muted">${h.n}</td></tr>` : "";
       return `<div class="card mt" style="border-left:4px solid var(--warn)">
-      <h3>🎯 How accurate my predictions are (learning from data)</h3>
+      <h3>🎯 Forecast accuracy (scored daily)</h3>
       <div class="muted" style="font-size:.88em;margin-bottom:8px">Every day the stock price is fetched and the bands are scored.
-        \"Calibration\" = how often the actual price fell inside my p10–p90 band (ideal ~80%).
-        At ${adv.vol_annual_pct}% volatility the short-term move is almost random — so the honest measure is calibration, not \"hitting the price\".</div>
+        Calibration = how often the actual price fell inside the p10–p90 band (ideal ~80%).
+        At ${adv.vol_annual_pct}% volatility the short-term move is close to random, so calibration is the useful measure; the exact price is not.</div>
       <table><thead><tr><th>Horizon</th><th>Band calibration</th><th>Direction OK</th><th>Median error</th><th>Samples</th></tr></thead>
         <tbody>${btRow(bt.h21)}${btRow(bt.h63)}</tbody></table>
       <div class="mt" style="font-size:.9em;padding:8px 12px;background:var(--inset);border-radius:6px">
         <b>Backtest takeaway (${bt.source}):</b> the bands hit ${bt.h21.band_coverage_pct}% instead of ~80% —
-        i.e. <b>too narrow</b>; actual price moves were bigger. Realized drift in that period: <b class="neg">${bt.realized_drift_pct}%/yr</b>
-        vs the assumed <b>+${bt.assumed_drift_pct}%</b> — the price was falling hard, so the median direction was often wrong.
+        i.e. <b>too narrow</b>; actual price moves were bigger. Realized drift in that period: <b class="neg">${bt.realized_drift_pct}%/yr</b>.
+        The price was falling hard, so the median direction was often wrong.
         <b>Treat the p10–p90 band as optimistic (narrower than the real risk).</b> This reinforces the recommendation: sell at vest, do not bet on a rebound.</div>
       <div class="muted mt" style="font-size:.82em">📡 Live track record:
         ${lv.scored ? `${lv.scored} scored since ${lv.tracked_since} — band coverage ${lv.band_coverage_pct}% (target 80%), median error ${lv.median_abs_err_pct}%; direction is not graded (a coin flip on a random walk).`

@@ -58,7 +58,7 @@ async function renderForecasts(el) {
         "Sell at vest — capital gains tax only on the gain after vest (≈0 when selling right away)")}
       ${scenarioCard("Vest + bonus combined (≈" + fmt.pln(bonus + vestPln) + ") → loan", op(bothLoan),
         bothLoan ? "" : "This combination covers the whole balance — loan paid off 🎉")}
-      ${scenarioCard(`Refinance/annex scenario${secondLoan ? " for " + secondLoan.name : ""}: rate −1.0 pp`, [
+      ${scenarioCard(`Refinance/renegotiation scenario${secondLoan ? " for " + secondLoan.name : ""}: rate −1.0 pp`, [
         ["Savings per year (example)", fmt.pln(refiSavYr), "pos"],
         ["Over ~18 months", fmt.pln(refiSavYr * 1.5), "pos"],
         ["Capital involved", "0"],
@@ -125,7 +125,7 @@ async function renderForecasts(el) {
 
     ${stress ? `<div class="card mt" style="border-left:4px solid #ff8c66">
       <h3>🧯 Stress test — financial fire drill</h3>
-      <div class="muted" style="font-size:.85em;margin-bottom:8px">Deterministic what-ifs computed from your data (no simulation, no AI). The point: know the answers <i>before</i> markets ask the questions.</div>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">Deterministic what-ifs computed from your data (no simulation, no AI).</div>
       <div class="grid cols-3">
         ${stress.scenarios.map((sc) => `<div class="card" style="margin:0">
           <div class="row" style="justify-content:space-between"><b>${sc.icon} ${sc.title}</b><b class="neg">${sc.impact}</b></div>
@@ -142,7 +142,7 @@ async function renderForecasts(el) {
       <h3>🌫️ Net-worth trajectory — ${traj0.months}-month cone with scenarios</h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">The invested part (ETF + employer stock + retirement) grows with a ${traj0.assumptions.drift_annual_pct}%/yr drift
         + ${traj0.assumptions.method}; the rest accrues the surplus and net vest cash (${fmt.pln(traj0.assumptions.flow_monthly)}/mo), the bonus lands in month ${traj0.assumptions.bonus_month}.
-        Stock/USD shocks are one-off today — they show how much they matter, not where they go.</div>
+        Stock/USD shocks are one-off today; they show the size of the effect, not a forecast of the move.</div>
       <div class="row" style="gap:12px;flex-wrap:wrap;align-items:center;font-size:.9em">
         <label>Horizon <select id="tjM"><option value="12">12 mo</option><option value="24" selected>24 mo</option><option value="36">36 mo</option></select></label>
         <label><input type="checkbox" id="tjB" checked> annual bonus</label>

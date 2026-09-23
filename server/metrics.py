@@ -197,7 +197,7 @@ def compute():
             "how": f"essential {_m(essential)} / all fixed expenses {_m(total_exp)} = {_p(raw['essential_share_pct'])}%",
             "why": "The higher it is, the less room you have when income drops; above 75% the budget is rigid."},
         "cushion_months": {
-            "what": "How many months of essential costs and loan payments the liquid reserve would cover if income stopped.",
+            "what": "How many months of essential costs (incl. your loan installments) the cushion would cover if income stopped.",
             "how": f"cushion {_m(lc['total'])} (cash + 80% of the brokerage portfolio) / essential incl. loan installments {_m(essential)} = {_p(raw['cushion_months'])} months",
             "why": "Six months is the standard with a single income source; three is the minimum."},
         "dti_pct": {
@@ -207,7 +207,7 @@ def compute():
         "liquid_to_debt_pct": {
             "what": "How much of your debt you could repay right away from liquid assets.",
             "how": f"liquid {_m(liquid)} (cash {_m(vals.get('cash', 0))} + ETF {_m(vals.get('etf', 0))} + employer stock {_m(vals.get('rsu', 0))} + retirement {_m(vals.get('retirement', 0))}) / debt {_m(debt_total)} = {_p(raw['liquid_to_debt_pct'])}%",
-            "why": "≥ 50%: debt is a choice, not a constraint; < 25%: repayment depends on current income."},
+            "why": "≥ 50%: you could clear most debt without income; < 25%: repayment depends on current income."},
         "invest_share_pct": {
             "what": "The share of net worth working in capital markets (ETFs, employer stock, retirement accounts).",
             "how": f"investments {_m(invest)} / net worth {_m(base)} (property counted net of its loan) = {_p(raw['invest_share_pct'])}%",
@@ -223,7 +223,7 @@ def compute():
         "fx_share_pct": {
             "what": "How much of net worth is in USD (USD cash, employer stock).",
             "how": f"USD positions {_m(fx)} / net worth {_m(base)} = {_p(raw['fx_share_pct'])}%",
-            "why": f"A 10% move in the USD rate then shifts net worth by about {_m(fx * 0.1)}; above 45% it is a currency bet, not diversification."},
+            "why": f"A 10% move in the USD rate then shifts net worth by about {_m(fx * 0.1)}; above 45% your net worth moves mainly with the USD rate."},
         "debt_cost_pct": {
             "what": "The average interest rate on your loans, weighted by balance.",
             "how": f"Σ(balance × effective rate) / Σ balance {_m(bal)} = {_p(debt_cost)}%; threshold = expected after-tax return {_p(after_tax)}%",
@@ -343,7 +343,7 @@ def trajectory(months=24, bonus=True, team_shock_pct=0.0, usd_shock_pct=0.0, rea
     """Net-worth cone: the invested part grows with drift + block bootstrap of the benchmark's
     monthly returns; the rest (cash, home equity) accrues the surplus and net vest cash; the
     bonus lands in its month. Employer-stock / USD shocks are one-off at t0 (we know we cannot
-    predict their direction — we show how much they matter)."""
+    predict their direction, so we show the size of the effect)."""
     today = today or date.today()
     months = max(6, min(int(months or 24), 60))
     w = planner.wealth_summary()

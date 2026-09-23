@@ -10,8 +10,8 @@ from planner_proxy import P
 # ---------- FIRE / work-optional projection (zamiast Monte Carlo) ----------
 
 def fire_projection():
-    """Liquid-portfolio projection toward the work-optional goal, 3 scenarios
-    zwrotu + wersja realna (po inflacji). Czytelne linie zamiast histogramu MC."""
+    """Liquid-portfolio projection toward the work-optional goal: 3 return scenarios
+    plus a real (inflation-adjusted) version. Readable lines instead of a Monte-Carlo histogram."""
     from datetime import date
     goals = P.list_goals()
     g = next((x for x in goals if any(k in x["name"].lower()
@@ -152,7 +152,7 @@ def fire_projection():
             property_cross = label_at(m)
         bal = bal * (1 + property_r) + (property_contrib if m >= delay else 0)
 
-    # --- snapshot + tracking (plan vs realnie) ---
+    # --- snapshot + tracking (plan vs actual) ---
     try:
         record_fire_snapshot(start)
     except Exception:
@@ -179,7 +179,8 @@ def fire_projection():
                   "note": (("Down-payment accumulation starts after the loan is paid off (~" + label_at(delay) + "). ")
                            if loan_open else
                            "The loan is paid off, so down-payment accumulation is already running. ")
-                          + "Cautious 4% return (funds close to the goal). NOTE: the same surpluses as work-optional — buying the house delays reaching 3M."},
+                          + "Cautious 4% return (funds close to the goal). NOTE: the same surpluses as work-optional — buying the house delays reaching "
+                          + P._zl(target) + "."},
         "tracking": tracking,
         "assumptions": {"base_return": "6.5% nominal", "inflation": f"{infl * 100:g}% (target indexed)",
                         "income_growth": f"{growth * 100:g}%/yr (contributions grow with income)", "tax": f"{tax * 100:g}% on gains at withdrawal",

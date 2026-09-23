@@ -259,7 +259,7 @@ def recommendation():
                 extra = ""
                 if debt.get("fixed_until"):
                     extra = (f"\nThe fixed rate ends {debt['fixed_until']} and the installment drops by itself then. Until "
-                             "then check an annex or margin negotiation at your bank, or refinancing. "
+                             "then check a margin renegotiation at your bank, or refinancing. "
                              "On a fixed rate read the contract first: early-repayment compensation.")
                 recs.append({
                     "area": "refinancing", "priority": 2,
@@ -274,7 +274,7 @@ def recommendation():
                              "2. At your own bank request a balance-and-history certificate 'for refinancing'. "
                              "The bank reads it as a leaving signal and the retention team often calls by itself.\n"
                              "3. Write or call: 'I have an offer at X%, I am considering moving, what can you propose?'\n"
-                             "4. An annex counter-offer usually comes within 2–4 weeks. If it does not, "
+                             "4. A counter-offer from your bank usually comes within 2–4 weeks. If it does not, "
                              "refinance for real, but first check the early-repayment compensation in the "
                              "contract (fixed rate).")})
 
