@@ -195,27 +195,28 @@ def recommendation():
     try:
         breaches = [r for r in P.allocation()["rows"] if r["flag"] != "ok" and r["value"] > 0]
         if breaches:
-            parts = ", ".join(f"{b['label']} {b['pct']}% vs target {b['target']}% "
-                              f"({'+' if b['drift'] > 0 else ''}{b['drift']}pp)" for b in breaches[:3])
+            lines = "\n".join(f"{b['label']}: {b['pct']}% vs target {b['target']}% "
+                              f"({'+' if b['drift'] > 0 else ''}{b['drift']} pp)" for b in breaches[:3])
             recs.append({"area": "rebalancing (5/25)", "priority": 2,
-                         "text": (f"Allocation drifted past the 5/25 band: {parts}. "
-                                  "Steer NEW contributions toward the underweight classes "
-                                  "(cheaper than selling: no tax event); targets are editable in the Allocation tab.")})
+                         "title": "Allocation outside the 5/25 band: steer new contributions to classes below target",
+                         "text": (f"{lines}\nAdding to underweight classes triggers no tax, selling would. "
+                                  "Targets are editable in the Allocation tab.")})
     except Exception:
         pass
 
     # 0. user-chosen strategy overrides generic debt heuristics
     strategy = P.get_setting("debt_strategy")
     if strategy:
-        stale = ""
+        # the volatile part (loan events since the note) goes to the title, not the text: the text
+        # is the rec_log key, so every installment changed the key and dropped the recorded outcome
         at = P.get_setting("debt_strategy_at")
+        title = "Your debt strategy" + (f" (written {at[:10]})" if at else "")
         if at:
             ev = eb._rows("select count(*) n, coalesce(sum(principal_paid),0) p from debt_values where created_at > ?", (at,))[0]
             if ev["n"]:
-                stale = (f"⚠️ Written {at[:10]} — since then {ev['n']} loan events "
-                         f"(principal repaid {_zl(ev['p'])}); check whether the numbers in the strategy still hold. ")
-        recs.append({"area": "strategy (your decision)", "priority": 0,
-                     "text": stale + strategy})
+                title += (f" ⚠️ loan events since: {ev['n']} (principal repaid {_zl(ev['p'])}), "
+                          "check the numbers")
+        recs.append({"area": "strategy (your decision)", "priority": 0, "title": title, "text": strategy})
 
     # 1. emergency fund
     target = essential_m * 6
@@ -223,11 +224,12 @@ def recommendation():
         gap = target - cushion
         recs.append({
             "area": "emergency fund", "priority": 1,
-            "text": (f"Build the emergency cushion: you have {_zl(cushion)} "
-                     f"(cash {_zl(lc['cash'])} + {int(lc['haircut'] * 100)}% of the brokerage portfolio {_zl(lc['brokerage_counted'])}; "
-                     f"retirement accounts {_zl(lc['retirement'])} counted separately — early withdrawal costs), "
-                     f"the target is ~{_zl(target)} (6 months of essential costs ~{_zl(essential_m)}/mo); "
-                     f"{_zl(gap)} is missing — this is the priority before overpayments and investing.")})
+            "title": f"Emergency cushion: {_zl(gap)} short of 6 months of essential costs",
+            "text": (f"You have {_zl(cushion)}: cash {_zl(lc['cash'])} + {int(lc['haircut'] * 100)}% of the "
+                     f"brokerage portfolio ({_zl(lc['brokerage_counted'])}).\n"
+                     f"Target ~{_zl(target)}, i.e. 6 × ~{_zl(essential_m)}/mo.\n"
+                     f"Retirement accounts ({_zl(lc['retirement'])}) are counted separately: early withdrawal costs.\n"
+                     "The cushion comes before overpayments and investing.")})
 
     # 2. debt avalanche vs investing
     for debt in sorted(d["debts"], key=lambda x: -(x["effective_rate"] or 0)):
@@ -237,15 +239,16 @@ def recommendation():
         if rate > after_tax:
             recs.append({
                 "area": "debts", "priority": 6 if strategy else 2,
-                "text": (f"Overpay {debt['name']}: the effective {rate:.2f}% beats "
-                         f"the expected market return AFTER TAX (~{after_tax}% = {EXPECTED_MARKET_RETURN}% × (1 − {capital_gains_tax_pct():g}%)) — "
-                         f"an overpayment is a guaranteed, untaxed {rate:.1f}% return. "
+                "title": f"Overpay {debt['name']}: {rate:.2f}% beats the market after tax (~{after_tax}%)",
+                "text": (f"Market after tax: {EXPECTED_MARKET_RETURN}% × (1 − {capital_gains_tax_pct():g}%) ≈ {after_tax}%.\n"
+                         f"An overpayment is a guaranteed, untaxed {rate:.1f}% return.\n"
                          f"Interest to maturity at the current installment: {_zl(debt['schedule']['total_interest'] or 0)}.")})
         else:
             recs.append({
                 "area": "debts", "priority": 4,
-                "text": (f"{debt['name']} ({rate:.2f}% effective) — do not overpay aggressively; "
-                         f"cheap debt: the market after tax returns ~{after_tax}%, so the capital works comparably or better elsewhere.")})
+                "title": f"{debt['name']}: do not overpay aggressively ({rate:.2f}% effective)",
+                "text": (f"Cheap debt: the market after tax returns ~{after_tax}%, so the money works "
+                         "comparably or better elsewhere.")})
         break  # avalanche: only the top-rate debt gets the action
 
     # 2b. refinancing: fixed rate far above current market
@@ -259,51 +262,46 @@ def recommendation():
                 yearly = debt["balance"] * gap / 100
                 extra = ""
                 if debt.get("fixed_until"):
-                    extra = (f" The fixed rate ends {debt['fixed_until']} — the installment "
-                             f"will then drop by itself, but until then you overpay the market by "
-                             f"~{_zl(yearly)}/yr. Check: an annex/margin negotiation at your "
-                             f"bank or refinancing (mind the early-repayment "
-                             f"compensation on a fixed rate).")
+                    extra = (f"\nThe fixed rate ends {debt['fixed_until']} and the installment drops by itself then. Until "
+                             "then check an annex or margin negotiation at your bank, or refinancing. "
+                             "On a fixed rate read the contract first: early-repayment compensation.")
                 recs.append({
                     "area": "refinancing", "priority": 2,
-                    "text": (f"{debt['name']}: you pay {debt['effective_rate']:.2f}% against "
-                             f"a market of ~{market_rate:.2f}% (WIBOR {rates['wibor3m']}% + margin "
-                             f"{margin}%) — a {gap:.1f} pp gap ≈ {_zl(yearly)}/yr "
-                             f"of overpaid interest.{extra}")})
+                    "title": f"{debt['name']}: ~{_zl(yearly)}/yr of interest above the market",
+                    "text": (f"You pay {debt['effective_rate']:.2f}%, the market is ~{market_rate:.2f}% "
+                             f"(WIBOR {rates['wibor3m']}% + margin {margin}%). Gap {gap:.1f} pp.{extra}")})
                 recs.append({
                     "area": "bank negotiations", "priority": 2,
-                    "text": (f"Playbook for {debt['name']}: (1) file refinancing applications "
-                             f"at 2–3 banks (free, ~a week) — a real offer beats a bluff; "
-                             f"(2) at your own bank request a balance-and-history certificate "
-                             f"'for refinancing' — that request lands in the system "
-                             f"as a leaving signal and often triggers the retention "
-                             f"department by itself; (3) call/write to the bank: 'I have an offer at X%, "
-                             f"I am considering moving — what can you propose?'; "
-                             f"(4) expect an annex counter-offer within 2–4 weeks; if none — "
-                             f"actually refinance, after checking the early-repayment "
-                             f"compensation in the contract (fixed rate!).")})
+                    "title": f"Negotiate {debt['name']}: get an offer from another bank and show it to yours",
+                    "text": ("1. File refinancing applications at 2–3 banks (free, about a week). "
+                             "A real offer negotiates better than a bluff.\n"
+                             "2. At your own bank request a balance-and-history certificate 'for refinancing'. "
+                             "The bank reads it as a leaving signal and the retention team often calls by itself.\n"
+                             "3. Write or call: 'I have an offer at X%, I am considering moving, what can you propose?'\n"
+                             "4. An annex counter-offer usually comes within 2–4 weeks. If it does not, "
+                             "refinance for real, but first check the early-repayment compensation in the "
+                             "contract (fixed rate).")})
 
     # 3. concentration / diversification
     if assets > 0 and real_estate / assets > 0.7:
         pct = real_estate / assets * 100
         recs.append({
             "area": "diversification", "priority": 3,
-            "text": (f"Real estate is {pct:.0f}% of wealth — high concentration in one "
-                     f"asset class and one country. Direct new savings into liquid "
-                     f"instruments: retirement-account limits first (an instant tax benefit), "
-                     f"then a broad ETF.")})
+            "title": f"Real estate is {pct:.0f}% of wealth: direct new savings into liquid instruments",
+            "text": ("Almost all wealth sits in one asset class and one country.\n"
+                     "Order: retirement-account limits first (instant tax benefit), then a broad ETF.")})
 
     # 4. goals
     if not goals:
         recs.append({
-            "area": "goals", "priority": 5,
-            "text": "You have no active goal — add one in the Goals tab (e.g. a home "
-                    "down payment), and job offers and the savings pace will start counting toward it."})
+            "area": "goals", "priority": 5, "title": "Add an active goal",
+            "text": "Goals tab (e.g. a home down payment). With a goal, job offers and the savings pace "
+                    "start counting toward it."})
     if P.monthly_surplus() in (None, 0):
         recs.append({
-            "area": "goals", "priority": 5,
-            "text": "Set a realistic monthly savings pace (Goals, or Cash-flow → base surplus) — without it "
-                    "goal projections and job-offer comparisons do not work."})
+            "area": "goals", "priority": 5, "title": "Set a monthly savings pace",
+            "text": "In Goals or Cash-flow (base surplus). Without it goal projections and job-offer "
+                    "comparisons do not work."})
 
     recs.sort(key=lambda r: r["priority"])
     history = _rec_memory(recs)

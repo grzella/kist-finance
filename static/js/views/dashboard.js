@@ -13,6 +13,11 @@ async function renderDashboard(el) {
   ]);
   const fresh = await api.get("/api/freshness").catch(() => null);
 
+  // a recommendation with a recorded outcome (done/rejected/outdated) is already decided
+  const openRecs = rec.items.filter((r) => !r.outcome);
+  const recBody = (r) => `<div><b>${r.title || r.text}</b> <span class="badge">${r.area}</span>
+    ${r.title ? `<details class="help" style="margin-top:4px"><summary>details</summary><div style="white-space:pre-line">${r.text}</div></details>` : ""}</div>`;
+
   el.innerHTML = `
     <h2>Dashboard — ${sum.month}</h2>
     <div class="grid cols-4">
@@ -30,13 +35,12 @@ async function renderDashboard(el) {
         <div class="sub">+ Sep bonus and RSU vests (Feb/May/Aug/Nov) on top</div></div>
     </div>
     <div class="card mt" style="border-left:4px solid ${CHART_COLORS[2]}">
-      <h3 style="margin-top:0">🧭 3 decisions for today <span class="muted">out of ${rec.items.length} recommendations · <a href="#recs">all →</a></span></h3>
-      ${rec.headline && !rec.items.length ? `<div class="muted" style="margin-bottom:10px">${rec.headline}</div>` : ""}
-      ${rec.items.length ? `<ol class="decisions">${rec.items.slice(0, 3).map((r, i) =>
-        `<li><span class="n">${i + 1}</span><span><b>[${r.area}]</b> ${r.text}</span></li>`).join("")}</ol>`
-        : `<div class="muted">No recommendations — data is complete, or the engine has not run yet.</div>`}
-      ${rec.items.length > 3 ? `<details class="help"><summary>${rec.items.length - 3} more</summary>
-        <ul style="padding-left:18px">${rec.items.slice(3).map((r) => `<li class="mt"><b>[${r.area}]</b> ${r.text}</li>`).join("")}</ul></details>` : ""}
+      <h3 style="margin-top:0">🧭 3 decisions for today <span class="muted">out of ${openRecs.length} open · <a href="#recs">all →</a></span></h3>
+      ${openRecs.length ? `<ol class="decisions">${openRecs.slice(0, 3).map((r, i) =>
+        `<li><span class="n">${i + 1}</span>${recBody(r)}</li>`).join("")}</ol>`
+        : `<div class="muted">${rec.items.length ? "Every recommendation already has an outcome." : rec.headline}</div>`}
+      ${openRecs.length > 3 ? `<details class="help"><summary>${openRecs.length - 3} more</summary>
+        <ol class="decisions">${openRecs.slice(3).map((r, i) => `<li><span class="n">${i + 4}</span>${recBody(r)}</li>`).join("")}</ol></details>` : ""}
     </div>
     ${fresh && !fresh.complete ? `<div class="card mt" style="border-left:4px solid var(--amber)">
       <div class="row" style="align-items:center;gap:10px">

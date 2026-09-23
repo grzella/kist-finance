@@ -66,7 +66,9 @@ async function renderRecs(el) {
         <tbody>
         ${engineItems.map((r, i) => `<tr>
           <td><span class="badge">${r.area}</span>${r.since ? `<div class="muted" style="font-size:.75em;margin-top:3px">since ${r.since}</div>` : ""}</td>
-          <td style="font-size:.92em">${r.text.length > 160
+          <td style="font-size:.92em">${r.title
+            ? `<b>${r.title}</b><details><summary class="muted" style="cursor:pointer">details</summary><div class="mt" style="white-space:pre-line">${r.text}</div></details>`
+            : r.text.length > 160
             ? `${r.text.slice(0, 160)}… <details style="display:inline"><summary class="muted" style="display:inline;cursor:pointer">more</summary><div class="mt">${r.text}</div></details>`
             : r.text}</td>
           <td><button data-eadd="${i}">→ backlog</button><div class="mt">${outcomeSel(r.key, r.outcome)}</div></td>
