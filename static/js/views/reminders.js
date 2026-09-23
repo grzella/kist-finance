@@ -34,7 +34,7 @@ async function renderReminders(el) {
         <thead><tr><th style="width:120px">Due</th><th>What</th><th style="width:90px">Type</th><th style="width:60px"></th></tr></thead>
         <tbody>${rem.map((r) => `<tr>
           <td class="${urgency(r.days)}"><b>${daysTxt(r.days)}</b><div class="muted" style="font-size:.8em">${r.due_date || ""}</div></td>
-          <td>${r.title}${r.note ? `<div class="muted" style="font-size:.82em">${r.note}</div>` : ""}</td>
+          <td>${esc(r.title)}${r.note ? `<div class="muted" style="font-size:.82em">${esc(r.note)}</div>` : ""}</td>
           <td>${r.auto ? `<span class="badge">${r.kind || "auto"}</span>` : '<span class="badge">own</span>'}</td>
           <td>${r.auto ? '<span class="muted" style="font-size:.8em">auto</span>'
             : `<button data-rdone="${r.id}" title="done">✓</button> <button class="danger" data-rdel="${r.id}">✕</button>`}</td>

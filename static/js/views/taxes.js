@@ -55,6 +55,7 @@ async function renderTaxes(el) {
       tax_rental_monthly: parseNum(document.getElementById("txRent")),
       tax_rental_rate: parseNum(document.getElementById("txRate")),
       tax_zus_monthly: parseNum(document.getElementById("txZus")),
+      tax_biz_rate_pct: parseNum(document.getElementById("txBiz")),
     });
     route();
   });

@@ -37,7 +37,6 @@ async function renderControl(el) {
     api.get("/api/llm/log").catch(() => null),
     api.get("/api/experiences").catch(() => null),
   ]);
-  const esc = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const s = d.summary;
   const vColor = { ok: TOKENS.pos, warn: TOKENS.warn, error: TOKENS.neg };
   const secColor = vColor[rev && rev.verdict] || TOKENS.muted;
@@ -224,10 +223,10 @@ async function renderControl(el) {
         const r = await api.post("/api/llm/ask", { prompt });
         const card = (label, res, col) => res ? `<div class="card" style="border-left:3px solid ${col};margin:0">
           <div style="font-weight:600;font-size:.85em">${label}</div>
-          <div style="white-space:pre-wrap;font-size:.9em">${res.ok ? res.text : '<span class="neg">offline / no answer</span>'}</div></div>` : "";
+          <div style="white-space:pre-wrap;font-size:.9em">${res.ok ? esc(res.text) : '<span class="neg">offline / no answer</span>'}</div></div>` : "";
         const syn = r.synthesis && r.synthesis.ok ? `<div class="card" style="border-left:4px solid var(--warn);margin:0 0 10px">
           <div style="font-weight:600;font-size:.85em">🧭 Verdict — synthesis of both models <span class="muted">(${r.synthesis.by === "cloud" ? "Claude" : "local"})</span></div>
-          <div style="white-space:pre-wrap;font-size:.9em">${r.synthesis.text}</div></div>` : "";
+          <div style="white-space:pre-wrap;font-size:.9em">${esc(r.synthesis.text)}</div></div>` : "";
         out.innerHTML = syn + `<div class="grid ${r.cloud ? "cols-2" : ""}">
           ${card("🔒 " + (r.local.label || "local"), r.local, TOKENS.pos)}
           ${r.cloud ? card("☁️ " + (r.cloud.label || "Claude"), r.cloud, "#b78cff") : ""}</div>`;

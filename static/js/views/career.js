@@ -107,7 +107,7 @@ async function renderCareer(el) {
       <div class="mt" style="font-size:.92em;padding:8px 12px;background:var(--inset);border-radius:6px">
         <b>💡 Plan for this year:</b> ${a.trainings.recommended_year}</div>
 
-      ${a.trainings.conferences ? `<h4 class="mt">🎤 Conferences — local (Warsaw)</h4>
+      ${a.trainings.conferences ? `<h4 class="mt">🎤 Conferences — local</h4>
       <div class="muted" style="font-size:.85em;margin-bottom:6px">${a.trainings.conferences_note}</div>
       <table><tbody>${a.trainings.conferences.map((c) => `<tr>
         <td><b>${c.url ? `<a href="${c.url}" target="_blank">${c.name} ↗</a>` : c.name}</b><div class="muted" style="font-size:.82em">${c.when}</div></td>

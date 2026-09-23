@@ -38,7 +38,7 @@ async function renderGoals(el) {
           + (p.eta_band ? ` · range: ${fmt.num(p.eta_band.months_fast, 0)}–${fmt.num(p.eta_band.months_slow, 0)} mo at a pace of ±${p.eta_band.wobble_pct}%` : "");
       return `<div class="card mt">
         <div class="row" style="justify-content:space-between">
-          <h3 style="margin:0">${g.name}</h3>
+          <h3 style="margin:0">${esc(g.name)}</h3>
           <span class="badge">${g.status}</span>
         </div>
         <div class="row mt">

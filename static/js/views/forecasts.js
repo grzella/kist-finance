@@ -89,9 +89,7 @@ async function renderForecasts(el) {
       <div class="muted mt" style="font-size:.82em">Assumptions: ${fire.assumptions.base_return} · inflation ${fire.assumptions.inflation} · ${fire.assumptions.income_growth} · ${fire.assumptions.tax} · freed installment from ${fire.freed_from_month}.</div>
       <div class="mt"><b>Milestones (base scenario):</b>
         <table><tbody>
-          <tr><td>First liquid million</td><td><b>${fire.milestones["1000000"] || "—"}</b></td></tr>
-          <tr><td>2M</td><td><b>${fire.milestones["660000"] || "—"}</b></td></tr>
-          <tr><td>${fmt.pln(fire.target)} — work-optional 🏁</td><td class="pos"><b>${fire.milestones[String(fire.target)] || fire.crossover || "—"}</b></td></tr>
+          ${Object.entries(fire.milestones).map(([k, when]) => `<tr><td>${fmt.pln(Number(k))}${Number(k) === fire.target ? " — work-optional 🏁" : ""}</td><td${Number(k) === fire.target ? ' class="pos"' : ""}><b>${when}</b></td></tr>`).join("") || `<tr><td class="muted">No milestone within the horizon</td></tr>`}
         </tbody></table></div>
       ${help(`This replaces Monte Carlo with readable lines. Hover over the chart to see the value in a given month. "Real" uses the after-inflation return (~3.5% real) — the date in today's purchasing power.`, "how to read the chart")}
     </div>
@@ -108,20 +106,6 @@ async function renderForecasts(el) {
         <div class="muted mt" style="font-size:.82em">${fire.property.note}</div>
       </div>` : ""}
 
-    ${stress ? `<div class="card mt" style="border-left:4px solid #ff8c66">
-      <h3 style="margin-top:0">🧯 Stress test — financial fire drill</h3>
-      <div class="muted" style="font-size:.85em;margin-bottom:8px">Deterministic what-ifs computed from your data (no simulation, no AI). The point: know the answers <i>before</i> markets ask the questions.</div>
-      <div class="grid cols-3">
-        ${stress.scenarios.map((sc) => `<div class="card" style="margin:0">
-          <div class="row" style="justify-content:space-between"><b>${sc.icon} ${sc.title}</b><b class="neg">${sc.impact}</b></div>
-          <div class="muted mt" style="font-size:.85em">${sc.detail}</div>
-        </div>`).join("")}
-      </div>
-      ${stress.policy ? `<div class="mt" style="padding:8px 12px;background:var(--inset);border-radius:6px;font-size:.9em">
-        <b>🛡️ Withdrawal policy (Guyton-Klinger guardrails):</b> ${stress.policy.verdict}
-        ${stress.policy.current_pct != null ? `<div class="muted mt" style="font-size:.9em">Start rate ${stress.policy.initial_pct}% · guardrails ${stress.policy.lower_pct}–${stress.policy.upper_pct}% · portfolio ${fmt.pln(stress.policy.portfolio)} · essential spend ${fmt.pln(stress.policy.annual_spend)}/yr${stress.policy.portfolio_needed ? ` · calm-start portfolio ${fmt.pln(stress.policy.portfolio_needed)}` : ""}</div>` : ""}
-      </div>` : ""}
-    </div>` : ""}
 
       ${fire.tracking ? `<div class="card" style="border-left:4px solid var(--accent)">
         <h3 style="margin-top:0">📡 Progress vs plan (learning every month)</h3>
@@ -136,6 +120,21 @@ async function renderForecasts(el) {
             <td style="text-align:right" class="${r.delta >= 0 ? "pos" : "neg"}">${r.delta >= 0 ? "+" : ""}${fmt.pln(r.delta)}</td></tr>`).join("")}</tbody></table>`
         : `<div class="muted">${fire.tracking.status === "collecting data" ? `Collecting data — first snapshot ${fire.tracking.first || "today"}. In a month the first comparison of the actual pace vs the plan will appear.` : "No data."}</div>
           <div class="muted mt" style="font-size:.85em">Every month the liquid portfolio balance is recorded and compared with the expected pace (6.5% + contributions). You will see whether you are ahead of or behind the plan.</div>`}
+      </div>` : ""}
+    </div>` : ""}
+
+    ${stress ? `<div class="card mt" style="border-left:4px solid #ff8c66">
+      <h3 style="margin-top:0">🧯 Stress test — financial fire drill</h3>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">Deterministic what-ifs computed from your data (no simulation, no AI). The point: know the answers <i>before</i> markets ask the questions.</div>
+      <div class="grid cols-3">
+        ${stress.scenarios.map((sc) => `<div class="card" style="margin:0">
+          <div class="row" style="justify-content:space-between"><b>${sc.icon} ${sc.title}</b><b class="neg">${sc.impact}</b></div>
+          <div class="muted mt" style="font-size:.85em">${sc.detail}</div>
+        </div>`).join("")}
+      </div>
+      ${stress.policy ? `<div class="mt" style="padding:8px 12px;background:var(--inset);border-radius:6px;font-size:.9em">
+        <b>🛡️ Withdrawal policy (Guyton-Klinger guardrails):</b> ${stress.policy.verdict}
+        ${stress.policy.current_pct != null ? `<div class="muted mt" style="font-size:.9em">Start rate ${stress.policy.initial_pct}% · guardrails ${stress.policy.lower_pct}–${stress.policy.upper_pct}% · portfolio ${fmt.pln(stress.policy.portfolio)} · essential spend ${fmt.pln(stress.policy.annual_spend)}/yr${stress.policy.portfolio_needed ? ` · calm-start portfolio ${fmt.pln(stress.policy.portfolio_needed)}` : ""}</div>` : ""}
       </div>` : ""}
     </div>` : ""}
 
@@ -176,7 +175,7 @@ async function renderForecasts(el) {
     <div class="card mt">
       <h3>Overpayment calculator — any variant</h3>
       <div class="row">
-        <select id="mDebt">${debtsData.debts.map((d) => `<option value="${d.id}">${d.name}</option>`).join("")}</select>
+        <select id="mDebt">${debtsData.debts.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}</select>
         <input data-num id="mOver" placeholder="overpayment amount">
         <button class="primary" id="mRun">Compute</button>
       </div>

@@ -103,11 +103,6 @@ async function renderCommits(el) {
           tooltip: { callbacks: { title: (i) => i[0].label, label: (x) => x.dataset.prCounts ? `${x.dataset.label}: ${x.dataset.prCounts[x.dataIndex]}` : `${x.dataset.label}: ${x.parsed.y}` } } },
         scales: { x: { ticks: { maxTicksLimit: 12 } }, y: { ticks: { stepSize: 2 } } },
       },
-      options: {
-        plugins: { legend: { display: false },
-          tooltip: { callbacks: { title: (i) => i[0].label, label: (x) => `${x.parsed.y} commits` } } },
-        scales: { x: { ticks: { maxTicksLimit: 12 } }, y: { ticks: { stepSize: 2 } } },
-      },
     }));
   }
 }

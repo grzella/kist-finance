@@ -55,9 +55,9 @@ async function renderCurrency(el) {
 
   el.innerHTML = `
     <h2>💱 FX — exposure, signals and conversion assistant</h2>
-    <div class="muted" style="margin-bottom:12px">Rates refreshed daily (n8n → cache; status in Control → "Market rates").
+    <div class="muted" style="margin-bottom:12px">Rates refreshed daily (status in Control Center → "Market rates").
       The signal combines level + trend + momentum + deviation from the average — not just "is it near the top".
-      The backtest shows how often the signal actually caught a good moment. Vests in USD, house down payment in EUR.</div>
+      The backtest shows how often the signal actually caught a good moment.</div>
 
     <div class="card">
       <h3>Currency exposure (assets)</h3>
@@ -65,8 +65,7 @@ async function renderCurrency(el) {
         ${Object.entries(exp).map(([c, v]) => `<span>${c}: <b>${fmt.pln(v)}</b>
           <span class="muted">(${Math.round(100 * v / totalExp)}%)</span></span>`).join("")}
       </div>
-      <div class="muted mt" style="font-size:.85em">USD mostly from RSU + USD cash. EUR grows with accumulation toward the house.
-        Natural hedge: part of the USD vests → EUR directly toward the down payment (skipping PLN).</div>
+      <div class="muted mt" style="font-size:.85em">USD mostly from RSU and USD cash.</div>
     </div>
 
     <div class="grid cols-3 mt">${pairs.map(fxCard).join("")}</div>

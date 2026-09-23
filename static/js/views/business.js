@@ -36,16 +36,15 @@ async function renderBusiness(el) {
       <div class="card"><h3>Cumulative result</h3><canvas id="bCum"></canvas></div>
     </div>
     ${!mkt.error ? `<div class="card mt" style="border-left:4px solid ${CHART_COLORS[4]}">
-      <h3 style="margin-top:0">📣 Performance marketing (Meta) — weekly analysis from marketing agents</h3>
+      <h3 style="margin-top:0">📣 Ads performance (weekly)</h3>
       <div class="row" style="gap:20px;flex-wrap:wrap">
         <span>Spend (recent weeks): <b>€${fmt.num(mkt.recent_spend_eur)}</b></span>
         <span>Clicks: <b>${mkt.recent_clicks}</b></span>
-        <span class="muted">report every Monday ~07:00 (ads-analyst)</span>
       </div>
       ${mkt.weeks.length ? `<div class="mt">
         <b>Last week (${mkt.weeks[0].week}, spend €${mkt.weeks[0].spend_eur}):</b>
         <div class="muted">${mkt.weeks[0].summary || "—"}</div>
-        ${mkt.weeks[0].recommendation ? `<div class="mt">💡 <b>Recommendation of the week:</b> ${mkt.weeks[0].recommendation}</div>` : ""}
+        ${mkt.weeks[0].recommendation ? `<div class="mt">💡 <b>Recommendation of the week:</b> ${esc(mkt.weeks[0].recommendation)}</div>` : ""}
       </div>` : ""}
       ${mkt.insights.length ? `<details class="mt"><summary style="cursor:pointer"><b>Insights</b> (${mkt.insights.length}) — what works</summary>
         <ul style="padding-left:18px">${mkt.insights.map((i) =>
@@ -58,7 +57,7 @@ async function renderBusiness(el) {
       <details class="mt"><summary class="muted" style="cursor:pointer">previous weeks</summary>
         <table class="mt"><thead><tr><th>Week</th><th>Spend</th><th>Summary</th></tr></thead>
         <tbody>${mkt.weeks.slice(1).map((w) => `<tr><td>${w.week}</td><td>€${w.spend_eur}</td>
-          <td class="muted" style="font-size:.85em">${(w.summary || "—").slice(0, 180)}…</td></tr>`).join("")}</tbody></table>
+          <td class="muted" style="font-size:.85em">${esc((w.summary || "—").slice(0, 180))}…</td></tr>`).join("")}</tbody></table>
       </details>
     </div>` : `<div class="card mt muted">📣 Performance marketing: ${mkt.error}</div>`}
     <div class="card mt"><h3>Months (marketing → ROAS)</h3><div id="bMonths"></div></div>
@@ -92,7 +91,7 @@ async function renderBusiness(el) {
         <td>${e.date}</td>
         <td><span class="badge">${KIND_LABELS[e.kind] || e.kind}</span></td>
         <td>${e.category}</td>
-        <td>${e.description || "—"}</td>
+        <td>${esc(e.description || "—")}</td>
         <td style="text-align:right" class="${e.kind === "revenue" ? "pos" : "neg"}">${fmt.pln(e.amount)}</td>
         <td><button class="danger" data-bdel="${e.id}">✕</button></td>
       </tr>`).join("") + "</tbody></table>";

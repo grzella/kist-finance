@@ -14,12 +14,12 @@ function _row(i, cm) {
     ? `<button data-bill="${i.id}" class="badge" style="cursor:pointer;background:#2b5f8f;color:#fff;border:none" title="billed yearly (amount = 1/12) — click to switch to monthly">📅 yearly</button>`
     : `<button data-bill="${i.id}" class="badge" style="cursor:pointer;opacity:.7" title="billed monthly — an annual plan is often 15–20% cheaper; click once you switch">monthly</button>`;
   return `<tr>
-    <td>${i.name}</td>
+    <td>${esc(i.name)}</td>
     <td>${inv}</td>
     <td>${bill}</td>
-    <td>${i.payer}</td>
+    <td>${esc(i.payer)}</td>
     <td>${i.essential ? "✓" : ""}</td>
-    <td style="text-align:right" data-val="${i.id}">${(i.currency || "USD") !== (window.APP_CURRENCY || "USD") ? `<span title="${i.fx_missing ? "no rate in the cache — amount not converted" : "rate " + fmt.num(i.fx_rate, 4)}">${fmt.num(i.latest_amount_ccy, 2)} ${i.currency} ${i.fx_missing ? "⚠️" : "≈ " + fmt.usd(i.latest_amount)}</span>` : fmt.usd(i.latest_amount)}</td>
+    <td style="text-align:right" data-val="${i.id}">${(i.currency || window.APP_CURRENCY || "PLN") !== (window.APP_CURRENCY || "PLN") ? `<span title="${i.fx_missing ? "no rate in the cache — amount not converted" : "rate " + fmt.num(i.fx_rate, 4)}">${fmt.num(i.latest_amount_ccy, 2)} ${i.currency} ${i.fx_missing ? "⚠️" : "≈ " + fmt.money(i.latest_amount)}</span>` : fmt.money(i.latest_amount)}</td>
     <td class="muted">${i.latest_month || "—"}</td>
     <td><button data-upd="${i.id}" title="${i.current_month_set ? "amount for " + cm + " already entered — correct it" : "enter the new amount effective from " + cm}">Change amount</button></td>
     <td><button class="danger" data-del="${i.id}">✕</button></td>
@@ -56,14 +56,14 @@ async function renderExpenses(el) {
     <h2>Fixed Expenses</h2>
     <div class="grid cols-4">
       <div class="card kpi"><div class="label">Total fixed (mine)</div>
-        <div class="value">${fmt.usd(s.total_mine)}</div>
+        <div class="value">${fmt.money(s.total_mine)}</div>
         <div class="sub">month: ${cm}</div></div>
       <div class="card kpi"><div class="label">Of which essential</div>
-        <div class="value">${fmt.usd(s.essential_mine)}</div></div>
+        <div class="value">${fmt.money(s.essential_mine)}</div></div>
       <div class="card kpi"><div class="label">Subscriptions total</div>
-        <div class="value">${fmt.usd(subTotal)}</div></div>
+        <div class="value">${fmt.money(subTotal)}</div></div>
       <div class="card kpi"><div class="label">📄 Invoiced total</div>
-        <div class="value">${fmt.usd(s.invoiceable_total)}</div>
+        <div class="value">${fmt.money(s.invoiceable_total)}</div>
         <div class="sub">deductible/business costs per month</div></div>
     </div>
     ${(s.optimizations && s.optimizations.length) ? `<div class="card mt" style="border-left:3px solid ${CHART_COLORS[2]}">
@@ -79,7 +79,7 @@ async function renderExpenses(el) {
       <div class="row">
         <input id="eName" placeholder="name (e.g. Rent)" style="flex:1">
         <input id="eEntity" placeholder="entity (personal / business / rental…)" list="eEntityList" value="personal" style="width:170px">
-        <datalist id="eEntityList"><option value="personal"><option value="business">${otherEntities.map((e) => `<option value="${e}">`).join("")}</datalist>
+        <datalist id="eEntityList"><option value="personal"><option value="business">${otherEntities.map((e) => `<option value="${esc(e)}">`).join("")}</datalist>
         <select id="eCategory">
           <option value="">no category</option>
           <option value="subscription-work">Subscription — work</option>
@@ -93,7 +93,7 @@ async function renderExpenses(el) {
         <select id="ePayer"><option selected>me</option><option>partner</option><option>tenant</option></select>
         <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="eEssential" checked> essential</label>
         <label style="display:flex;align-items:center;gap:4px" title="a business expense you'll get an invoice for"><input type="checkbox" id="eInvoice"> 📄 invoiced</label>
-        <select id="eCurrency" title="item currency — enter the amount in this currency; converted at the cached rate"><option selected>USD</option><option>EUR</option><option>PLN</option><option>GBP</option></select>
+        <select id="eCurrency" title="item currency — enter the amount in this currency; converted at the cached rate">${["PLN", "EUR", "USD", "GBP", "CHF"].map((c) => `<option ${c === (window.APP_CURRENCY || "PLN") ? "selected" : ""}>${c}</option>`).join("")}</select>
         <input data-num id="eAmount" placeholder="amount (this month)">
         <button class="primary" id="eAdd">Add</button>
       </div>
@@ -104,16 +104,16 @@ async function renderExpenses(el) {
 
     <div class="card mt"><h3>Personal</h3>${_table(personal, cm, "No items yet")}</div>
 
-    <div class="card mt"><h3>Subscriptions <span class="muted">(${fmt.usd(subTotal)}/mo)</span></h3>
+    <div class="card mt"><h3>Subscriptions <span class="muted">(${fmt.money(subTotal)}/mo)</span></h3>
       ${subGroups.length ? subGroups.map((g) =>
-        `<h4 class="mt">${g.label} <span class="muted">${fmt.usd(g.items.reduce((a, i) => a + (i.latest_amount || 0), 0))}</span></h4>${_table(g.items, cm, "—")}`
+        `<h4 class="mt">${g.label} <span class="muted">${fmt.money(g.items.reduce((a, i) => a + (i.latest_amount || 0), 0))}</span></h4>${_table(g.items, cm, "—")}`
       ).join("") : '<div class="empty">No subscriptions yet — add one with a category above</div>'}
     </div>
 
     ${otherEntities.map((ent) => {
       const its = s.items.filter((i) => i.entity === ent && !isSub(i));
       const total = sum(its);
-      return `<div class="card mt"><h3>${ent.charAt(0).toUpperCase() + ent.slice(1)} <span class="muted">(${fmt.usd(total)}/mo)</span></h3>
+      return `<div class="card mt"><h3>${esc(ent.charAt(0).toUpperCase() + ent.slice(1))} <span class="muted">(${fmt.money(total)}/mo)</span></h3>
         ${_table(its, cm, "No items yet")}
       </div>`;
     }).join("")}

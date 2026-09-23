@@ -49,7 +49,7 @@ async function renderDebts(el) {
           })();
       return `<div class="card mt">
         <div class="row" style="justify-content:space-between">
-          <h3 style="margin:0">${d.name}</h3>
+          <h3 style="margin:0">${esc(d.name)}</h3>
           <span class="badge">${fmt.pct(d.interest_rate, 2)} nominal
             ${d.effective_rate && d.effective_rate !== d.interest_rate ? `· ${fmt.pct(d.effective_rate, 2)} effective` : ""}</span>
         </div>

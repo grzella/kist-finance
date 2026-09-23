@@ -31,7 +31,7 @@ async function renderWealth(el) {
         <select id="wOwner"><option value="me">Me</option><option value="partner">Partner</option><option value="joint" selected>Joint</option></select>
         <input data-num id="wValue" placeholder="value ${window.APP_CURRENCY || "PLN"}">
         <select id="wDebt"><option value="">no loan</option>
-          ${s.debts.map((d) => `<option value="${d.id}">${d.name}</option>`).join("")}</select>
+          ${s.debts.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}</select>
         <button class="primary" id="wAdd">Add</button>
       </div>
     </div>
@@ -46,13 +46,13 @@ async function renderWealth(el) {
       <th>Name</th><th>Type</th><th>Owner</th><th style="text-align:right">Value</th>
       <th>Loan</th><th style="text-align:right">Equity</th><th>Updated</th><th></th><th></th>
     </tr></thead><tbody>` + s.items.map((i) => `<tr>
-      <td>${i.name}</td>
+      <td>${esc(i.name)}</td>
       <td><span class="badge">${WEALTH_KINDS[i.kind] || i.kind}</span></td>
       <td>${i.owner}</td>
       <td style="text-align:right" data-val="${i.id}">${fmt.pln(i.latest_value)}</td>
       <td><select data-link="${i.id}">
         <option value="">—</option>
-        ${s.debts.map((d) => `<option value="${d.id}" ${i.linked_debt_id === d.id ? "selected" : ""}>${d.name}</option>`).join("")}
+        ${s.debts.map((d) => `<option value="${d.id}" ${i.linked_debt_id === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}
       </select></td>
       <td style="text-align:right" class="${i.equity != null ? (i.equity >= 0 ? "pos" : "neg") : ""}">${i.equity != null ? fmt.pln(i.equity) : "—"}</td>
       <td class="muted">${i.latest_date || "—"}</td>

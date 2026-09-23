@@ -151,7 +151,7 @@ async function renderProperty(el) {
 
   const PROMPTS = {
     analysis_property: `Research property-purchase locations for me and return ONLY valid JSON (no prose) with this shape: {"headline": str, "as_of": "YYYY-MM-DD", "budget_eur": number, "criteria": [{"key": str, "label": str, "weight": 1-3}], "locations": [{"name": str, "region": str, "price_m2": str, "scores": {criteriaKey: 1-5}}], "recommendation": {"pick": str, "why": [str], "runner_up": str}}. Ask me clarifying questions first if you need my constraints.`,
-    analysis_market_brief: `Write a short market brief for my portfolio and return ONLY valid JSON: {"headline": str, "as_of": "YYYY-MM-DD", "highlights": [{"icon": "emoji", "title": str, "text": str}], "geopolitics": [{"title": str, "text": str}], "positions": [{"ticker": str, "stance": "hold|add|trim", "note": str}]}. Ask me for my tickers first.`,
+    analysis_market_brief: `Write a short market brief for my portfolio and return ONLY valid JSON: {"headline": str, "as_of": "YYYY-MM-DD", "highlights": [{"icon": "emoji", "title": str, "text": str}], "geopolitics": [{"title": str, "text": str}], "positions": [{"ticker": str, "stance": "hold|add|trim|watch", "text": str}]}. Ask me for my tickers first.`,
     analysis_career: `Prepare a long-term career analysis for me and return ONLY valid JSON: {"headline": str, "as_of": "YYYY-MM-DD", "target_role": str, "comp_levels": [{"role": str, "comp": str, "you": bool}], "money_paths": [{"tag": "A|B|C", "title": str, "verdict": str, "text": str}], "head_of_eng": str, "ai_impact": [str], "skills": [{"skill": str, "why": str}], "skills_note": str}. Interview me about my situation first.`,
   };
   el.querySelectorAll("[data-copyprompt]").forEach((b) => b.addEventListener("click", async () => {

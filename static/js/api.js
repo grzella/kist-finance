@@ -99,10 +99,6 @@ document.addEventListener("blur", (e) => {
   }
 }, true);
 
-// HTML-escape any value before it goes into innerHTML. Use for free-text and
-// especially anything from an external source (e.g. market data synced from
-// Supabase) so a crafted string can't inject markup. Numbers/computed values
-// don't need it. (The CSP already blocks script execution as a second layer.)
 // "analysis may be stale" banner: the snapshot has as_of, and source data changed later.
 function analysisStaleBanner(a) {
   if (!a || !a.stale) return "";
@@ -111,6 +107,10 @@ function analysisStaleBanner(a) {
     the numbers may be out of date. Ask for a refresh.</div>`;
 }
 
+// HTML-escape any value before it goes into innerHTML. Use for free-text and
+// especially anything from an external source (e.g. market data synced from
+// Supabase) so a crafted string can't inject markup. Numbers/computed values
+// don't need it. (The CSP already blocks script execution as a second layer.)
 function esc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")

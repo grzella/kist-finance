@@ -17,26 +17,26 @@ async function renderRecs(el) {
   const actionCard = (a) => `
     <div class="acard" data-act="${a.id}">
       <div class="row" style="justify-content:space-between;align-items:flex-start;gap:6px">
-        <b style="font-size:.92em">${a.title}</b>
+        <b style="font-size:.92em">${esc(a.title)}</b>
         <button class="danger" data-adel="${a.id}" title="delete">✕</button>
       </div>
       <div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap">
-        ${a.area ? `<span class="badge">${a.area}</span>` : ""}
+        ${a.area ? `<span class="badge">${esc(a.area)}</span>` : ""}
         <select data-ast="${a.id}" style="font-size:.85em">
           ${["backlog", "w trakcie", "zrobione", "odrzucone"].map((s) =>
             `<option value="${s}" ${a.status === s ? "selected" : ""}>${STATUS_LABELS[s]}</option>`).join("")}
         </select>
       </div>
-      ${a.expected_impact ? `<div class="muted" style="margin-top:6px;font-size:.85em">Target: <b>${a.expected_impact}</b></div>` : ""}
+      ${a.expected_impact ? `<div class="muted" style="margin-top:6px;font-size:.85em">Target: <b>${esc(a.expected_impact)}</b></div>` : ""}
       ${a.detail ? `<details style="margin-top:4px"><summary class="muted" style="font-size:.85em">details / instructions</summary>
-        <pre style="white-space:pre-wrap;font-family:inherit;margin:6px 0 0;font-size:.85em">${a.detail}</pre></details>` : ""}
+        <pre style="white-space:pre-wrap;font-family:inherit;margin:6px 0 0;font-size:.85em">${esc(a.detail)}</pre></details>` : ""}
       ${a.status === "zrobione" ? `<div style="margin-top:6px">
         <div class="row" style="gap:4px">
           <input data-num data-aimp="${a.id}" placeholder="actual PLN/yr" value="${fmt.grouped(a.actual_impact_pln)}" style="width:120px;font-size:.85em">
           <button data-asave="${a.id}" style="font-size:.85em">Save</button>
           ${a.done_at ? `<span class="muted" style="font-size:.8em">✓ ${a.done_at.slice(0, 10)}</span>` : ""}
         </div>
-        <input data-anote="${a.id}" placeholder="what it delivered / takeaway" value="${a.actual_note || ""}" style="width:100%;margin-top:4px;font-size:.85em">
+        <input data-anote="${a.id}" placeholder="what it delivered / takeaway" value="${esc(a.actual_note)}" style="width:100%;margin-top:4px;font-size:.85em">
       </div>` : ""}
     </div>`;
 
@@ -67,10 +67,10 @@ async function renderRecs(el) {
         ${engineItems.map((r, i) => `<tr>
           <td><span class="badge">${r.area}</span>${r.since ? `<div class="muted" style="font-size:.75em;margin-top:3px">since ${r.since}</div>` : ""}</td>
           <td style="font-size:.92em">${r.title
-            ? `<b>${r.title}</b><details><summary class="muted" style="cursor:pointer">details</summary><div class="mt" style="white-space:pre-line">${r.text}</div></details>`
+            ? `<b>${esc(r.title)}</b><details><summary class="muted" style="cursor:pointer">details</summary><div class="mt" style="white-space:pre-line">${esc(r.text)}</div></details>`
             : r.text.length > 160
-            ? `${r.text.slice(0, 160)}… <details style="display:inline"><summary class="muted" style="display:inline;cursor:pointer">more</summary><div class="mt">${r.text}</div></details>`
-            : r.text}</td>
+            ? `${esc(r.text.slice(0, 160))}… <details style="display:inline"><summary class="muted" style="display:inline;cursor:pointer">more</summary><div class="mt">${esc(r.text)}</div></details>`
+            : esc(r.text)}</td>
           <td><button data-eadd="${i}">→ backlog</button><div class="mt">${outcomeSel(r.key, r.outcome)}</div></td>
         </tr>`).join("")}
         </tbody>
@@ -94,7 +94,7 @@ async function renderRecs(el) {
       <div class="muted" style="font-size:.85em;margin-top:6px">The list above comes from the <b>rule engine</b> (deterministic code, not AI). Here the AI reviews it critically against your own data: what it agrees with, what it would change, and which recommendation is missing. AI engine per the Control Center mode (local, or local+Claude with a synthesized verdict).</div>
       <div id="aiOpOut" class="mt">${aiOp && aiOp.text ? `
         <div class="muted" style="font-size:.8em">${aiOp.at} · ${aiOp.by}${aiOp.rag_used ? " · grounded in your data" : ""}</div>
-        <div style="white-space:pre-wrap;font-size:.92em">${aiOp.text}</div>` : '<div class="muted" style="font-size:.85em">Not asked yet.</div>'}</div>
+        <div style="white-space:pre-wrap;font-size:.92em">${esc(aiOp.text)}</div>` : '<div class="muted" style="font-size:.85em">Not asked yet.</div>'}</div>
     </div>
 
 
@@ -124,7 +124,7 @@ async function renderRecs(el) {
       const r = await api.post("/api/recommendation/ai", {});
       out.innerHTML = r.text
         ? `<div class="muted" style="font-size:.8em">${r.at} · ${r.by}${r.rag_used ? " · grounded in your data" : ""}</div>
-           <div style="white-space:pre-wrap;font-size:.92em">${r.text}</div>`
+           <div style="white-space:pre-wrap;font-size:.92em">${esc(r.text)}</div>`
         : `<div class="neg">${(r.error || "no answer").replace("Control → AI mode", '<a href="#control" style="color:inherit;text-decoration:underline">Control → AI mode</a>')}</div>`;
     } catch (err) { out.innerHTML = `<div class="neg">Error: ${err.message}</div>`; }
     finally { btn.disabled = false; }

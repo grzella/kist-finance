@@ -17,10 +17,10 @@ async function renderRsu(el) {
     const loan = debtsData.debts.find((d) => ["mortgage","loan","home","house"].some((k) => d.name.toLowerCase().includes(k)) && d.balance > 0);
     if (loan && nextVestPln) {
       parts.push(
-        `sell the vest right away and pay down the loan — balance ${fmt.pln(loan.balance)}, ` +
+        `Sell the vest right away and pay down the loan — balance ${fmt.pln(loan.balance)}, ` +
         `i.e. ~${Math.ceil(loan.balance / nextVestPln)} vests to close the loan. Every vest into the loan is a guaranteed ` +
         `${fmt.pct(loan.effective_rate, 2)} + frees up ${fmt.pln(loan.monthly_cost_total)}/mo and boosts borrowing ` +
-        `capacity for the goal. After the loan is paid off, vests go toward the down payment (the mortgage rate you fix via an annex, not capital).`);
+        `capacity for the goal. After the loan is paid off, vests go toward the down payment (the mortgage rate is changed by renegotiating the contract, not with capital).`);
     } else if (topDebt && topDebt.effective_rate > 6.5 && nextVestPln) {
       parts.push(
         `The ${topDebt.name} loan costs ${fmt.pct(topDebt.effective_rate, 2)} effective — selling the vest and overpaying ` +
@@ -31,11 +31,11 @@ async function renderRsu(el) {
         "gains you nothing (the 19% capital gains tax applies to the gain AFTER vest), and by holding you concentrate " +
         "employer risk (salary + bonus + shares in one company).");
     }
-    if (r.last_close < 100) {
+    if (r.shares_held > 0) {
       parts.push(
-        `Nuance: ${r.ticker} ~$${r.last_close} is near multi-year lows — selling EVERYTHING now ` +
-        "means realizing the bottom. Compromise: sell current vests right away (for overpayment), " +
-        "hold the existing " + fmt.num(r.shares_held, 0) + " shares for a rebound — the cushion allows it.");
+        `Nuance: ${r.ticker} is at ~$${r.last_close}. If you'd rather not sell everything at this price, sell ` +
+        "current vests right away (for overpayment) and hold the existing " + fmt.num(r.shares_held, 0) +
+        " shares, provided your cushion covers 6 months without them.");
     }
     return parts.join(" ");
   })();

@@ -15,8 +15,9 @@ async function renderDashboard(el) {
 
   // a recommendation with a recorded outcome (done/rejected/outdated) is already decided
   const openRecs = rec.items.filter((r) => !r.outcome);
-  const recBody = (r) => `<div><b>${r.title || r.text}</b> <span class="badge">${r.area}</span>
-    ${r.title ? `<details class="help" style="margin-top:4px"><summary>details</summary><div style="white-space:pre-line">${r.text}</div></details>` : ""}</div>`;
+  const bizMonth = biz ? (biz.current.revenue || 0) - (biz.current.costs || 0) : 0;
+  const recBody = (r) => `<div><b>${esc(r.title || r.text)}</b> <span class="badge">${esc(r.area)}</span>
+    ${r.title ? `<details class="help" style="margin-top:4px"><summary>details</summary><div style="white-space:pre-line">${esc(r.text)}</div></details>` : ""}</div>`;
 
   el.innerHTML = `
     <h2>Dashboard — ${sum.month}</h2>
@@ -89,16 +90,15 @@ async function renderDashboard(el) {
       <summary style="cursor:pointer"><b>🚁 Business:</b>
         result since launch <b class="${biz.total_result >= 0 ? "pos" : "neg"}">${fmt.pln(biz.total_result)}</b>
         ${!bizMkt.error && bizMkt.weeks.length ? `· last week of ads: €${bizMkt.weeks[0].spend_eur}
-          <span class="muted">${(bizMkt.weeks[0].summary || "").slice(0, 90)}…</span>` : ""}
+          <span class="muted">${esc((bizMkt.weeks[0].summary || "").slice(0, 90))}…</span>` : ""}
         <span class="muted">(expand)</span></summary>
       <div class="row mt" style="gap:20px;flex-wrap:wrap">
-        <span>This month: <b class="neg">${fmt.pln((biz.current.przychody || 0) - (biz.current.koszty || 0))}</b></span>
+        <span>This month: <b class="${bizMonth >= 0 ? "pos" : "neg"}">${fmt.pln(bizMonth)}</b></span>
         <span>Invested: <b>${fmt.pln(biz.total_cost)}</b></span>
         <span>Revenue: <b>${fmt.pln(biz.total_revenue)}</b></span>
-        <span class="muted">goal: 1 job/mo · launch: August</span>
       </div>
       ${!bizMkt.error && bizMkt.weeks.length && bizMkt.weeks[0].recommendation ?
-        `<div class="mt">💡 <b>Marketing (week):</b> ${bizMkt.weeks[0].recommendation}</div>` : ""}
+        `<div class="mt">💡 <b>Marketing (week):</b> ${esc(bizMkt.weeks[0].recommendation)}</div>` : ""}
     </details>` : ""}
     <div class="grid cols-2 mt">
       <div class="card"><h3>Monthly costs by category${sum.planned_categories && sum.planned_categories.length ? " (fixed plan)" : ""}</h3><canvas id="catChart"></canvas></div>

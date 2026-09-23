@@ -185,7 +185,7 @@ async function renderMarket(el) {
     const hint = (label, tip) => `<th><span class="hint" title="${tip}">${label}</span></th>`;
     document.getElementById("wlTable").innerHTML = `<table><thead><tr>
       ${hint("Ticker", "Exchange symbol of the instrument — hover over the symbol in the table to see the full name")}
-      ${hint("Price", "Last daily close (n8n fetches daily ~22:30; the app pulls it in the morning)")}
+      ${hint("Price", "Last daily close from your price sync")}
       ${hint("1D", "Price change vs the previous session")}
       ${hint("30D", "Price change over the last 30 days")}
       ${hint("SMA50", "Average price over the last 50 sessions (~2.5 mo). ABOVE = price above the average, uptrend; BELOW = downtrend. A classic momentum filter. Number = the average value.")}
@@ -329,7 +329,7 @@ async function renderMarket(el) {
   await loadTable();
 
   const PROMPTS = {
-    analysis_market_brief: `Write a short market brief for my portfolio and return ONLY valid JSON: {"headline": str, "as_of": "YYYY-MM-DD", "highlights": [{"icon": "emoji", "title": str, "text": str}], "geopolitics": [{"title": str, "text": str}], "positions": [{"ticker": str, "stance": "hold|add|trim", "note": str}]}. Ask me for my tickers first.`,
+    analysis_market_brief: `Write a short market brief for my portfolio and return ONLY valid JSON: {"headline": str, "as_of": "YYYY-MM-DD", "highlights": [{"icon": "emoji", "title": str, "text": str}], "geopolitics": [{"title": str, "text": str}], "positions": [{"ticker": str, "stance": "hold|add|trim|watch", "text": str}]}. Ask me for my tickers first.`,
   };
   el.querySelectorAll("[data-copyprompt]").forEach((b) => b.addEventListener("click", async () => {
     await navigator.clipboard.writeText(PROMPTS[b.dataset.copyprompt] || "");
