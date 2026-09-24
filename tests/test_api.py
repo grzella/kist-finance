@@ -275,7 +275,8 @@ def test_schedules_run_due_records_error_and_clears_on_success(client, monkeypat
     assert any(x["status"] == "warn" and task["label"] in x["name"] for x in h["tasks"])
     monkeypatch.delenv("KIST_NO_SCHEDULED_TASKS", raising=False)
     state["ok"] = True
-    assert sc.run_due(datetime(2026, 9, 4, 23, 5)) == [task["id"]]
+    assert sc.run_due(datetime(2026, 9, 4, 23, 5)) == []  # failed 5 min ago: no retry yet
+    assert sc.run_due(datetime(2026, 9, 5, 11, 0)) == [task["id"]]
     t = next(x for x in client.get("/api/schedules").get_json()["tasks"] if x["id"] == task["id"])
     assert t["last_error"] is None and t["last_run"]  # period recorded (daily/weekly/monthly key depending on the task)
 

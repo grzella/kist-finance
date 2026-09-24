@@ -532,9 +532,9 @@ _CODE_MTIME_AT_START = _code_mtime()
 
 @app.get("/api/health")
 def health():
-    try:  # scheduled tasks piggyback on health: run at first app-open past due
+    try:  # scheduled tasks piggyback on health: run at first app-open past due, in the background
         import schedules
-        schedules.run_due()
+        schedules.run_due_async()
     except Exception:
         pass
     out = planner.health()

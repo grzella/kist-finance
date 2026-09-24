@@ -15,7 +15,8 @@ Config lives in app_settings: `schedules` = {task_id: {freq, day, hour}} and
 """
 import json
 import os
-from datetime import datetime
+import threading
+from datetime import datetime, timedelta
 
 import planner
 
@@ -23,7 +24,7 @@ import planner
 def _run_backup():
     import data_backup
     if not planner.get_setting("backup_auto"):
-        return False  # master switch in Control Center is off
+        return True  # master switch in Control Center is off: nothing to do is not a failure
     return data_backup.create_backup().get("ok", False)
 
 
@@ -207,6 +208,27 @@ def _succeeded(result):
     return bool(result)
 
 
+RETRY_AFTER = timedelta(hours=1)
+_run_lock = threading.Lock()
+
+
+def run_due_async():
+    """run_due() in a background thread, one at a time, so /api/health answers at once
+    instead of waiting for collectors (network, local AI) to finish or time out."""
+    if not _run_lock.acquire(blocking=False):
+        return False
+
+    def _go():
+        try:
+            run_due()
+        except Exception:
+            pass
+        finally:
+            _run_lock.release()
+    threading.Thread(target=_go, daemon=True).start()
+    return True
+
+
 def run_due(now=None):
     """Run every due 'app' task once. Called from /api/health (best-effort).
 
@@ -224,6 +246,14 @@ def run_due(now=None):
         key = f"sched_last.{t['id']}"
         if not _is_due(cfg, planner.get_setting(key), now):
             continue
+        # a failed task is not retried on every app open: an offline collector would
+        # otherwise re-run (and time out) on each /api/health call
+        err = _last_error(t["id"])
+        try:
+            if err and now - datetime.strptime(err["at"], "%Y-%m-%d %H:%M") < RETRY_AFTER:
+                continue
+        except (KeyError, TypeError, ValueError):
+            pass
         try:
             result = t["runner"]()
         except Exception as e:
