@@ -363,3 +363,38 @@ def test_barometer_full_months_skips_current_and_covers_gaps():
         assert bc._full_months_since("2025-11")[:3] == ["2025-11", "2025-12", "2026-01"]
     finally:
         bc.date = orig
+
+
+def test_barometer_collect_rewrites_whole_series_on_one_scale(client, monkeypatch):
+    """Trends scales each request to its own window, so a point from another request
+    (August 20x too low) must be overwritten by the value from the same request."""
+    import sys, types
+    import pandas as pd
+    import barometer_collect as bc
+    import planner
+    from datetime import date
+
+    class _FakeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 9, 24)
+
+    class _Fake:
+        def __init__(self, *a, **k): pass
+        def build_payload(self, q, **k): self.q = q
+        def interest_over_time(self):
+            idx = pd.date_range("2026-01-01", "2026-09-24", freq="D")
+            return pd.DataFrame({q: [50.0] * len(idx) for q in self.q}, index=idx)
+
+    monkeypatch.setitem(sys.modules, "pytrends.request", types.SimpleNamespace(TrendReq=_Fake))
+    monkeypatch.setattr(bc, "date", _FakeDate)
+    keys = [r["key"] for r in planner.barometer_config()["roles"]]
+    for p in planner.list_barometer()["points"]:
+        planner.delete_barometer_point(p["id"])
+    planner.add_barometer_point({"month": "2026-08", "counts": {k: 2.5 for k in keys}, "stream": "trends"})
+
+    out = bc.collect()
+    assert out["ok"], out
+    pts = [p for p in planner.list_barometer()["points"] if p["stream"] == "trends"]
+    assert sorted(p["month"] for p in pts) == [f"2026-{m:02d}" for m in range(1, 9)]  # one per month
+    assert all(v == 50.0 for p in pts for v in p["counts"].values())  # August overwritten

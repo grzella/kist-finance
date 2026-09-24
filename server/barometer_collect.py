@@ -40,13 +40,14 @@ def _full_months_since(start):
     return out
 
 
-def collect():
-    """Fills in EVERY missing full month of the 'trends' stream.
+def collect(force=False):
+    """Fills in missing full months of the 'trends' stream and rewrites the WHOLE series.
 
-    Not just the latest one: a single Trends query already returns the whole
-    range since HISTORY_START, so each run also patches older gaps. An app left
-    unopened for months catches up by itself, and one failed attempt (rate limit)
-    no longer loses a month permanently.
+    Google Trends scales every request to its own window (100 = the window's peak), so
+    numbers from different requests are not comparable. Every run therefore stores all
+    months since HISTORY_START from a single request; appending only the missing month
+    once put a month ~20x too low and showed a false "-95%/3m". The same request also
+    patches older gaps.
 
     Best-effort — on error it returns ok:False and changes nothing; the scheduler
     then does NOT record a run and retries (see schedules._succeeded).
@@ -62,10 +63,12 @@ def collect():
     queries = [r["query"] for r in roles][:5]  # Trends: max 5 terms at once
 
     # Own stream only — an 'openings' point must not block a 'trends' write.
-    have = {p["month"] for p in planner.list_barometer()["points"]
-            if p.get("stream") == "trends"}
-    wanted = [m for m in _full_months_since(HISTORY_START) if m not in have]
-    if not wanted:
+    old_ids = {}
+    for p in planner.list_barometer()["points"]:
+        if p.get("stream") == "trends":
+            old_ids.setdefault(p["month"], []).append(p["id"])
+    months = _full_months_since(HISTORY_START)
+    if not force and all(m in old_ids for m in months):
         return {"ok": True, "added": [], "up_to_date": _last_full_month()}
 
     try:
@@ -79,20 +82,23 @@ def collect():
         return {"ok": False, "error": str(e)[:140]}
 
     added, missing = [], []
-    for month in wanted:
+    for month in months:
         row = monthly[monthly.index.strftime("%Y-%m") == month]
         if row.empty:
             missing.append(month)
             continue
+        for bid in old_ids.get(month, []):
+            planner.delete_barometer_point(bid)
         counts = {roles[i]["key"]: float(row[queries[i]].iloc[0]) for i in range(len(roles))}
         planner.add_barometer_point({
             "month": month, "counts": counts, "stream": "trends",
             "sources": _SOURCE, "geo": _GEO_LABEL, "as_of": date.today().isoformat()})
-        added.append(month)
+        if month not in old_ids:
+            added.append(month)
 
     # Success only if the last full month is now covered; otherwise stay ok:False
     # so the next app open retries within the same period.
-    done = _last_full_month() in (have | set(added))
+    done = _last_full_month() in (set(old_ids) | set(added))
     out = {"ok": done, "added": added}
     if missing:
         out["no_trends_data"] = missing
