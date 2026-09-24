@@ -100,7 +100,7 @@ async function renderForecasts(el) {
         <table>
           <tr><td>Down-payment target (50%)</td><td><b>${fmt.pln(fire.property.target)}</b></td></tr>
           <tr><td>Saved so far</td><td>${fmt.pln(fire.property.start)}</td></tr>
-          <tr><td>Down payment ready (starts after loan payoff)</td><td class="pos"><b>${fire.property.crossover || "—"}</b></td></tr>
+          <tr><td>Down payment ready${fire.property.delay_months ? " (starts after loan payoff)" : ""}</td><td class="pos"><b>${fire.property.crossover || "—"}</b></td></tr>
         </table>
         <canvas id="propertyChart" height="70" class="mt"></canvas>
         <div class="muted mt" style="font-size:.82em">${fire.property.note}</div>
