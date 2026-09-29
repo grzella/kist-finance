@@ -91,7 +91,7 @@ p { margin-bottom: 8px; }
 @media (max-width: 900px) { .grid.cols-4, .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; } }
 .card { position: relative; background: linear-gradient(180deg, rgba(255,255,255,.025), transparent 38%), var(--panel);
   border: 1px solid var(--hairline); border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow); }
-.card + .card, .card.mt { margin-top: 16px; }
+:is(.card, .grid) + :is(.card, .grid), .card.mt { margin-top: 16px; }
 .grid > .card, .grid > .card + .card, .grid > .card.mt, .acols .card { margin-top: 0; }
 .card .card { box-shadow: none; background: var(--panel2); border-color: transparent; }
 .card[style*="border-left"] { border-left-width: 3px !important; padding-left: 20px; }
