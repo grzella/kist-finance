@@ -70,7 +70,7 @@ async function renderOffers(el) {
       return `<div class="card mt">
         <div class="row" style="justify-content:space-between">
           <h3 style="margin:0">${esc(o.company)}${o.role ? " — " + esc(o.role) : ""}</h3>
-          <span class="badge">${OFFER_STATUS[o.status] || o.status}</span>
+          <span class="badge">${esc(OFFER_STATUS[o.status] || o.status)}</span>
         </div>
         <div class="row mt">
           <b>${noComp ? "—" : fmt.pln(o.total_monthly) + "/mo"}</b>

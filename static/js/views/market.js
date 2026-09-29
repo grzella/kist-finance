@@ -1,17 +1,17 @@
 function marketBriefHtml(b, controls) {
   const hi = (b.highlights || []).map((h) => `<div class="card" style="margin:0">
-      <div style="font-size:1.4em">${h.icon || "•"}</div>
-      <div style="font-weight:600;margin:2px 0">${h.title}</div>
-      <div class="muted" style="font-size:.9em">${h.text}</div></div>`).join("");
+      <div style="font-size:1.4em">${esc(h.icon || "•")}</div>
+      <div style="font-weight:600;margin:2px 0">${esc(h.title)}</div>
+      <div class="muted" style="font-size:.9em">${esc(h.text)}</div></div>`).join("");
   const geo = (b.geopolitics || []).map((g) => `<details class="mt">
-      <summary style="font-weight:600">${g.title}</summary>
-      <div class="muted mt" style="font-size:.92em">${g.text}</div></details>`).join("");
+      <summary style="font-weight:600">${esc(g.title)}</summary>
+      <div class="muted mt" style="font-size:.92em">${esc(g.text)}</div></details>`).join("");
   const stanceColor = (s) => /sell/i.test(s) ? TOKENS.pos : /hold|core/i.test(s) ? TOKENS.accent
     : /accumulate|dca|buduj|stopniowo/i.test(s) ? TOKENS.warn : "#9aa";
   const pos = (b.positions || []).map((p) => `<tr>
-      <td><b>${p.ticker}</b></td>
-      <td><span class="badge" style="background:${stanceColor(p.stance)}22;color:${stanceColor(p.stance)}">${p.stance}</span></td>
-      <td class="muted" style="font-size:.9em">${p.text}</td></tr>`).join("");
+      <td><b>${esc(p.ticker)}</b></td>
+      <td><span class="badge" style="background:${stanceColor(p.stance)}22;color:${stanceColor(p.stance)}">${esc(p.stance)}</span></td>
+      <td class="muted" style="font-size:.9em">${esc(p.text)}</td></tr>`).join("");
   // freshness signal: how many business days the data is behind
   const _staleDays = (dt) => {
     if (!dt) return 999;
@@ -32,16 +32,16 @@ function marketBriefHtml(b, controls) {
         <h3 style="margin:0">🧭 Market brief</h3>${controls || ""}
         <span class="muted" style="font-size:.82em">quotes through <b>${b.data_through || "?"}</b> · analysis: ${b.as_of || "—"}${b.generated_by ? ` · ${b.generated_by}` : ""}${sd >= 1 && sd < 2 ? ' <span title="today\'s session not written yet">⏳</span>' : ""}</span>
       </div>
-      ${b.regime ? `<div class="mt" style="font-weight:600;color:var(--warn)">${b.regime}</div>` : ""}
-      <div class="mt">${b.headline}</div>
+      ${b.regime ? `<div class="mt" style="font-weight:600;color:var(--warn)">${esc(b.regime)}</div>` : ""}
+      <div class="mt">${esc(b.headline)}</div>
     </div>
     ${hi ? `<div class="grid cols-4 mt">${hi}</div>` : ""}
     ${geo ? `<div class="card mt"><h3>🌍 Context — what drives the moves</h3>${geo}</div>` : ""}
     ${pos ? `<div class="card mt"><h3>🎯 What to do about it — per position</h3>
       <table><thead><tr><th>Ticker</th><th>Stance</th><th>Rationale</th></tr></thead>
       <tbody>${pos}</tbody></table>
-      ${b.fx_note ? `<div class="muted mt" style="border-left:3px solid var(--amber);padding-left:8px">💱 ${b.fx_note}</div>` : ""}</div>` : ""}
-    ${b.method_note ? `<div class="muted mt" style="font-size:.8em">${b.method_note}</div>` : ""}`;
+      ${b.fx_note ? `<div class="muted mt" style="border-left:3px solid var(--amber);padding-left:8px">💱 ${esc(b.fx_note)}</div>` : ""}</div>` : ""}
+    ${b.method_note ? `<div class="muted mt" style="font-size:.8em">${esc(b.method_note)}</div>` : ""}`;
 }
 
 async function renderMarket(el) {
@@ -65,10 +65,10 @@ async function renderMarket(el) {
           <td style="text-align:right" class="${(c.chg_1d || 0) > 0 ? "pos" : (c.chg_1d || 0) < 0 ? "neg" : "muted"}">${c.chg_1d != null ? c.chg_1d + "%" : "—"}</td>
           <td style="text-align:center">${c.score == null ? "—" : ["🟢","🟡","🔴"][c.score]}</td>
         </tr>`).join("")}</tbody></table></div>
-      ${radar.note ? `<div class="muted mt" style="font-size:.82em">⚠️ ${radar.note}</div>` : ""}
+      ${radar.note ? `<div class="muted mt" style="font-size:.82em">⚠️ ${esc(radar.note)}</div>` : ""}
       ${radar.history && radar.history.length
         ? `<div class="mt"><canvas id="radarChart" height="50"></canvas>
-           ${radar.history[radar.history.length-1].comment ? `<div class="muted mt" style="font-size:.85em">🤖 Comment (local AI): ${radar.history[radar.history.length-1].comment}</div>` : ""}</div>`
+           ${radar.history[radar.history.length-1].comment ? `<div class="muted mt" style="font-size:.85em">🤖 Comment (local AI): ${esc(radar.history[radar.history.length-1].comment)}</div>` : ""}</div>`
         : `<div class="muted mt" style="font-size:.82em">No readings yet — the radar stores the first one on the next daily cycle (or once the nightly sync delivers quotes).</div>`}
       <div class="muted mt" style="font-size:.78em">The reading = the sum of component scores (each 0🟢/1🟡/2🔴, max 8 total). The radar predicts nothing — it contextualizes. Hover rows/columns for explanations.</div>
     </div>` : ""}

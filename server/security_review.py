@@ -728,6 +728,40 @@ def _check_web_guard():
     return out
 
 
+def _check_view_escaping(repo):
+    """Stored XSS in views: offer/goal `status` is free text (offers come from
+    recruiter threads) and the market brief and radar comment are the local
+    model's own output re-rendered in the DOM. CSP (`script-src 'self'`) bounds
+    the blast to markup; esc() is the second layer. Any raw sink = fail."""
+    out = []
+    f = _finder(out, "xss-views", "XSS (view escaping)")
+    views = Path(repo) / "static" / "js" / "views"
+    checks = (
+        ("offers.js", ("${o.status}", "|| o.status}"), ("esc(OFFER_STATUS[o.status] || o.status)",)),
+        ("goals.js", ("${g.status}",), ("esc(g.status)",)),
+        ("market.js", ("${b.headline}", "${b.regime}", "${b.fx_note}", "${b.method_note}",
+                       "${h.title}", "${h.text}", "${g.title}", "${g.text}",
+                       "${p.stance}", "${p.text}", "${p.ticker}", "].comment}"),
+         ("esc(b.headline)", "esc(p.text)", "esc(p.stance)", "esc(h.title)", "esc(g.text)")),
+    )
+    for fname, raw_sinks, escaped in checks:
+        try:
+            src = (views / fname).read_text(encoding="utf-8")
+        except Exception as e:
+            f("info", "pass", f"{fname} unreadable for scan", str(e)[:80])
+            continue
+        hit = [r for r in raw_sinks if r in src]
+        if hit:
+            f("high", "fail", f"{fname}: DB/LLM field rendered without esc()",
+              f"raw sinks {hit} = stored XSS", "Wrap each in esc(), e.g. `${esc(b.headline)}`")
+        elif all(e in src for e in escaped):
+            f("info", "pass", f"{fname}: fields escaped", f"uses {', '.join(escaped)}, no raw sink")
+        else:
+            f("warn", "warn", f"{fname}: render not recognised",
+              "neither raw nor escaped pattern found; check by hand after a refactor")
+    return out
+
+
 def _check_market_fetch():
     """Convergence check: the keyless Yahoo fetch builds its outbound URL from
     request-controlled `ticker` (path) and `range` (body). `market._yf_chart_url`
@@ -859,6 +893,7 @@ def run(full=True):
         findings += _check_local_services()
         findings += _check_ai_tools()
         findings += _check_web_guard()
+        findings += _check_view_escaping(repo)
         findings += _check_market_fetch()
         findings += _check_request_caps()
 

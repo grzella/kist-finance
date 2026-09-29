@@ -39,7 +39,7 @@ async function renderGoals(el) {
       return `<div class="card mt">
         <div class="row" style="justify-content:space-between">
           <h3 style="margin:0">${esc(g.name)}</h3>
-          <span class="badge">${g.status}</span>
+          <span class="badge">${esc(g.status)}</span>
         </div>
         <div class="row mt">
           <b>${fmt.pln(g.current_amount)}</b><span class="muted">of ${fmt.pln(g.target_amount)} (${fmt.pct(pct)})</span>

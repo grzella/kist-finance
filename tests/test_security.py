@@ -307,3 +307,32 @@ def test_request_caps_convergence_check_recognises_hardened(client):
     fails = [i for i in items if i["status"] == "fail"]
     assert not fails, f"hardened caps reported as fail: {fails}"
     assert any("MAX_CONTENT_LENGTH" in i["title"] for i in items)
+
+
+# ── Stored XSS: offer/goal status (free text) and the market brief (local model output) ──
+
+def test_view_escaping_check_recognises_hardened():
+    import security_review as sr
+    items = sr._check_view_escaping(sr._repo_root())
+    assert [i["status"] for i in items] == ["pass"] * 3, items
+
+
+def test_view_escaping_check_flags_a_raw_sink(tmp_path):
+    import security_review as sr
+    views = tmp_path / "static" / "js" / "views"
+    views.mkdir(parents=True)
+    (views / "market.js").write_text("`<div>${b.headline}</div>`", encoding="utf-8")
+    items = sr._check_view_escaping(tmp_path)
+    assert any(i["status"] == "fail" and "market.js" in i["title"] for i in items), items
+
+
+def test_offer_status_is_stored_raw_so_the_view_must_escape(client):
+    xss = "<img src=x onerror=alert(1)>"
+    r = client.post("/api/offers", json={"company": "xss-regr", "total_monthly": 1000, "status": xss})
+    assert r.status_code == 201
+    oid = r.get_json()["id"]
+    try:
+        off = [o for o in client.get("/api/offers").get_json()["offers"] if o["id"] == oid][0]
+        assert off["status"] == xss
+    finally:
+        client.delete(f"/api/offers/{oid}")
