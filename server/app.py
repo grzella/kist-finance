@@ -444,7 +444,11 @@ def offers_add():
 
 @app.put("/api/offers/<offer_id>")
 def offers_update(offer_id):
-    planner.update_offer(offer_id, request.get_json(force=True))
+    n = planner.update_offer(offer_id, request.get_json(force=True))
+    if n is None:
+        return jsonify({"error": "offer not found"}), 404
+    if not n:  # a typo in a field name (e.g. note_append) must not pass as a save
+        return jsonify({"error": "no known fields"}), 400
     return jsonify({"ok": True})
 
 

@@ -30,7 +30,7 @@ async function renderOffers(el) {
         🧑‍💻 Committing${gh ? ` — today ${gh.today}, streak ${gh.streak}🔥` : ""} →</a></div>
     ${statsBar}
     <div class="muted" style="margin:6px 0 12px;font-size:.88em">Reference point (auto): <b>${s ? fmt.pln(s.current) : "—"}</b>/mo —
-      current total (base + bonus + RSU, computed dynamically from the RSU stock price). Offer deltas and goal impact are computed against this.</div>
+      current gross total (base + bonus + RSU + cash vest, computed dynamically from the RSU stock price). Offer deltas and goal impact are computed against this.</div>
     <div class="card" id="baroCard">
       <h3 style="margin:0">📈 Market barometer — demand for your roles (index + your inbound)</h3>
       <div class="muted" style="font-size:.85em;margin:6px 0 8px" id="baroDesc">Demand trend for your roles as an <b>index (base 100)</b> — not a raw count, which depends on how it's collected and misleads. Against your inbound (bars) it shows whether growing inquiries are your brand or the market (and whether AI is shrinking it). Raw counts and source are in the tooltip.</div>

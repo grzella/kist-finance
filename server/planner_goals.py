@@ -135,7 +135,8 @@ def _annual_extras(today=None):
     cash-vest: × the payslip net factor. Previously gross and without cash-vest — the pace to
     the goal was overstated by ~19% on shares and ignored the cash part."""
     extras = {"bonus_net": P._num(P.get_setting("annual_bonus_net")) or 0,
-              "rsu_annual": 0, "rsu_annual_gross": 0, "cash_vest_annual_net": 0,
+              "rsu_annual": 0, "rsu_annual_gross": 0, "cash_vest_annual_net": 0, "cash_vest_annual_gross": 0,
+              "payroll_net_factor": 0.55,
               "rsu_shares_12m": 0, "net_factor": None}
     try:
         import market
@@ -155,6 +156,8 @@ def _annual_extras(today=None):
             extras["rsu_annual_gross"] = round(shares * last * fx, 0)
             extras["rsu_annual"] = round(shares * last * fx * nf, 0)
             extras["cash_vest_annual_net"] = round(cash_usd * fx * cf, 0)
+            extras["cash_vest_annual_gross"] = round(cash_usd * fx, 0)
+            extras["payroll_net_factor"] = cf
             extras["net_factor"] = nf
     except Exception:
         pass

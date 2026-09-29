@@ -14,7 +14,7 @@ ALLOC_TARGETS = {  # target % of net wealth (UI-editable model)
 }
 ALLOC_LABELS = {
     "real_estate": "🏠 Real estate (equity)", "etf": "🌍 Stocks/ETF (brokerage)",
-    "rsu": "💎 RSU shares", "cash": "💵 Cash", "retirement": "🏦 Retirement (pension accounts)",
+    "rsu": "💎 RSU shares", "cash": "💵 Cash and bonds", "retirement": "🏦 Retirement (pension accounts)",
     "car": "🚗 Car (consumable)",
 }
 # saved alloc_targets may predate the key rename — accept old keys on read
@@ -103,7 +103,8 @@ def allocation():
     for it in w.get("items", []):
         if it.get("kind") in ("income",):
             continue
-        cls = _alloc_class(it.get("name", ""))
+        # "cushion" items without cash/account in the name (e.g. treasury bonds) are cash too
+        cls = _alloc_class(it.get("name", "")) or ("cash" if it.get("kind") == "cushion" else None)
         if not cls:
             continue
         # use equity for debt-linked (real estate), else latest value

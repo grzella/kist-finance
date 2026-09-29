@@ -212,6 +212,8 @@ def settings():
 
 
 def _num(v):
+    if isinstance(v, str):  # "50 000" from UI or curl; commas are left alone (thousands vs decimal is ambiguous)
+        v = v.replace("\xa0", "").replace(" ", "")
     try:
         return float(v) if v is not None else None
     except ValueError:

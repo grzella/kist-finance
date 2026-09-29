@@ -68,6 +68,23 @@ def test_annual_extras_are_net_and_include_cash_vest(client, monkeypatch):
     assert ex["monthly_equivalent"] == round((12960 + 8000) / 12, 2)
 
 
+
+def test_current_total_is_gross_like_offers(client, monkeypatch):
+    import planner, planner_career, market
+    from datetime import date
+    fake = {"vest_schedule": [{"month": m, "shares": 100, "cash_usd": 1000} for m in ("2026-11", "2027-02", "2027-05", "2027-08")],
+            "last_close": 10.0, "usdpln": 4.0, "net_factor": 0.81, "cash_vest_net_factor": 0.5}
+    monkeypatch.setattr(market, "get_rsu", lambda: fake)
+    orig = planner.get_setting("tax_salary_gross_annual")
+    planner.set_settings({"tax_salary_gross_annual": 240000, "annual_bonus_net": 12000, "extras_to_goal_pct": 50})
+    try:
+        # offers are gross, so is the current package: bonus 12000 / 0.5 net, goal slider has no effect
+        assert planner_career._current_total_monthly(today=date(2026, 9, 5)) == round((240000 + 24000 + 16000 + 16000) / 12)
+        planner.set_settings({"tax_salary_gross_annual": ""})
+        assert planner_career._current_total_monthly(today=date(2026, 9, 5)) is None
+    finally:
+        planner.set_settings({"tax_salary_gross_annual": orig, "annual_bonus_net": 0, "extras_to_goal_pct": 100})
+
 def test_cashflow_uses_net_vests_reserve_and_sweep_setting(client, monkeypatch):
     import planner, market
     fake = {"vest_schedule": [{"month": "2026-10", "shares": 100, "cash_usd": 0}], "last_close": 10.0, "usdpln": 4.0,

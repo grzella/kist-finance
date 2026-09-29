@@ -290,3 +290,30 @@ def test_health_reports_code_stale_flag(client, monkeypatch):
     monkeypatch.setattr(flask_app, "_CODE_MTIME_AT_START", 0)
     assert client.get("/api/health").get_json()["code_stale"] is True
     assert h["summary"]["total"] == len(h["tasks"])
+
+
+def test_offer_put_appends_notes_and_rejects_bad_input(client):
+    oid = client.post("/api/offers", json={"company": "T", "total_monthly": 0, "notes": "R1"}).get_json()["id"]
+    try:
+        assert client.put(f"/api/offers/{oid}", json={"status": "interviews", "notes_append": "R2"}).status_code == 200
+        o = next(o for o in client.get("/api/offers").get_json()["offers"] if o["id"] == oid)
+        assert o["notes"] == "R1\n\nR2" and o["status"] == "interviews"
+        assert client.put("/api/offers/no-such-id", json={"status": "new"}).status_code == 404
+        assert client.put(f"/api/offers/{oid}", json={"note_append": "typo"}).status_code == 400
+        # text in a REAL column used to break GET /api/offers
+        assert client.put(f"/api/offers/{oid}", json={"total_monthly": "50 000"}).status_code == 200
+        o = next(o for o in client.get("/api/offers").get_json()["offers"] if o["id"] == oid)
+        assert o["total_monthly"] == 50000
+    finally:
+        client.delete(f"/api/offers/{oid}")
+
+
+def test_allocation_counts_cushion_kind_as_cash(client):
+    """A cushion item without cash/account in its name (e.g. treasury bonds) dropped out of liquid assets."""
+    cash = lambda: next(r["value"] for r in client.get("/api/allocation").get_json()["rows"] if r["key"] == "cash")
+    before = cash()
+    iid = client.post("/api/wealth/items", json={
+        "name": "Treasury bonds (test)", "kind": "cushion", "currency": "PLN", "value": 12345}).get_json()["id"]
+    after = cash()
+    client.delete(f"/api/wealth/items/{iid}")
+    assert after - before == 12345

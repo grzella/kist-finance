@@ -10,11 +10,14 @@ from planner_proxy import P
 
 # ---------- job offers ----------
 
-def _current_total_monthly():
-    """Auto: current monthly total = base/12 + (bonus + RSU)/12. Dynamic (RSU tracks the company price)."""
-    base = (P._num(P.get_setting("tax_salary_gross_annual")) or 120000) / 12.0
-    extras = P._annual_extras().get("monthly_equivalent", 0) or 0
-    return round(base + extras)
+def _current_total_monthly(today=None):
+    """GROSS monthly total in offer units (base + bonus + RSU + cash vest); monthly_equivalent is net."""
+    base = P._num(P.get_setting("tax_salary_gross_annual"))
+    if not base:
+        return None
+    x = P._annual_extras(today)
+    bonus = x["bonus_net"] / x["payroll_net_factor"]  # the bonus goes through payroll like the cash vest
+    return round((base + bonus + x["rsu_annual_gross"] + x["cash_vest_annual_gross"]) / 12)
 
 
 def list_offers():
@@ -84,9 +87,17 @@ def _offers_stats(offers, current):
         "range_low": vals[0] if vals else None,
         "range_high": vals[-1] if vals else None,
         "ge_current_count": len(ge),
-        "ge_current_pct": round(100 * len(ge) / len(quantified)) if quantified else None,
+        "ge_current_pct": round(100 * len(ge) / len(quantified)) if quantified and current else None,
         "current": current,
     }
+
+
+def _offer_value(k, v):
+    if k in ("total_monthly", "base_monthly", "bonus_pct"):
+        return P._num(v)  # text in a REAL column broke GET /api/offers
+    if k == "tier":
+        return int(v) if v not in (None, "") else None
+    return v
 
 
 def add_offer(data):
@@ -96,26 +107,34 @@ def add_offer(data):
         "base_monthly, bonus_pct, work_model, status, received_at, notes, tier, created_at) "
         "values (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (offer_id, data["company"], data.get("role", ""), data.get("recruiter", ""),
-         float(data["total_monthly"]),
+         _offer_value("total_monthly", data["total_monthly"]),
          P._num(data.get("base_monthly")), P._num(data.get("bonus_pct")),
          data.get("work_model", ""), data.get("status", "new"),
          data.get("received_at") or date.today().isoformat(),
          data.get("notes", ""),
-         int(data["tier"]) if data.get("tier") not in (None, "") else None, P._now()))
+         _offer_value("tier", data.get("tier")), P._now()))
     P._audit("offer", offer_id, "add", data)
     return offer_id
 
 
 def update_offer(offer_id, data):
+    row = eb._rows("select notes from job_offers where id = ?", (offer_id,))
+    if not row:
+        return None
+    if data.get("notes_append"):
+        # notes is the only log of a recruiter thread; a PUT of notes alone wiped earlier rounds
+        base = data.get("notes", row[0]["notes"]) or ""
+        data = {**data, "notes": (base + "\n\n" + data["notes_append"]).strip()}
     cols, params = [], []
     for k in ("company", "role", "recruiter", "total_monthly", "base_monthly",
               "bonus_pct", "work_model", "status", "received_at", "notes", "tier"):
         if k in data:
-            cols.append(k); params.append(data[k])
+            cols.append(k); params.append(_offer_value(k, data[k]))
     if cols:
         params.append(offer_id)
         eb._exec(eb.update_sql("job_offers", cols), tuple(params))
         P._audit("offer", offer_id, "update", data)
+    return len(cols)
 
 
 def delete_offer(offer_id):
