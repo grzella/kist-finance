@@ -33,12 +33,11 @@ async function renderOffers(el) {
       current gross total (base + bonus + RSU + cash vest, computed dynamically from the RSU stock price). Offer deltas and goal impact are computed against this.</div>
     <div class="card" id="baroCard">
       <h3 style="margin:0">📈 Market barometer — your roles (index + your inbound)</h3>
-      <div class="muted" style="font-size:.85em;margin:6px 0 8px" id="baroDesc">Every series is an <b>index (base 100)</b>, because raw numbers from different methods are not comparable (raw values are in the tooltip).
-        <b>🏢 open roles</b> (dashed) are real postings for your roles in Europe at the companies on your watchlist (⚙️), counted from their public job boards: your target market, not the whole market.
-        <b>📈 interest</b> (Google Trends) measures who searches for the role title, mostly candidates rather than employers: sentiment, not demand.
-        <b>🌍 IT postings in Europe</b> (Indeed Hiring Lab, dotted) is the only real history of posting volume: Indeed's "Software Development" postings index, averaged over GB/DE/FR. It covers the whole sector, not your role, but tells you whether the market is growing or shrinking. The second dotted line, <b>IT broad</b>, averages Indeed's four IT sectors: Software Development, Data &amp; Analytics, IT Systems &amp; Solutions, and IT Infrastructure, Operations &amp; Support. Indeed assigns a posting to a sector by its job title; other European countries have no per-sector data.
-        Against your inbound (bars, line = 3-month average) it shows whether a change is your brand or the market.
-        <br>Trends counts <b>full</b> months only (the current one lands after it ends); the watchlist is a snapshot as of the collection day, taken near the end of the month.</div>
+      <div class="muted" style="font-size:.85em;margin:6px 0 8px" id="baroDesc">Is the market for your roles growing, set against the offers you receive. All series as an index (first month = 100).
+        ${help(`<b>🏢 open roles</b>: postings for your roles in Europe at watchlist companies (⚙️), a snapshot at month end.<br>
+          <b>🌍 Indeed</b>: history of IT posting volume in GB/DE/FR (Software Development and IT broad); the whole sector.<br>
+          <b>📈 interest</b>: Google Trends, i.e. who searches for the role title (mostly candidates); sentiment, not demand.<br>
+          <b>Bars</b>: your inbound, line = 3-month average. If inbound falls with the market, it's the market; if alone, it's your visibility.`, "how to read this")}</div>
       <details class="mt"><summary class="pill" style="font-size:.78em">⚙️ roles / geography</summary><div id="baroCfgBox" class="mt"></div></details>
       <canvas id="baroChart" height="95" class="mt"></canvas>
       <h4 style="margin:16px 0 0">💶 Average offered range (total/mo)</h4>
@@ -123,9 +122,6 @@ async function renderOffers(el) {
   const bpts = baro.points || [];
   const broles = baro.roles || [];
   const bser = baro.series || {};
-   const geoTxt = esc((baro.geo || []).join(", ")) || "—";
-  const bdesc = document.getElementById("baroDesc");
-  if (bdesc) bdesc.innerHTML += ` <span class="muted">Trends geography: <b>${geoTxt}</b>; watchlist: Europe / remote EMEA, ${(baro.watchlist || []).length} companies.</span>`;
 
   const cfgBox = document.getElementById("baroCfgBox");
   cfgBox.innerHTML = `<div class="muted" style="font-size:.82em">Geography (comma-separated) and roles (one per line, <code>Label = title query</code>). The n8n collector uses the <b>query</b> to count postings on job boards.</div>
