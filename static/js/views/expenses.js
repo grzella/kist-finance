@@ -34,9 +34,44 @@ function _table(items, cm, emptyMsg) {
   </tr></thead><tbody>${items.map((i) => _row(i, cm)).join("")}</tbody></table>`;
 }
 
+// Invoice checklist: ticks per month live in the browser (a helper for the monthly
+// bookkeeping review, not financial data).
+const _invKey = (m) => "kist.invoiceCheck." + m;
+function _invLoad(m) { try { return JSON.parse(localStorage.getItem(_invKey(m)) || "{}"); } catch { return {}; } }
+function _invSave(m, v) { try { localStorage.setItem(_invKey(m), JSON.stringify(v)); } catch { /* no browser storage */ } }
+function _invOnly() { try { return localStorage.getItem("kist.invoiceOnly") === "1"; } catch { return false; } }
+
+function _invoiceChecklist(items, month) {
+  const done = _invLoad(month);
+  const n = items.filter((i) => done[i.id]).length;
+  const total = items.reduce((a, i) => a + (i.latest_amount || 0), 0);
+  const base = window.APP_CURRENCY || "PLN";
+  return `<div class="card mt">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h3 style="margin:0">📄 Invoices to check</h3>
+      <label class="muted">Month <input type="month" id="invMonth" value="${month}"></label>
+    </div>
+    <div class="mt"><b class="${n === items.length ? "pos" : ""}">${n} of ${items.length}</b> checked
+      <span class="muted">· total ${fmt.money(total)}/mo</span>
+      <div style="height:6px;border-radius:3px;background:rgba(127,127,127,.2);margin-top:6px">
+        <div style="height:6px;border-radius:3px;width:${items.length ? (100 * n / items.length) : 0}%;background:${CHART_COLORS[1]}"></div></div></div>
+    ${items.length ? `<table class="mt"><thead><tr><th style="width:40px">✓</th><th>Item</th><th>Group</th>
+      <th style="text-align:right">Amount</th><th>Billing</th></tr></thead><tbody>
+      ${items.map((i) => `<tr style="${done[i.id] ? "opacity:.55" : ""}">
+        <td><input type="checkbox" data-invchk="${i.id}" ${done[i.id] ? "checked" : ""} aria-label="invoice checked: ${esc(i.name)}"></td>
+        <td>${done[i.id] ? `<s>${esc(i.name)}</s>` : esc(i.name)}</td>
+        <td class="muted">${(i.category || "").startsWith("subscription-") ? "subscription" : esc(i.entity || "personal")}</td>
+        <td style="text-align:right">${(i.currency || base) !== base ? `${fmt.num(i.latest_amount_ccy, 2)} ${i.currency}` : fmt.money(i.latest_amount)}</td>
+        <td class="muted">${(i.billing || "monthly") === "yearly" ? "📅 yearly (one invoice a year)" : "monthly"}</td></tr>`).join("")}
+      </tbody></table>` : '<div class="empty mt">No item has the “📄 Invoiced” tag.</div>'}
+  </div>`;
+}
+
 async function renderExpenses(el) {
   const s = await api.get("/api/expenses/summary");
   const cm = s.current_month;
+  const invOnly = _invOnly();
+  const invItems = s.items.filter((i) => i.invoice);
   const stale = s.items.filter((i) => i.latest_amount != null && !i.current_month_set);
   const missing = s.items.filter((i) => i.latest_amount == null);
 
@@ -66,14 +101,23 @@ async function renderExpenses(el) {
         <div class="value">${fmt.money(s.invoiceable_total)}</div>
         <div class="sub">deductible/business costs per month</div></div>
     </div>
-    ${(s.optimizations && s.optimizations.length) ? `<div class="card mt" style="border-left:3px solid ${CHART_COLORS[2]}">
+    ${(s.optimizations && s.optimizations.length) || (s.savings_done && s.savings_done.items.length) ? `<div class="card mt" style="border-left:3px solid ${CHART_COLORS[2]}">
       <h3>💡 Cost optimization</h3>
+      ${s.savings_done && s.savings_done.items.length ? `<div class="mt" style="padding:10px 12px;border-radius:8px;background:rgba(127,127,127,.08)">
+        <b class="pos">✅ Savings achieved: ${fmt.money(s.savings_done.yearly)}/yr</b> <span class="muted">(${fmt.money(s.savings_done.monthly)}/mo)</span>
+        <ul style="margin:6px 0 0;padding-left:18px">${s.savings_done.items.map((r) => `<li class="mt">${esc(r.date || "")} · <b>${esc(r.name)}</b>: ${fmt.money(r.before_monthly)} → ${fmt.money(r.after_monthly)}/mo
+          <span class="pos">−${fmt.money(r.saved_yearly)}/yr</span>${r.note ? ` <span class="muted">· ${esc(r.note)}</span>` : ""}</li>`).join("")}</ul></div>` : ""}
       <ul class="mt" style="margin:0;padding-left:18px">
         ${s.optimizations.map((o) => `<li class="mt ${o.severity === "warn" ? "" : "muted"}">${o.text}</li>`).join("")}
       </ul>
       ${help(`These hints are computed from your own data — they don't scan the
         market for live deals (that would fit a scheduled job, not a page render).`, "where these hints come from")}
     </div>` : ""}
+    <div class="row mt">
+      <button id="invToggle" class="${invOnly ? "primary" : ""}" aria-pressed="${invOnly}">📄 Invoice items only (${invItems.length})</button>
+      <span class="muted" style="font-size:.85em">${invOnly ? "checklist for the monthly invoice review; click to go back to all items" : "show only the items you get an invoice for"}</span>
+    </div>
+    ${invOnly ? _invoiceChecklist(invItems, window._invMonth || cm) : `
     <div class="card mt">
       <h3>Add an item</h3>
       <div class="row">
@@ -121,7 +165,23 @@ async function renderExpenses(el) {
     <div class="grid cols-2 mt">
       <div class="card"><h3>Monthly trend</h3><canvas id="eChart" height="90"></canvas></div>
       <div class="card"><h3>By category (current month)</h3><canvas id="eCatChart" height="90"></canvas></div>
-    </div>`;
+    </div>`}`;
+
+  document.getElementById("invToggle").addEventListener("click", () => {
+    try { localStorage.setItem("kist.invoiceOnly", invOnly ? "0" : "1"); } catch { /* no browser storage */ }
+    route();
+  });
+  if (invOnly) {
+    const month = window._invMonth || cm;
+    document.getElementById("invMonth").addEventListener("change", (e) => { window._invMonth = e.target.value || cm; route(); });
+    el.querySelectorAll("[data-invchk]").forEach((c) => c.addEventListener("change", () => {
+      const done = _invLoad(month);
+      if (c.checked) done[c.dataset.invchk] = true; else delete done[c.dataset.invchk];
+      _invSave(month, done);
+      route();
+    }));
+    return;
+  }
 
   el.querySelectorAll("[data-upd]").forEach((b) =>
     b.addEventListener("click", () => {

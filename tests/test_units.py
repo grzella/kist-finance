@@ -480,3 +480,60 @@ def test_hiringlab_monthly_mean_and_series(client, monkeypatch):
     assert b["series"]["it_broad|hiringlab"]["counts"][b["months"].index("2026-01")] == 55.0  # (50 + 60)/2
     bc.collect_hiringlab(force=True, fetch=lambda c: csv)
     assert eb._rows("select count(*) n from market_barometer where stream='hiringlab' and month='2026-01'")[0]["n"] == 1
+
+
+def test_package_by_month_steps_with_raise_and_new_grants(client, monkeypatch):
+    """Package per month: salary from salary_history from its 'from', grants from first_vest."""
+    import json, market, planner, planner_career as pc
+    planner.set_settings({"tax_salary_gross_annual": 120000, "annual_bonus_net": 0,
+                          "salary_history": json.dumps([{"from": "2026-01", "annual": 96000},
+                                                        {"from": "2026-09", "annual": 120000}])})
+    monkeypatch.setattr(market, "get_rsu", lambda: {
+        "last_close": 100, "usdpln": 4, "vests_per_year": 4, "legacy_shares_per_vest": 10,
+        "vest_sources": [{"label": "legacy grants", "first_vest": "2026-11", "last_vest": "2030-08", "per_vest": 10},
+                         {"label": "grant", "first_vest": "2026-11", "last_vest": "2030-08", "per_vest": 5,
+                          "cash_per_vest_usd": 1000}]})
+    aug, sep, nov = pc._package_by_month(["2026-08", "2026-09", "2026-11"])
+    assert aug == round((96000 + 10 * 100 * 4 * 4) / 12)
+    assert sep == round((120000 + 10 * 100 * 4 * 4) / 12)           # raise
+    assert nov == round((120000 + (15 * 100 + 1000) * 4 * 4) / 12)  # new grant + cash-vest
+
+
+def test_monthly_surplus_follows_dashboard_unless_set(client):
+    """Empty cf_monthly_surplus = income − fixed costs (as on the Dashboard); a manual value wins."""
+    import planner
+    planner.set_settings({"cf_monthly_surplus": "", "monthly_savings": ""})
+    planner.add_expense_item({"name": "Test rent", "payer": "me", "amount": 400})
+    planner.add_wealth_item({"name": "Test salary", "kind": "income", "value": 1000})
+    base = planner.monthly_surplus()
+    assert base is not None
+    planner.add_wealth_item({"name": "Test side income", "kind": "income", "value": 1000})
+    assert planner.monthly_surplus() == round(base + 1000, 2)
+    planner.set_settings({"cf_monthly_surplus": 777})
+    assert planner.monthly_surplus() == 777
+
+
+def test_wealth_trend_and_overview_skip_income(client):
+    """Earnings (kind income) aren't wealth: kept out of the trend and the overview groups."""
+    import planner
+    before = planner.wealth_summary()["trend"]
+    base = before[-1]["total"] if before else 0
+    planner.add_wealth_item({"name": "Test earnings", "kind": "income", "value": 99999})
+    planner.add_wealth_item({"name": "Test cash", "kind": "cushion", "value": 1000})
+    assert planner.wealth_summary()["trend"][-1]["total"] == round(base + 1000, 2)
+    o = planner.wealth_overview()
+    assert sum(o["series"][g][-1] for g in o["series"]) == round(base + 1000)
+
+
+def test_tax_reserve_set_aside_frees_cash(client, monkeypatch):
+    """A 'Tax reserve…' item covers the reserve, so cash on the account isn't charged for it."""
+    import planner, planner_wealth as pw
+    real = pw.wealth_summary
+    monkeypatch.setattr(planner, "wealth_summary", lambda: {**real(), "tax_reserve": 5000.0})
+    monkeypatch.setattr(pw, "wealth_summary", planner.wealth_summary)
+    assert planner.wealth_overview()["tax_uncovered"] == 5000
+    planner.add_wealth_item({"name": "Tax reserve: bonds", "kind": "savings", "value": 4950})
+    o = planner.wealth_overview()
+    assert o["tax_set_aside"] == 4950 and o["tax_uncovered"] == 0  # 50 < one lot of 100
+    # the cushion is charged only for the uncovered 50, not the whole 5000
+    assert planner.liquid_cushion()["cash"] == planner.liquid_cushion({**real(), "tax_reserve": 0})["cash"] - 50

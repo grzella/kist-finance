@@ -60,6 +60,12 @@ def record_point(today=None):
 
 def points(limit=160):
     ensure_tables()
+    # today's point is recomputed on every read: the weekly schedule left the current month
+    # at its state before the latest Wealth updates
+    try:
+        record_point()
+    except Exception:
+        pass
     rows = eb._rows("select * from wealth_points order by date desc limit ?", (limit,))
     rows.reverse()
     # merge older monthly snapshots (net worth) so the chart does not start today
@@ -74,6 +80,15 @@ def points(limit=160):
                              "debt": d.get("debts"), "liquid": None, "invested": None,
                              "legacy": True})
         rows.sort(key=lambda r: r["date"])
+        # legacy snapshots had no 'liquid': rebuild it from the Wealth item history
+        # (cash, cushion, investments, retirement; no real estate, car or set-aside tax)
+        if any(r.get("liquid") is None for r in rows):
+            o = planner.wealth_overview()
+            liquid_by_month = {m: sum(o["series"][g][i] for g in ("cash", "cushion", "invest", "retirement"))
+                               for i, m in enumerate(o["months"])}
+            for r in rows:
+                if r.get("liquid") is None and r["date"][:7] in liquid_by_month:
+                    r["liquid"] = liquid_by_month[r["date"][:7]]
     except Exception:
         pass
     return rows

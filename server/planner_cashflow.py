@@ -21,7 +21,7 @@ def _cash_liquid_now():
     try:
         w = P.wealth_summary()
         return round(sum((it.get("latest_value") or 0) for it in w["items"]
-                         if (it.get("latest_value") or 0) > 0
+                         if (it.get("latest_value") or 0) > 0 and not P.is_tax_reserve(it.get("name"))
                          and (it.get("kind") == "cushion" or P._alloc_class(it.get("name", "")) == "cash")), 0)
     except Exception:
         return None
@@ -35,7 +35,10 @@ def cashflow(months=15, today=None):
     import market as _mkt
     from datetime import date
 
-    surplus = P.monthly_surplus() if P.monthly_surplus() is not None else CF_DEFAULTS["cf_monthly_surplus"]
+    manual_surplus = P._num(P.get_setting("cf_monthly_surplus"))
+    surplus = P.monthly_surplus()
+    if surplus is None:
+        surplus = CF_DEFAULTS["cf_monthly_surplus"]
     buffer = P._pct_setting("cf_safety_buffer", CF_DEFAULTS["cf_safety_buffer"])
     manual_start = P._num(P.get_setting("cf_liquid_start"))
     auto_start = _cash_liquid_now()
@@ -135,6 +138,7 @@ def cashflow(months=15, today=None):
         "target_freed_monthly": loan_freed,
         "liquid_start": round(liquid if not rows else (rows[0]["liquid"] - rows[0]["inflow"] + rows[0]["overpay"]), 0),
         "liquid_start_source": liquid_source,
+        "surplus_source": "manual" if manual_surplus is not None else "dashboard",
         "liquid_start_auto": auto_start,
         "tax_reserve_total": round(reserve, 0),
         "assumptions": {

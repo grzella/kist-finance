@@ -55,8 +55,10 @@ def _leverage(w):
     falling debt is VISIBLE. Series use carry-forward: debt balances from
     debt_values, assets from the wealth trend."""
     debts = w.get("debts") or []
-    debt_total = w.get("debt_total") or 0
-    assets = w.get("total") or 0
+    # same definitions as the trend below: loans only (the tax reserve is short-term debt covered
+    # by money set aside) and assets without monthly earnings; the tile used to differ from the chart
+    debt_total = w.get("loans_total") or 0
+    assets = (w.get("total") or 0) - ((w.get("totals") or {}).get("income") or 0)
     re_val = 0.0
     for it in w.get("items", []):
         if _alloc_class(it.get("name", "")) == "real_estate" \

@@ -200,14 +200,26 @@ def monthly_surplus():
     v = _num(get_setting("cf_monthly_surplus"))
     if v is None:
         v = _num(get_setting("monthly_savings"))
-    return v
+    return v if v is not None else planned_surplus()
+
+
+def planned_surplus():
+    """Surplus from the data, as on the Dashboard: income (Wealth, kind income) minus fixed
+    costs (my share). A typed-in pace drifts from the salary after a raise, so an empty
+    setting means this computed value."""
+    from planner_proxy import P
+    income = P.wealth_summary()["totals"].get("income", 0)
+    exp = P.expense_summary()
+    costs = exp.get("total_mine") if exp.get("items") else (get_json_setting("fixed_costs") or {}).get("total_mine")
+    return round(income - costs, 2) if income and costs else None
 
 
 def settings():
+    surplus = monthly_surplus()
     return {
         "current_total_monthly": _num(get_setting("current_total_monthly")),
-        "monthly_savings": monthly_surplus(),
-        "cf_monthly_surplus": monthly_surplus(),
+        "monthly_savings": surplus,
+        "cf_monthly_surplus": surplus,
     }
 
 

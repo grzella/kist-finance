@@ -83,7 +83,7 @@ def wealth_summary():
     history = eb._rows(
         "select substr(v.date,1,7) month, v.item_id, v.value, v.date, i.currency "
         "from wealth_values v join wealth_items i on i.id = v.item_id "
-        "where i.archived = 0 order by v.date, v.rowid")
+        "where i.archived = 0 and i.kind != 'income' order by v.date, v.rowid")  # earnings aren't wealth
     # CARRY-FORWARD: a monthly point = the sum of the LAST KNOWN value of every
     # item (not just entries made that month). With mixed strip cadences
     # (real estate quarterly, live items with no rows) per-month summing
@@ -110,7 +110,7 @@ def wealth_summary():
     cur_month = date.today().strftime("%Y-%m")
     all_months = sorted({m for series in per_item.values() for m, _ in series}
                         | ({cur_month} if per_item else set()))
-    live_by_id = {it["id"]: it["latest_value"] for it in items if it.get("live")}
+    live_by_id = {it["id"]: it["latest_value"] for it in items if it.get("live") and it["kind"] != "income"}
     monthly = {}
     for m in all_months:
         total = 0.0
@@ -136,6 +136,8 @@ def wealth_summary():
             reserve_note = f"capital gains tax {tx['year']} ({tx['shares_sold']:.0f} shares, due {tx['deadline']})"
     except Exception:
         pass
+    for it in items:  # same group as the overview, so the table keeps related items together
+        it["group"] = "income" if it["kind"] == "income" else _group(it)
     return {
         "items": items,
         "debts": debts,
@@ -213,3 +215,100 @@ def ensure_monthly_snapshot():
          _json.dumps({"net_worth": net, "assets": round(assets, 2),
                       "debts": round(w["debt_total"], 2)})))
     P._audit("snapshot", None, "add", {"net_worth": net})
+
+
+def is_tax_reserve(name):
+    """An item named "Tax reserve…" holds money set aside for tax due (e.g. bonds or a
+    sub-account): it covers the reserve instead of counting as free cash or cushion."""
+    return "tax reserve" in (name or "").lower()
+
+
+def _group(it):
+    """Overview group: cash on the account / cushion (set aside, e.g. bonds) / tax reserve set
+    aside / liquid investments / retirement / real estate and car / other (kind savings, e.g. a
+    refundable deposit held for someone else: not an investment)."""
+    if is_tax_reserve(it.get("name")):
+        return "tax"
+    cls = P._alloc_class(it.get("name", ""))
+    if cls == "cash":
+        return "cash"
+    if it["kind"] == "cushion":
+        return "cushion"
+    if it["kind"] == "savings":
+        return "other"
+    if cls == "retirement":
+        return "retirement"
+    if cls in ("real_estate", "car"):
+        return "illiquid"
+    return "invest"
+
+
+def wealth_overview():
+    """Wealth overview: monthly values per group (carry-forward like the trend), net worth from
+    the snapshots, cushion vs target, tax reserve and a 3-month forecast (liquid balance from
+    the cash-flow timeline, investments +6.5%/yr like the base FIRE scenario)."""
+    w = wealth_summary()
+    items = [it for it in w["items"] if it["kind"] != "income"]
+    group_of = {it["id"]: it["group"] for it in items}
+    rows = eb._rows(
+        "select substr(v.date,1,7) month, v.item_id, v.value from wealth_values v "
+        "join wealth_items i on i.id = v.item_id where i.archived = 0 and i.kind != 'income' "
+        "order by v.date, v.rowid")
+    fx = 1.0
+    try:
+        import market as _mkt
+        fx = _mkt._usd_base_rate()[0] or 1.0
+    except Exception:
+        pass
+    usd = {it["id"] for it in items if (it.get("currency") or "PLN") == "USD"}
+    per_item = {}
+    for r in rows:
+        per_item.setdefault(r["item_id"], []).append((r["month"], r["value"] * (fx if r["item_id"] in usd else 1)))
+    cur = date.today().strftime("%Y-%m")
+    months = sorted({m for s in per_item.values() for m, _ in s} | {cur})
+    groups = ("cash", "cushion", "tax", "invest", "retirement", "illiquid", "other")
+    series = {g: [] for g in groups}
+    for m in months:
+        tot = dict.fromkeys(groups, 0.0)
+        for it in items:
+            if m == cur:
+                v = it.get("latest_value") or 0  # current month = what the table shows (incl. live pricing)
+            else:
+                past = [v for mm, v in per_item.get(it["id"], []) if mm <= m]
+                v = past[-1] if past else 0
+            tot[group_of[it["id"]]] += v
+        for g in groups:
+            series[g].append(round(tot[g]))
+    net_by_month = {p["date"][:7]: p["net_worth"] for p in eb.net_worth_history()}
+    # current month computed live (the snapshot is written once, on the first visit of the month)
+    net_by_month[cur] = round(sum(it.get("latest_value") or 0 for it in items) - (w.get("debt_total") or 0), 2)
+    lc = P.liquid_cushion(w)
+    essential = (P.expense_summary() or {}).get("essential_mine") or 0
+    try:
+        cf_rows = [r for r in P.cashflow()["rows"] if r["month"] > cur][:3]
+    except Exception:
+        cf_rows = []
+    inv_now = series["invest"][-1] + series["retirement"][-1]
+    # the cash-flow timeline counts cash together with the cushion; the cushion stays flat, growth lands in cash
+    forecast = [{"month": r["month"], "liquid": round(r["liquid"]), "cash": round(r["liquid"] - series["cushion"][-1]),
+                 "invest": round(inv_now * (1.065 ** ((i + 1) / 12))),
+                 "tax_reserve": round(r.get("tax_reserve") or 0)} for i, r in enumerate(cf_rows)]
+    reserve = w.get("tax_reserve") or 0
+    gap = reserve - series["tax"][-1]
+    return {
+        "months": months, "series": series,
+        "net": [net_by_month.get(m) for m in months],
+        "cushion": {**lc, "target": round(essential * 6), "essential_monthly": essential},
+        "tax_reserve": reserve, "tax_reserve_note": w.get("tax_reserve_note"),
+        "cash_gross": series["cash"][-1],
+        "tax_set_aside": series["tax"][-1],
+        # the part of the reserve no set-aside money covers: that part weighs on cash. Set-aside
+        # money often comes in fixed lots (e.g. bonds at 100 each): a gap below one lot isn't a shortfall
+        "tax_uncovered": round(gap) if gap >= 100 else 0,
+        "cushion_items": [{"name": it["name"], "value": it.get("latest_value") or 0}
+                          for it in items if group_of[it["id"]] == "cushion"],
+        "tax_items": [{"name": it["name"], "value": it.get("latest_value") or 0}
+                      for it in items if group_of[it["id"]] == "tax"],
+        "debt_total": w.get("loans_total") or 0,
+        "forecast": forecast,
+    }

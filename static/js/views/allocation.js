@@ -15,7 +15,7 @@ async function renderAllocation(el) {
     ${d.leverage ? `<div class="card" style="margin-bottom:12px">
       <h3>🏦 Debt vs value</h3>
       <div class="row" style="gap:24px;flex-wrap:wrap">
-        <div><div class="muted">Debt / assets</div><div class="value">${d.leverage.debt_to_assets_pct}%</div>
+        <div><div class="muted" title="loans / assets (without monthly earnings; the tax reserve is left out because it is set aside)">Loans / assets</div><div class="value">${d.leverage.debt_to_assets_pct}%</div>
           <div class="muted">${fmt.pln(d.leverage.debt_total)} / ${fmt.pln(d.leverage.assets_total)}</div></div>
         <div><div class="muted" title="mortgage balances / property values">Real-estate LTV</div><div class="value">${d.leverage.ltv_pct}%</div>
           <div class="muted">${fmt.pln(d.leverage.debt_total)} / ${fmt.pln(d.leverage.re_value)}</div></div>
@@ -67,7 +67,7 @@ async function renderAllocation(el) {
       type: "line",
       data: {
         labels: d.leverage.trend.map((t) => t.month),
-        datasets: [{ label: "Debt / assets %", data: d.leverage.trend.map((t) => t.pct),
+        datasets: [{ label: "Loans / assets %", data: d.leverage.trend.map((t) => t.pct),
           borderColor: TOKENS.amber, backgroundColor: "transparent", tension: 0.25 }],
       },
       options: { plugins: { legend: { display: false } },

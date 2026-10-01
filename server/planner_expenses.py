@@ -159,7 +159,19 @@ def expense_summary():
             key=lambda x: -x["total"]),
         "current_month": cur_month,
         "optimizations": _expense_optimizations(items, cur_month),
+        "savings_done": _savings_done(),
     }
+
+
+def _savings_done():
+    """Savings already achieved (setting `savings_done`: list of {date, name, before_monthly,
+    after_monthly, note}), so the hints sit next to what has already paid off."""
+    rows = []
+    for r in P.get_json_setting("savings_done") or []:
+        before, after = P._num(r.get("before_monthly")) or 0, P._num(r.get("after_monthly")) or 0
+        rows.append({**r, "saved_monthly": round(before - after, 2), "saved_yearly": round((before - after) * 12, 0)})
+    return {"items": rows, "monthly": round(sum(r["saved_monthly"] for r in rows), 2),
+            "yearly": round(sum(r["saved_yearly"] for r in rows), 0)}
 
 
 def _expense_optimizations(items, cur_month):

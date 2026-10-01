@@ -20,6 +20,38 @@ def _current_total_monthly(today=None):
     return round((base + bonus + x["rsu_annual_gross"] + x["cash_vest_annual_gross"]) / 12)
 
 
+def _package_by_month(months):
+    """GROSS monthly package per month, in the same units as `_current_total_monthly`, but
+    with what applied in that month: base salary from `salary_history`
+    ([{"from": "YYYY-MM", "annual": N}], missing = today's salary everywhere), shares and
+    cash-vest from grants active from their first_vest. Today's price and FX, so the steps
+    show package changes, not price swings."""
+    base_now = P._num(P.get_setting("tax_salary_gross_annual"))
+    if not base_now:
+        return [None] * len(months)
+    hist = sorted(P.get_json_setting("salary_history") or [], key=lambda h: h["from"])
+    x = P._annual_extras()
+    bonus = x["bonus_net"] / x["payroll_net_factor"]
+    try:
+        import market
+        r = market.get_rsu()
+    except Exception:
+        r = {}
+    px, fx, vpy = r.get("last_close") or 0, r.get("usdpln") or 0, r.get("vests_per_year") or 4
+    legacy, legacy_until = r.get("legacy_shares_per_vest") or 0, r.get("legacy_until")
+    # the schedule starts legacy grants at the NEXT vest; past months need the flat tranche instead
+    grants = [g for g in r.get("vest_sources") or [] if g["label"] != "legacy grants" and g.get("first_vest")]
+    out = []
+    for m in months:
+        prior = [h for h in hist if h["from"] <= m]
+        base = P._num(prior[-1]["annual"]) if prior else (P._num(hist[0]["annual"]) if hist else base_now)
+        live = [g for g in grants if g["first_vest"] <= m <= (g.get("last_vest") or m)]
+        shares = (legacy if not legacy_until or m <= legacy_until else 0) + sum(g["per_vest"] for g in live)
+        cash = sum(g.get("cash_per_vest_usd") or 0 for g in live)
+        out.append(round((base + bonus + (shares * px + cash) * fx * vpy) / 12))
+    return out
+
+
 def list_offers():
     offers = eb._rows("select * from job_offers order by received_at desc, created_at desc")
     cfg = P.settings()
@@ -264,6 +296,16 @@ def list_barometer():
     # average only over offers that disclosed a range; a month without any = None, not 0
     comp_avg = [round(sum(comp[m]) / len(comp[m])) if m in comp else None for m in months]
     comp_n = [len(comp.get(m, [])) for m in months]
+    # the range chart's axis runs 3 months ahead so announced package steps show up
+    t = date.today()
+    comp_months = list(months)
+    y, mo = (int(comp_months[-1][:4]), int(comp_months[-1][5:7])) if comp_months else (t.year, t.month - 1)
+    horizon = f"{t.year + (t.month + 2) // 12:04d}-{(t.month + 2) % 12 + 1:02d}"
+    while True:
+        y, mo = (y + 1, 1) if mo == 12 else (y, mo + 1)
+        if f"{y:04d}-{mo:02d}" > horizon:
+            break
+        comp_months.append(f"{y:04d}-{mo:02d}")
 
     # per role × stream: series aligned to the month axis, index (base 100), trend
     series = {}
@@ -302,7 +344,8 @@ def list_barometer():
     return {"points": points, "roles": cfg["roles"], "geo": cfg["geo"],
             "watchlist": cfg.get("watchlist") or [], "watchlist_latest": wl[-1] if wl else None,
             "months": months, "streams": streams, "inbound": inbound_series, "inbound_ma3": inbound_ma3,
-            "comp_avg": comp_avg, "comp_n": comp_n, "series": series}
+            "comp_avg": comp_avg, "comp_n": comp_n, "series": series,
+            "comp_months": comp_months, "comp_current": _package_by_month(comp_months)}
 
 
 def add_barometer_point(data):

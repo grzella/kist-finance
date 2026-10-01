@@ -340,6 +340,11 @@ def wealth_summary():
     return jsonify(planner.wealth_summary())
 
 
+@app.get("/api/wealth/overview")
+def wealth_overview():
+    return jsonify(planner.wealth_overview())
+
+
 @app.post("/api/wealth/items")
 def wealth_item_add():
     return jsonify({"id": planner.add_wealth_item(request.get_json(force=True))}), 201

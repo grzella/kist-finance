@@ -41,7 +41,7 @@ async function renderOffers(el) {
       <details class="mt"><summary class="pill" style="font-size:.78em">⚙️ roles / geography</summary><div id="baroCfgBox" class="mt"></div></details>
       <canvas id="baroChart" height="95" class="mt"></canvas>
       <h4 style="margin:16px 0 0">💶 Average offered range (total/mo)</h4>
-      <div class="muted" style="font-size:.85em;margin:4px 0 6px">Average of the offers that disclosed a range, against your current package (dashed line).
+      <div class="muted" style="font-size:.85em;margin:4px 0 6px">Average of the offers that disclosed a range, against your package (dashed line): base, bonus, shares and cash-vest that applied in each month, at today's price, stepping at raises and new grant starts (3 months ahead).
         Offers without numbers don't drag the average down; a month without any range stays empty.</div>
       <canvas id="compChart" height="60"></canvas>
       <div id="baroTable" class="mt"></div>
@@ -238,20 +238,24 @@ async function renderOffers(el) {
   }
 
   const cur = s ? s.current : null;
+  const cmonths = baro.comp_months || months;
+  // per-month package (raises, new grants); the old flat line only when the API doesn't send it
+  const curLine = baro.comp_current && baro.comp_current.some((v) => v != null)
+    ? baro.comp_current : (cur ? cmonths.map(() => cur) : null);
   trackChart(new Chart(document.getElementById("compChart"), {
     data: {
-      labels: months,
+      labels: cmonths,
       datasets: [
         { type: "line", label: "Average range", data: baro.comp_avg || [], borderColor: CHART_COLORS[0],
           backgroundColor: "transparent", tension: 0.25, borderWidth: 3, pointRadius: 4, spanGaps: true },
-        ...(cur ? [{ type: "line", label: "Current package", data: months.map(() => cur), borderColor: CHART_COLORS[3],
-          backgroundColor: "transparent", borderDash: [6, 4], borderWidth: 2, pointRadius: 0 }] : []),
+        ...(curLine ? [{ type: "line", label: "Your package", data: curLine, borderColor: CHART_COLORS[3],
+          backgroundColor: "transparent", borderDash: [6, 4], borderWidth: 2, pointRadius: 0, stepped: true }] : []),
       ],
     },
     options: {
       interaction: { mode: "index", intersect: false },
       plugins: { tooltip: { callbacks: { label: (ctx) => {
-        if (ctx.datasetIndex !== 0) return `Current package: ${fmt.pln(ctx.parsed.y)}`;
+        if (ctx.datasetIndex !== 0) return `Your package: ${fmt.pln(ctx.parsed.y)}`;
         const n = (baro.comp_n || [])[ctx.dataIndex];
         return `Average: ${fmt.pln(ctx.parsed.y)} (of ${n} ${n === 1 ? "offer" : "offers"})`;
       } } } },
