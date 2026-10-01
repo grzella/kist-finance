@@ -207,13 +207,35 @@ _ATS_URL = {
     "ashby": "https://api.ashbyhq.com/posting-api/job-board/{}",
 }
 
-# Title families for the built-in role keys: "engineering manager" also catches
-# Senior / Staff / Group EM and "EM II"; "head" catches Head and Director (VP is a
-# separate league). Any other role key matches its configured `query` literally.
-_FAMILY = {
-    "em": re.compile(r"engineering manager|manager,? (software |platform )?engineering", re.I),
-    "head": re.compile(r"head of (software |platform )?engineering|director,? (of )?(software |platform )?engineering|engineering director", re.I),
-}
+# Title families: a role's `query` (or key) picks the family by what it names, so
+# "Senior PM" also counts "Senior Product Manager" and "Engineering Manager / Head"
+# catches Senior / Staff / Group EM. Head/Director share a family (VP is a separate
+# league). A query that names none of them matches literally.
+_FAMILIES = [
+    (re.compile(r"head|director", re.I), re.compile(r"product", re.I),
+     re.compile(r"head of product|director,? (of )?product|product director", re.I)),
+    (re.compile(r"\bpm\b|product manager", re.I), None,
+     re.compile(r"product manager|\bpm\b", re.I)),
+    (re.compile(r"\bem\b|engineering manager", re.I), None,
+     re.compile(r"engineering manager|manager,? (software |platform )?engineering", re.I)),
+    (re.compile(r"head|director", re.I), None,
+     re.compile(r"head of (software |platform )?engineering|director,? (of )?(software |platform )?engineering|engineering director", re.I)),
+    (re.compile(r"senior|staff|principal", re.I), re.compile(r"engineer", re.I),
+     re.compile(r"\b(senior|staff|principal) (software |backend |frontend |full[- ]?stack |platform )?engineer\b(?!ing)", re.I)),
+]
+_FAMILY = {"em": _FAMILIES[2][2], "head": _FAMILIES[3][2]}  # built-in private-style keys
+
+
+def _family_for(role):
+    if role["key"] in _FAMILY:
+        return _FAMILY[role["key"]]
+    q = role.get("query") or role.get("label") or role["key"]
+    for names, also, fam in _FAMILIES:
+        if names.search(q) and (also is None or also.search(q)):
+            return fam
+    return re.compile(re.escape(q), re.I)
+
+
 # A Sales / Solutions / Support Engineering Manager is a different job.
 _NOT_ENG = re.compile(r"\b(sales|solutions?|support|customer|field|partner|analytics?|analytical) engineering", re.I)
 _EU = re.compile(r"poland|polska|warsaw|gda[nń]sk|krak[oó]w|wroc[lł]aw|europe|emea|london|berlin|amsterdam|dublin|paris|munich|"
@@ -255,8 +277,7 @@ def count_watchlist(boards, roles, fetch=_board_jobs):
     hits = "company: title (location)" lines for the preview, failed = boards that
     did not answer."""
     import concurrent.futures as cf
-    fams = [(r["key"], _FAMILY.get(r["key"]) or re.compile(re.escape(r.get("query") or r["key"]), re.I))
-            for r in roles]
+    fams = [(r["key"], _family_for(r)) for r in roles]
     counts = {k: 0 for k, _ in fams}
     hits, failed = [], []
     with cf.ThreadPoolExecutor(8) as ex:

@@ -436,6 +436,19 @@ def test_watchlist_counts_title_families_and_eu_locations(client):
     assert "greenhouse:gitlab" in planner.barometer_config()["watchlist"]
 
 
+def test_watchlist_family_follows_role_query():
+    """Generic a/b roles get a title family from what their query names, not a literal match."""
+    import barometer_collect as bc
+    fam = lambda q: bc._family_for({"key": "a", "query": q})
+    assert fam("Senior PM").search("Senior Product Manager, Growth")
+    assert fam("Head of Product").search("Director of Product")
+    assert not fam("Head of Product").search("Head of Engineering")
+    assert fam("Engineering Manager / Head").search("Staff Engineering Manager")
+    assert fam("Senior / Staff Engineer").search("Staff Software Engineer")
+    assert not fam("Senior / Staff Engineer").search("Senior Engineering Manager")
+    assert fam("Data Scientist").search("Senior Data Scientist")  # literal fallback
+
+
 def test_hiringlab_monthly_mean_and_series(client, monkeypatch):
     """Hiring Lab: monthly mean of 'total postings' for Software Development (other
     sectors and 'new postings' skipped); it_eu|hiringlab and it_broad|hiringlab series
