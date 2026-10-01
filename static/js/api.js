@@ -246,9 +246,28 @@ if (window.Chart) {
   Chart.defaults.elements.point.radius = 0;
   Chart.defaults.elements.point.hitRadius = 8;
   Chart.defaults.elements.bar.borderRadius = 4;
-  Chart.defaults.plugins.legend.labels.usePointStyle = true;
-  Chart.defaults.plugins.legend.labels.boxWidth = 6;
-  Chart.defaults.plugins.legend.labels.padding = 14;
+  // Legend: fixed marker size (boxHeight), otherwise the font-sized circle overlapped the
+  // text; lines get a stroke with the same dash as on the chart, everything else a solid
+  // marker (hollow circles from backgroundColor "transparent" were unreadable).
+  const legendLabels = Chart.defaults.plugins.legend.labels;
+  const baseLabels = legendLabels.generateLabels;
+  Object.assign(legendLabels, {
+    usePointStyle: true, boxWidth: 8, boxHeight: 8, pointStyleWidth: 20, padding: 18,
+    font: { size: 12 },
+    generateLabels: (chart) => baseLabels(chart).map((l) => {
+      const ds = chart.data.datasets[l.datasetIndex] || {};
+      const isLine = (ds.type || chart.config.type) === "line";
+      const solid = (c) => typeof c === "string" && c !== "transparent" && !/,\s*0\)$/.test(c);
+      const color = isLine ? (solid(l.strokeStyle) ? l.strokeStyle : l.fillStyle)
+                           : (solid(l.fillStyle) ? l.fillStyle : l.strokeStyle);
+      return isLine
+        ? { ...l, pointStyle: "line", strokeStyle: color, fillStyle: color, lineWidth: 2.5 }
+        : { ...l, pointStyle: "rectRounded", fillStyle: color, strokeStyle: color, lineWidth: 0, lineDash: [] };
+    }),
+  });
+  Chart.defaults.plugins.legend.align = "start";
+  // doughnut/pie have their own legend generator: width 20 turned circles into ovals there
+  ["doughnut", "pie", "polarArea"].forEach((t) => Object.assign(Chart.overrides[t].plugins.legend.labels, { pointStyleWidth: 8 }));
   Chart.defaults.plugins.tooltip.borderWidth = 1;
   Chart.defaults.plugins.tooltip.cornerRadius = 8;
   Chart.defaults.plugins.tooltip.padding = 10;
@@ -266,6 +285,7 @@ function applyChartTheme(t) {
   CHART_COLORS.splice(0, CHART_COLORS.length, ...["accent", "pos", "warn", "neg", "violet", "teal", "orange", "muted"].map(v));
   if (!window.Chart) return;
   Chart.defaults.color = TOKENS.muted;
+  Chart.defaults.plugins.legend.labels.color = TOKENS.text;  // muted was too faint on dark
   Chart.defaults.borderColor = `rgba(${ink},${dark ? 0.06 : 0.08})`;
   Chart.defaults.scale.grid.color = `rgba(${ink},${dark ? 0.05 : 0.07})`;
   Chart.defaults.plugins.tooltip.backgroundColor = v(dark ? "panel2" : "panel");
