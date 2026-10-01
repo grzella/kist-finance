@@ -191,3 +191,203 @@ def backfill(replace=True):
             "sources": _SOURCE, "geo": _GEO_LABEL, "as_of": date.today().isoformat()})
         added.append(month)
     return {"ok": True, "added": added, "skipped_current": this_month}
+
+
+# ---------- watchlist: real open roles at companies in your target market ----------
+#
+# Google Trends measures who SEARCHES for a title (mostly candidates), not who is
+# hiring, and JSearch caps out at 3 pages of 10. The watchlist counts real open roles
+# on the public Greenhouse / Lever / Ashby boards (keyless) of companies you pick
+# yourself (⚙️ on the Career tab), so it measures YOUR target market, not all of it.
+import re
+
+_ATS_URL = {
+    "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{}/jobs?content=false",
+    "lever": "https://api.lever.co/v0/postings/{}?mode=json",
+    "ashby": "https://api.ashbyhq.com/posting-api/job-board/{}",
+}
+
+# Title families for the built-in role keys: "engineering manager" also catches
+# Senior / Staff / Group EM and "EM II"; "head" catches Head and Director (VP is a
+# separate league). Any other role key matches its configured `query` literally.
+_FAMILY = {
+    "em": re.compile(r"engineering manager|manager,? (software |platform )?engineering", re.I),
+    "head": re.compile(r"head of (software |platform )?engineering|director,? (of )?(software |platform )?engineering|engineering director", re.I),
+}
+# A Sales / Solutions / Support Engineering Manager is a different job.
+_NOT_ENG = re.compile(r"\b(sales|solutions?|support|customer|field|partner|analytics?|analytical) engineering", re.I)
+_EU = re.compile(r"poland|polska|warsaw|gda[nń]sk|krak[oó]w|wroc[lł]aw|europe|emea|london|berlin|amsterdam|dublin|paris|munich|"
+                 r"stockholm|lisbon|madrid|barcelona|prague|zurich|vienna|oslo|copenhagen|helsinki|tallinn|bucharest|"
+                 r"united kingdom|germany|netherlands|ireland|france|spain|portugal|sweden|denmark|norway|finland|"
+                 r"czech|austria|switzerland|romania|estonia|italy", re.I)
+_NON_EU = re.compile(r"united states|\bus\b|\busa\b|u\.s\.|north america|canada|india|australia|apac|latam|americas|brazil|mexico|singapore|japan|israel", re.I)
+
+
+def _eu_location(loc):
+    """A role counts when its location points to Europe, or it is remote without an
+    explicit restriction to another continent ("Remote - US" is out)."""
+    if _EU.search(loc):
+        return True
+    return "remote" in loc.lower() and not _NON_EU.search(loc)
+
+
+def _board_jobs(ats, slug):
+    """(title, location) pairs from one board; None on a network error / bad slug."""
+    import json as _json
+    import urllib.request
+    try:
+        req = urllib.request.Request(_ATS_URL[ats].format(slug), headers={"User-Agent": "kist-barometer"})
+        d = _json.loads(urllib.request.urlopen(req, timeout=20).read())
+    except Exception:
+        return None
+    if ats == "greenhouse":
+        return [(j.get("title", ""), (j.get("location") or {}).get("name", "")) for j in d.get("jobs", [])]
+    if ats == "lever":
+        return [(j.get("text", ""), " ".join([(j.get("categories") or {}).get("location", "")]
+                                          + ((j.get("categories") or {}).get("allLocations") or []))) for j in d]
+    return [(j.get("title", ""), " ".join([j.get("location", "")]
+                                        + [s.get("location", "") for s in (j.get("secondaryLocations") or [])]))
+            for j in d.get("jobs", [])]
+
+
+def count_watchlist(boards, roles, fetch=_board_jobs):
+    """Counts roles per family across all boards. Returns (counts, hits, failed):
+    hits = "company: title (location)" lines for the preview, failed = boards that
+    did not answer."""
+    import concurrent.futures as cf
+    fams = [(r["key"], _FAMILY.get(r["key"]) or re.compile(re.escape(r.get("query") or r["key"]), re.I))
+            for r in roles]
+    counts = {k: 0 for k, _ in fams}
+    hits, failed = [], []
+    with cf.ThreadPoolExecutor(8) as ex:
+        results = list(ex.map(lambda b: (b, fetch(*b)), boards))
+    for (ats, slug), jobs in results:
+        if jobs is None:
+            failed.append(f"{ats}:{slug}")
+            continue
+        seen = set()
+        for title, loc in jobs:
+            if _NOT_ENG.search(title) or not _eu_location(loc):
+                continue
+            # the same role posted once per country ("... | EMEA | (Remote, Spain)") counts once
+            key = re.sub(r"\s*\|.*$|\s*\((remote|hybrid)[^)]*\)\s*$", "", title, flags=re.I).strip().lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            for k, fam in fams:
+                if fam.search(title):
+                    counts[k] += 1
+                    hits.append(f"{slug}: {title} ({loc.strip()})")
+                    break
+    return counts, hits, failed
+
+
+def collect_watchlist(force=False):
+    """Monthly snapshot of open roles at the watchlist companies ('watchlist' stream).
+    Labelled with the current month (a snapshot as of the collection day), idempotent."""
+    import planner
+    cfg = planner.barometer_config()
+    boards = []
+    for item in cfg.get("watchlist") or []:
+        ats, _, slug = item.partition(":")
+        if ats in _ATS_URL and slug:
+            boards.append((ats, slug))
+    if not boards:
+        return {"ok": True, "skipped": "empty watchlist"}
+    month = date.today().isoformat()[:7]
+    old = [p for p in planner.list_barometer()["points"] if p["stream"] == "watchlist" and p["month"] == month]
+    if old and not force:
+        return {"ok": True, "skipped": month}
+    counts, hits, failed = count_watchlist(boards, cfg["roles"])
+    if len(failed) > len(boards) // 2:
+        return {"ok": False, "error": f"{len(failed)} of {len(boards)} boards did not answer"}
+    for p in old:
+        planner.delete_barometer_point(p["id"])
+    planner.add_barometer_point({
+        "month": month, "counts": counts, "stream": "watchlist",
+        "sources": f"watchlist: {len(boards) - len(failed)} companies (Greenhouse/Lever/Ashby)",
+        "geo": "Europe / remote EMEA", "as_of": date.today().isoformat(),
+        "note": "\n".join(sorted(hits)) + (f"\n\nno response: {', '.join(failed)}" if failed else "")})
+    return {"ok": True, "added": month, "counts": counts, "failed": failed}
+
+
+# ---------- Indeed Hiring Lab: history of IT postings in Europe (backdrop for the watchlist) ----------
+#
+# The watchlist is a snapshot with no past. Hiring Lab publishes a daily index of
+# Indeed posting volume per sector and country (Feb 2020 = 100), since 2020: the only
+# free, real history of posting counts. It covers whole sectors, not specific roles;
+# only GB, DE and FR publish per-sector CSVs in Europe. Collected like Trends: full
+# months, the whole series rewritten each run (Hiring Lab revises past data).
+HIRINGLAB_COUNTRIES = ["GB", "DE", "FR"]
+_HIRINGLAB_URL = "https://raw.githubusercontent.com/hiring-lab/job_postings_tracker/master/{c}/job_postings_by_sector_{c}.csv"
+HIRINGLAB_KEY = "it_eu"
+# "IT broad": the mean of Indeed's four IT sectors (Software Development + the rest of IT).
+HIRINGLAB_BROAD_KEY = "it_broad"
+HIRINGLAB_BROAD = ["Software Development", "Data & Analytics", "IT Systems & Solutions",
+                   "IT Infrastructure, Operations & Support"]
+
+
+def hiringlab_monthly(csv_text, months, sector="Software Development"):
+    """Monthly mean of a sector's 'total postings' index from a Hiring Lab CSV."""
+    import csv, io
+    acc = {}
+    for row in csv.DictReader(io.StringIO(csv_text)):
+        m = row["date"][:7]
+        if m in months and row["variable"] == "total postings" and row["display_name"] == sector:
+            acc.setdefault(m, []).append(float(row["indeed_job_postings_index"]))
+    return {m: round(sum(v) / len(v), 1) for m, v in acc.items()}
+
+
+def collect_hiringlab(force=False, fetch=None):
+    """'hiringlab' stream: mean of the HIRINGLAB_COUNTRIES indices per full month."""
+    import urllib.request
+    import engine_bridge as eb
+    import planner
+    months = _full_months_since(HISTORY_START)
+    # Straight from the table: list_barometer() filters hiringlab out of points, so old
+    # rows would never be deleted and every run would duplicate the months.
+    old_ids = {}
+    for r in eb._rows("select id, month from market_barometer where stream='hiringlab'"):
+        old_ids.setdefault(r["month"], []).append(r["id"])
+    if not force and all(m in old_ids for m in months):
+        return {"ok": True, "added": [], "up_to_date": _last_full_month()}
+    if fetch is None:
+        def fetch(c):
+            req = urllib.request.Request(_HIRINGLAB_URL.format(c=c), headers={"User-Agent": "kist-barometer"})
+            return urllib.request.urlopen(req, timeout=60).read().decode("utf-8")
+    per_country = {}  # country -> sector -> {month: index}
+    for c in HIRINGLAB_COUNTRIES:
+        try:
+            text = fetch(c)
+            per_country[c] = {sec: hiringlab_monthly(text, set(months), sec) for sec in HIRINGLAB_BROAD}
+        except Exception as e:
+            return {"ok": False, "error": f"{c}: {str(e)[:120]}"}
+
+    def avg(month, sectors):
+        # mean of sectors within a country, then mean of countries (each weighs the same);
+        # a country lacking a sector (FR has no "Data & Analytics") averages the ones it has
+        per_c = []
+        for c in HIRINGLAB_COUNTRIES:
+            v = [per_country[c][sec][month] for sec in sectors if month in per_country[c][sec]]
+            if v:
+                per_c.append(sum(v) / len(v))
+        return round(sum(per_c) / len(per_c), 1) if per_c else None
+
+    added = []
+    for month in months:
+        sd, broad = avg(month, HIRINGLAB_BROAD[:1]), avg(month, HIRINGLAB_BROAD)
+        if sd is None:
+            continue
+        for bid in old_ids.get(month, []):
+            planner.delete_barometer_point(bid)
+        counts = {HIRINGLAB_KEY: sd}
+        if broad is not None:
+            counts[HIRINGLAB_BROAD_KEY] = broad
+        planner.add_barometer_point({
+            "month": month, "counts": counts, "stream": "hiringlab",
+            "sources": f"Indeed Hiring Lab: Software Development and IT broad ({len(HIRINGLAB_BROAD)} sectors), mean {'/'.join(HIRINGLAB_COUNTRIES)} (Feb 2020 = 100)",
+            "geo": f"Europe ({', '.join(HIRINGLAB_COUNTRIES)})", "as_of": date.today().isoformat()})
+        if month not in old_ids:
+            added.append(month)
+    done = _last_full_month() in (set(old_ids) | set(added))
+    return {"ok": done, "added": added} if done else {"ok": False, "added": added, "error": f"missing {_last_full_month()}"}

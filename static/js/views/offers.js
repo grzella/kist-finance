@@ -32,10 +32,19 @@ async function renderOffers(el) {
     <div class="muted" style="margin:6px 0 12px;font-size:.88em">Reference point (auto): <b>${s ? fmt.pln(s.current) : "—"}</b>/mo —
       current gross total (base + bonus + RSU + cash vest, computed dynamically from the RSU stock price). Offer deltas and goal impact are computed against this.</div>
     <div class="card" id="baroCard">
-      <h3 style="margin:0">📈 Market barometer — demand for your roles (index + your inbound)</h3>
-      <div class="muted" style="font-size:.85em;margin:6px 0 8px" id="baroDesc">Demand trend for your roles as an <b>index (base 100)</b> — not a raw count, which depends on how it's collected and misleads. Against your inbound (bars) it shows whether growing inquiries are your brand or the market (and whether AI is shrinking it). Raw counts and source are in the tooltip.</div>
+      <h3 style="margin:0">📈 Market barometer — your roles (index + your inbound)</h3>
+      <div class="muted" style="font-size:.85em;margin:6px 0 8px" id="baroDesc">Every series is an <b>index (base 100)</b>, because raw numbers from different methods are not comparable (raw values are in the tooltip).
+        <b>🏢 open roles</b> (dashed) are real postings for your roles in Europe at the companies on your watchlist (⚙️), counted from their public job boards: your target market, not the whole market.
+        <b>📈 interest</b> (Google Trends) measures who searches for the role title, mostly candidates rather than employers: sentiment, not demand.
+        <b>🌍 IT postings in Europe</b> (Indeed Hiring Lab, dotted) is the only real history of posting volume: Indeed's "Software Development" postings index, averaged over GB/DE/FR. It covers the whole sector, not your role, but tells you whether the market is growing or shrinking. The second dotted line, <b>IT broad</b>, averages Indeed's four IT sectors: Software Development, Data &amp; Analytics, IT Systems &amp; Solutions, and IT Infrastructure, Operations &amp; Support. Indeed assigns a posting to a sector by its job title; other European countries have no per-sector data.
+        Against your inbound (bars, line = 3-month average) it shows whether a change is your brand or the market.
+        <br>Trends counts <b>full</b> months only (the current one lands after it ends); the watchlist is a snapshot as of the collection day, taken near the end of the month.</div>
       <details class="mt"><summary class="pill" style="font-size:.78em">⚙️ roles / geography</summary><div id="baroCfgBox" class="mt"></div></details>
       <canvas id="baroChart" height="95" class="mt"></canvas>
+      <h4 style="margin:16px 0 0">💶 Average offered range (total/mo)</h4>
+      <div class="muted" style="font-size:.85em;margin:4px 0 6px">Average of the offers that disclosed a range, against your current package (dashed line).
+        Offers without numbers don't drag the average down; a month without any range stays empty.</div>
+      <canvas id="compChart" height="60"></canvas>
       <div id="baroTable" class="mt"></div>
     </div>
     <div class="card mt">
@@ -116,12 +125,14 @@ async function renderOffers(el) {
   const bser = baro.series || {};
    const geoTxt = esc((baro.geo || []).join(", ")) || "—";
   const bdesc = document.getElementById("baroDesc");
-  if (bdesc) bdesc.innerHTML += ` <span class="muted">Geography: <b>${geoTxt}</b>. Two series: <b>📈 demand</b> (Google Trends, with history) and <b>🎯 openings</b> (JSearch, real counts from now on — needs a key).</span>`;
+  if (bdesc) bdesc.innerHTML += ` <span class="muted">Trends geography: <b>${geoTxt}</b>; watchlist: Europe / remote EMEA, ${(baro.watchlist || []).length} companies.</span>`;
 
   const cfgBox = document.getElementById("baroCfgBox");
   cfgBox.innerHTML = `<div class="muted" style="font-size:.82em">Geography (comma-separated) and roles (one per line, <code>Label = title query</code>). The n8n collector uses the <b>query</b> to count postings on job boards.</div>
     <input id="baroGeo" value="${(baro.geo || []).join(", ")}" style="width:100%;margin-top:6px" placeholder="Remote, US, UK">
     <textarea id="baroRoles" rows="3" style="width:100%;margin-top:6px" placeholder="Senior Engineer = senior software engineer">${esc(broles.map((r) => `${r.label} = ${r.query || r.label}`).join("\n"))}</textarea>
+    <div class="muted mt" style="font-size:.82em">🏢 <b>Watchlist</b> (one company per line: <code>greenhouse:slug</code>, <code>lever:slug</code> or <code>ashby:slug</code>; the slug is the name in the job board URL, e.g. <code>boards.greenhouse.io/gitlab</code> → <code>greenhouse:gitlab</code>). A posting counts when its title contains a role's query, in Europe or remote without a restriction to another continent; sales / solutions / support engineering roles are skipped.</div>
+    <textarea id="baroWatch" rows="6" style="width:100%;margin-top:6px">${esc((baro.watchlist || []).join("\n"))}</textarea>
     <button class="primary mt" id="baroSave" style="font-size:.85em">Save config</button>`;
   document.getElementById("baroSave").addEventListener("click", async () => {
     const geo = document.getElementById("baroGeo").value.split(",").map((s) => s.trim()).filter(Boolean);
@@ -131,56 +142,91 @@ async function renderOffers(el) {
       return { key: label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "role",
                label, query: query || label };
     }).filter(Boolean);
-    await api.put("/api/settings", { barometer_config: JSON.stringify({ geo, roles }) });
+    const watchlist = document.getElementById("baroWatch").value.split("\n").map((s) => s.trim()).filter(Boolean);
+    await api.put("/api/settings", { barometer_config: JSON.stringify({ geo, roles, watchlist }) });
     route();
   });
 
   const btbl = document.getElementById("baroTable");
   const months = baro.months || [];
-  const readCls = (r) => /shrink/.test(r || "") ? "neg" : /grow/.test(r || "") ? "pos" : "muted";
+  const readCls = (r) => /shrink|fall/.test(r || "") ? "neg" : /grow/.test(r || "") ? "pos" : "muted";
   const roleColor = {}; broles.forEach((r, i) => { roleColor[r.key] = [CHART_COLORS[0], CHART_COLORS[1], CHART_COLORS[4], CHART_COLORS[3]][i % 4]; });
-  const streamShort = { trends: "demand", openings: "openings" };
+  const streamShort = { trends: "interest", openings: "openings", watchlist: "open roles", hiringlab: "IT postings" };
+  const streamIcon = { trends: "📈", openings: "🎯", watchlist: "🏢", hiringlab: "🌍" };
+  roleColor.it_eu = CHART_COLORS[4];  // not [2]: warn is the inbound bar colour
+  roleColor.it_broad = CHART_COLORS[5];
+  const hlLabel = { it_eu: "🌍 Indeed: Software Development (Europe)", it_broad: "🌍 Indeed: IT broad (Europe)" };
   if (bpts.length) {
-    // per role×stream reading legend (direction + %/3m)
+    // readings per role×stream: one tile per series (marker as on the chart), direction and %/3m
+    const srcName = { trends: "Google Trends · searches", watchlist: "watchlist · open roles",
+                      openings: "JSearch · openings", hiringlab: "Indeed · postings GB/DE/FR" };
     const legend = Object.values(bser).filter((s) => s.reading).map((s) => {
-      const r = broles.find((x) => x.key === s.role) || { label: s.role };
-      return `<span style="margin-right:14px"><b style="color:${roleColor[s.role]}">${esc(r.label)}</b> · ${streamShort[s.stream] || s.stream}: <span class="${readCls(s.reading)}">${s.reading}${s.q_pct != null ? " " + (s.q_pct > 0 ? "+" : "") + s.q_pct + "%/3m" : ""}</span></span>`;
+      const r = broles.find((x) => x.key === s.role) || { label: (hlLabel[s.role] || s.role).replace(/^🌍 Indeed: /, "") };
+      const dash = s.stream === "hiringlab" ? "dotted" : s.stream === "trends" ? "solid" : "dashed";
+      const pct = s.q_pct != null ? `${s.q_pct > 0 ? "+" : ""}${fmt.num(s.q_pct, 1)}%` : "—";
+      return `<div style="padding:8px 12px;border-radius:8px;background:rgba(127,127,127,.08)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:18px;border-top:3px ${dash} ${roleColor[s.role]}"></span>
+          <b style="font-size:.92em">${esc(r.label)}</b></div>
+        <div class="muted" style="font-size:.78em;margin:2px 0 4px 26px">${srcName[s.stream] || s.stream}</div>
+        <div style="margin-left:26px"><b class="${readCls(s.reading)}" style="font-size:1.15em">${pct}</b>
+          <span class="${readCls(s.reading)}" style="font-size:.85em"> ${s.reading}</span>
+          <span class="muted" style="font-size:.78em"> · 3 mo</span></div></div>`;
     }).join("");
     // table: ONE row per data point (month × stream), columns = roles
-    btbl.innerHTML = (legend ? `<div class="muted" style="font-size:.85em;margin-bottom:6px">${legend}</div>` : "") +
-      `<div style="overflow-x:auto"><table><thead><tr><th>Month</th><th>Stream</th>` +
+    btbl.innerHTML = (legend ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:12px">${legend}</div>` : "") +
+      `<div style="overflow-x:auto"><table><thead><tr><th>Month</th>` +
+      `<th title="Where this row comes from. 📈 interest = Google Trends (who searches for the role title, index 0–100, not a posting count; has history). 🏢 open roles = real postings at watchlist companies (public Greenhouse/Lever/Ashby boards, a snapshot as of the collection day). 🎯 openings = JSearch (needs a key).">Stream ⓘ</th>` +
       broles.map((r) => `<th style="text-align:right" title="query: ${esc(r.query || r.label)}">${esc(r.label)}</th>`).join("") +
       `<th style="text-align:right">Your inbound</th><th>Source</th><th></th></tr></thead><tbody>` +
       [...bpts].reverse().map((p) => `<tr><td>${p.month}</td>
-        <td class="muted" style="font-size:.85em">${p.stream === "openings" ? "🎯 openings" : "📈 demand"}</td>` +
+        <td class="muted" style="font-size:.85em">${streamIcon[p.stream] || "📈"} ${streamShort[p.stream] || esc(p.stream)}</td>` +
         broles.map((r) => `<td style="text-align:right">${p.counts[r.key] != null ? fmt.grouped(p.counts[r.key]) : "—"}</td>`).join("") +
         `<td style="text-align:right">${p.my_inbound}</td>
         <td class="muted" style="font-size:.82em" title="${p.geo ? "geo: " + esc(p.geo) + " · " : ""}${p.as_of ? "as of " + esc(p.as_of) : ""}">${esc(p.sources || "—")}</td>
         <td><button class="danger" data-bdel="${p.id}">✕</button></td></tr>`).join("") + "</tbody></table></div>";
+    const wl = baro.watchlist_latest;
+    if (wl && wl.note) btbl.insertAdjacentHTML("beforeend", `<details class="mt"><summary class="pill" style="font-size:.78em">🏢 open roles on the watchlist (${wl.month}, ${esc(wl.sources)})</summary>
+      <pre class="muted mt" style="font-size:.8em;white-space:pre-wrap">${esc(wl.note)}</pre></details>`);
     btbl.querySelectorAll("[data-bdel]").forEach((b) =>
       b.addEventListener("click", async () => { await api.del("/api/market-barometer/" + b.dataset.bdel); route(); }));
-    // chart: INDEX (base 100) — a line per role×stream (demand=solid, openings=dashed) vs inbound (bars)
-    const lines = Object.values(bser).filter((s) => (s.index || []).some((v) => v != null)).map((s) => {
-      const r = broles.find((x) => x.key === s.role) || { label: s.role };
-      const dashed = s.stream === "openings";
-      return { type: "line", label: `${r.label} · ${streamShort[s.stream] || s.stream}`,
+    // chart: INDEX (base 100) — a line per role×stream (interest=solid, others=dashed, Hiring Lab=dotted) vs inbound (bars).
+    // A single-point series is index 100 by definition and says nothing; the watchlist
+    // numbers row above the chart covers the first snapshot.
+    const lines = Object.values(bser).filter((s) => (s.index || []).filter((v) => v != null).length >= 2).map((s) => {
+      const r = broles.find((x) => x.key === s.role) || { label: hlLabel[s.role] || s.role };
+      const dashed = s.stream !== "trends";
+      return { type: "line", label: s.stream === "hiringlab" ? r.label : `${r.label} · ${streamShort[s.stream] || s.stream}`,
         data: s.index || [], _raw: s.counts || [], borderColor: roleColor[s.role],
-        backgroundColor: "transparent", borderDash: dashed ? [6, 4] : [], yAxisID: "y",
+        backgroundColor: "transparent", borderDash: s.stream === "hiringlab" ? [2, 3] : dashed ? [6, 4] : [], yAxisID: "y",
         tension: 0.25, borderWidth: dashed ? 2 : 3, pointRadius: 3, spanGaps: true };
     });
+    const wlPts = bpts.filter((p) => p.stream === "watchlist");
+    const wlNow = wlPts[wlPts.length - 1], wlPrev = wlPts[wlPts.length - 2];
+    if (wlNow) document.getElementById("baroChart").insertAdjacentHTML("beforebegin",
+      `<div class="row mt" style="gap:18px;font-size:.92em">🏢 <b>Open roles at watchlist companies (${wlNow.month}):</b>` +
+      broles.map((r) => {
+        const v = wlNow.counts[r.key], pv = wlPrev && wlPrev.counts[r.key];
+        const d = v != null && pv != null ? v - pv : null;
+        return v == null ? "" : `<span><b style="color:${roleColor[r.key]}">${esc(r.label)}</b> ${fmt.grouped(v)}` +
+          (d != null ? ` <span class="${d > 0 ? "pos" : d < 0 ? "neg" : "muted"}">(${d > 0 ? "+" : ""}${d} m/m)</span>` : "") + "</span>";
+      }).join("") +
+      (wlPrev ? "" : `<span class="muted">first snapshot; the chart line appears from the second one</span>`) + "</div>");
     trackChart(new Chart(document.getElementById("baroChart"), {
       data: {
         labels: months,
         datasets: [
           { type: "bar", label: "Your inbound", data: baro.inbound || [],
             backgroundColor: "rgba(255,209,102,0.55)", yAxisID: "y1", order: 9, barPercentage: 0.5, categoryPercentage: 0.6 },
+          { type: "line", label: "inbound, 3-month average", data: baro.inbound_ma3 || [], borderColor: "rgba(255,209,102,0.9)",
+            backgroundColor: "transparent", yAxisID: "y1", borderWidth: 1.5, pointRadius: 0, tension: 0.3, order: 8 },
           ...lines,
         ],
       },
       options: {
         interaction: { mode: "index", intersect: false },
         plugins: { tooltip: { callbacks: { label: (ctx) => {
-          if (ctx.dataset.yAxisID === "y1") return `Your inbound: ${ctx.parsed.y}`;
+          if (ctx.dataset.yAxisID === "y1") return `${ctx.dataset.label}: ${ctx.parsed.y}`;
           const raw = (ctx.dataset._raw || [])[ctx.dataIndex];
           return `${ctx.dataset.label}: ${ctx.parsed.y}` + (raw != null ? ` (${raw})` : "");
         } } } },
@@ -192,8 +238,30 @@ async function renderOffers(el) {
       },
     }));
   } else {
-    btbl.innerHTML = '<div class="empty">No barometer data yet. Demand (Google Trends) is collected monthly by the app itself; real openings (JSearch) once you set <code>RAPIDAPI_JSEARCH_KEY</code>. External collectors can still <code>POST /api/market-barometer</code>. Set roles/geography with ⚙️.</div>';
+    btbl.innerHTML = '<div class="empty">No barometer data yet. Interest (Google Trends), IT postings (Indeed Hiring Lab) and watchlist open roles are collected monthly by the app itself; real openings (JSearch) once you set <code>RAPIDAPI_JSEARCH_KEY</code>. External collectors can still <code>POST /api/market-barometer</code>. Set roles/geography/watchlist with ⚙️.</div>';
   }
+
+  const cur = s ? s.current : null;
+  trackChart(new Chart(document.getElementById("compChart"), {
+    data: {
+      labels: months,
+      datasets: [
+        { type: "line", label: "Average range", data: baro.comp_avg || [], borderColor: CHART_COLORS[0],
+          backgroundColor: "transparent", tension: 0.25, borderWidth: 3, pointRadius: 4, spanGaps: true },
+        ...(cur ? [{ type: "line", label: "Current package", data: months.map(() => cur), borderColor: CHART_COLORS[3],
+          backgroundColor: "transparent", borderDash: [6, 4], borderWidth: 2, pointRadius: 0 }] : []),
+      ],
+    },
+    options: {
+      interaction: { mode: "index", intersect: false },
+      plugins: { tooltip: { callbacks: { label: (ctx) => {
+        if (ctx.datasetIndex !== 0) return `Current package: ${fmt.pln(ctx.parsed.y)}`;
+        const n = (baro.comp_n || [])[ctx.dataIndex];
+        return `Average: ${fmt.pln(ctx.parsed.y)} (of ${n} ${n === 1 ? "offer" : "offers"})`;
+      } } } },
+      scales: { y: { beginAtZero: true, ticks: { callback: (v) => fmt.grouped(v) } } },
+    },
+  }));
 
   document.getElementById("oAdd").addEventListener("click", async () => {
     const company = document.getElementById("oCompany").value.trim();

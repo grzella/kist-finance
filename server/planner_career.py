@@ -152,12 +152,44 @@ def barometer_config():
     cfg = P.get_json_setting("barometer_config")
     if cfg and cfg.get("roles"):
         cfg.setdefault("geo", [])
+        cfg.setdefault("watchlist", DEFAULT_WATCHLIST)
         return cfg
     a = P.get_setting("career_role_a") or "Senior / Staff Engineer"
     b = P.get_setting("career_role_b") or "Engineering Manager / Head"
     return {"geo": [], "roles": [
         {"key": "a", "label": a, "query": a},
-        {"key": "b", "label": b, "query": b}]}
+        {"key": "b", "label": b, "query": b}], "watchlist": DEFAULT_WATCHLIST}
+
+
+# Companies with a public job board and engineering teams in Europe (checked 2026-10:
+# every board answered and had at least 5 European postings). Format "ats:slug";
+# edit via ⚙️ on the Career tab.
+DEFAULT_WATCHLIST = [
+    "greenhouse:adyen", "greenhouse:affirm", "greenhouse:airbnb", "greenhouse:algolia",
+    "greenhouse:anthropic", "greenhouse:asana", "greenhouse:celonis", "greenhouse:cloudflare",
+    "greenhouse:cognite", "greenhouse:coinbase", "greenhouse:contentful", "greenhouse:databricks",
+    "greenhouse:datadog", "greenhouse:dataiku", "greenhouse:discord", "greenhouse:doctolib",
+    "greenhouse:dropbox", "greenhouse:elastic", "greenhouse:fastly", "greenhouse:figma",
+    "greenhouse:fivetran", "greenhouse:getyourguide", "greenhouse:gitlab", "greenhouse:gocardless",
+    "greenhouse:grafanalabs", "greenhouse:gusto", "greenhouse:helsing", "greenhouse:hightouch",
+    "greenhouse:instacart", "greenhouse:intercom", "greenhouse:launchdarkly", "greenhouse:mirakl",
+    "greenhouse:mixpanel", "greenhouse:mongodb", "greenhouse:monzo", "greenhouse:n26",
+    "greenhouse:newrelic", "greenhouse:okta", "greenhouse:pinterest", "greenhouse:planetscale",
+    "greenhouse:realtimeboardglobal", "greenhouse:reddit", "greenhouse:robinhood",
+    "greenhouse:roblox", "greenhouse:samsara", "greenhouse:scaleai", "greenhouse:squarespace",
+    "greenhouse:stripe", "greenhouse:sumup", "greenhouse:tailscale", "greenhouse:tide",
+    "greenhouse:toast", "greenhouse:twilio", "greenhouse:typeform", "greenhouse:vercel",
+    "greenhouse:veriff", "greenhouse:webflow", "greenhouse:wise", "greenhouse:wolt",
+    "greenhouse:xai", "greenhouse:zscaler", "lever:contentsquare", "lever:palantir",
+    "lever:pipedrive", "lever:spotify", "lever:swile", "ashby:1password", "ashby:alan",
+    "ashby:amplitude", "ashby:backmarket", "ashby:clickhouse", "ashby:cohere", "ashby:cursor",
+    "ashby:deepl", "ashby:docker", "ashby:docplanner", "ashby:elevenlabs", "ashby:kong",
+    "ashby:ledger", "ashby:linear", "ashby:modal", "ashby:mollie", "ashby:multiverse", "ashby:n8n",
+    "ashby:notion", "ashby:openai", "ashby:paddle", "ashby:perplexity", "ashby:plaid",
+    "ashby:pleo", "ashby:posthog", "ashby:qonto", "ashby:ramp", "ashby:redis", "ashby:render",
+    "ashby:sentry", "ashby:snowflake", "ashby:supabase", "ashby:synthesia", "ashby:temporal",
+    "ashby:vanta", "ashby:wayve", "ashby:xero",
+]
 
 
 def _baro_counts(row, role_keys):
@@ -180,7 +212,8 @@ def _pct(cur, prev):
     return round((cur / prev - 1) * 100, 1)
 
 
-_STREAM_LABEL = {"trends": "demand (Google Trends)", "openings": "openings (JSearch)"}
+_STREAM_LABEL = {"trends": "interest (Google Trends)", "openings": "openings (JSearch)",
+                 "watchlist": "open roles (watchlist)", "hiringlab": "IT postings in Europe (Indeed Hiring Lab)"}
 
 
 def list_barometer():
@@ -189,18 +222,30 @@ def list_barometer():
     real posting counts from job boards, from now on), month-over-month and 3-month
     % change and a direction reading — because this tab is about the TREND in
     demand against your inbound, not a falsely precise absolute count."""
+    import json as _json
     cfg = barometer_config()
     role_keys = [r["key"] for r in cfg["roles"]]
     rows = eb._rows("select * from market_barometer order by month asc")
-    offers = eb._rows("select received_at from job_offers")
-    inbound = {}
+    offers = eb._rows("select received_at, total_monthly from job_offers")
+    inbound, comp = {}, {}
     for o in offers:
         m = (o.get("received_at") or "")[:7]
         if m:
             inbound[m] = inbound.get(m, 0) + 1
+            if o.get("total_monthly"):
+                comp.setdefault(m, []).append(o["total_monthly"])
 
-    points = []
+    # Hiring Lab series are sector-wide, not per configured role: kept out of points
+    # and the table, and turned into their own series below.
+    points, hiringlab = [], {}
     for r in rows:
+        if (r.get("stream") or "trends") == "hiringlab":
+            try:
+                for key, v in _json.loads(r["counts"] or "{}").items():
+                    hiringlab.setdefault(key, {})[r["month"]] = P._num(v)
+            except ValueError:
+                pass
+            continue
         points.append({
             "id": r["id"], "month": r["month"], "counts": _baro_counts(r, role_keys),
             "stream": r.get("stream") or "trends",
@@ -210,9 +255,15 @@ def list_barometer():
             "as_of": r.get("as_of") or "", "note": r.get("note") or "",
         })
 
-    months = sorted({p["month"] for p in points})
+    months = sorted({p["month"] for p in points} | {m for hl in hiringlab.values() for m in hl})
     streams = sorted({p["stream"] for p in points}, key=lambda s: (s != "trends", s))
     inbound_series = [inbound.get(m, 0) for m in months]
+    # a handful of inquiries a month is noise; a 3-month average shows the direction
+    inbound_ma3 = [round(sum(inbound_series[max(0, i - 2):i + 1]) / len(inbound_series[max(0, i - 2):i + 1]), 1)
+                   for i in range(len(inbound_series))]
+    # average only over offers that disclosed a range; a month without any = None, not 0
+    comp_avg = [round(sum(comp[m]) / len(comp[m])) if m in comp else None for m in months]
+    comp_n = [len(comp.get(m, [])) for m in months]
 
     # per role × stream: series aligned to the month axis, index (base 100), trend
     series = {}
@@ -229,13 +280,29 @@ def list_barometer():
             mom = _pct(last, prev)
             q = _pct(last, prevq)
             drv = q if q is not None else mom
-            reading = None if drv is None else ("shrinking" if drv < -10 else "growing" if drv > 10 else "steady")
+            # Trends measures searches (mostly candidates), not vacancies: "shrinking"
+            # read like a shrinking market next to a flat Hiring Lab line.
+            down = "falling" if st == "trends" else "shrinking"
+            reading = None if drv is None else (down if drv < -10 else "growing" if drv > 10 else "steady")
             series[f"{k}|{st}"] = {"role": k, "stream": st, "stream_label": _STREAM_LABEL.get(st, st),
                                    "counts": raw, "index": index, "mom_pct": mom, "q_pct": q,
                                    "reading": reading, "last": last}
 
+    for key, hl in hiringlab.items():
+        raw = [hl.get(m) for m in months]
+        base = next((v for v in raw if v), None)
+        present = [v for v in raw if v is not None]
+        q = _pct(present[-1], present[-4]) if len(present) >= 4 else None
+        series[f"{key}|hiringlab"] = {"role": key, "stream": "hiringlab", "stream_label": _STREAM_LABEL["hiringlab"],
+                                      "counts": raw, "index": [round(100 * v / base, 1) if v and base else None for v in raw],
+                                      "q_pct": q, "last": present[-1] if present else None,
+                                      "reading": None if q is None else ("shrinking" if q < -10 else "growing" if q > 10 else "steady")}
+
+    wl = [p for p in points if p["stream"] == "watchlist"]
     return {"points": points, "roles": cfg["roles"], "geo": cfg["geo"],
-            "months": months, "streams": streams, "inbound": inbound_series, "series": series}
+            "watchlist": cfg.get("watchlist") or [], "watchlist_latest": wl[-1] if wl else None,
+            "months": months, "streams": streams, "inbound": inbound_series, "inbound_ma3": inbound_ma3,
+            "comp_avg": comp_avg, "comp_n": comp_n, "series": series}
 
 
 def add_barometer_point(data):

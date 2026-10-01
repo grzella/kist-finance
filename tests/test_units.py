@@ -303,6 +303,14 @@ def test_barometer_index_trend_config_and_backcompat(client):
     assert s0["index"][0] == 100.0 and s0["index"][-1] == 150.0   # 40 -> 60 = 150
     assert s0["q_pct"] == 50.0 and s0["reading"] == "growing"
     assert b["points"][-1]["sources"] == "JSearch" and b["points"][-1]["counts"][keys[0]] == 60
+    # range average: only offers with a disclosed total count; a month without any = None
+    planner.add_offer({"company": "A", "total_monthly": 30000, "received_at": "2026-07-02"})
+    planner.add_offer({"company": "B", "total_monthly": 50000, "received_at": "2026-07-20"})
+    planner.add_offer({"company": "C", "total_monthly": 0, "received_at": "2026-07-21"})
+    b = planner.list_barometer()
+    i = b["months"].index("2026-07")
+    assert b["comp_avg"][i] == 40000 and b["comp_n"][i] == 2 and b["inbound"][i] == 3
+    assert all(a is None for a, n in zip(b["comp_avg"], b["comp_n"]) if n == 0)
     # reconfigure roles -> series re-keys
     planner.set_settings({"barometer_config": json.dumps(
         {"geo": ["US"], "roles": [{"key": "pm", "label": "Product Manager", "query": "product manager"}]})})
@@ -398,3 +406,64 @@ def test_barometer_collect_rewrites_whole_series_on_one_scale(client, monkeypatc
     pts = [p for p in planner.list_barometer()["points"] if p["stream"] == "trends"]
     assert sorted(p["month"] for p in pts) == [f"2026-{m:02d}" for m in range(1, 9)]  # one per month
     assert all(v == 50.0 for p in pts for v in p["counts"].values())  # August overwritten
+
+
+def test_watchlist_counts_title_families_and_eu_locations(client):
+    """Watchlist: Senior/Staff EM lands in 'em', Director in 'head', a role key without
+    a family matches its query literally; Sales Engineering Manager and 'Remote - US'
+    are out; a board that does not answer goes to failed without spoiling the rest."""
+    import barometer_collect as bc
+    boards = {
+        ("greenhouse", "a"): [("Senior Engineering Manager, Platform", "Warsaw, Poland"),
+                              ("Engineering Manager II", "Remote - US"),
+                              ("Sales Engineering Manager", "London"),
+                              ("Director of Engineering", "Remote - EMEA"),
+                              ("Staff Engineering Manager", "Remote"),
+                              ("Engineering Manager, ML", "San Francisco (or Remote U.S.)"),
+                              ("Engineering Manager, Agents", "Remote (North America)"),
+                              ("Senior Analytical Engineering Manager", "Warsaw"),
+                              ("Engineering Manager - AppSec | EMEA | (Remote, Spain)", "Spain (Remote)"),
+                              ("Engineering Manager - AppSec | EMEA | (Remote, Ireland)", "Ireland (Remote)"),
+                              ("Staff Product Manager", "Berlin")],
+        ("ashby", "b"): None,
+        ("lever", "c"): [("Head of Engineering", "Berlin, Germany"), ("Engineering Manager", "Bengaluru, India")],
+    }
+    roles = [{"key": "em"}, {"key": "head"}, {"key": "pm", "query": "product manager"}]
+    counts, hits, failed = bc.count_watchlist(list(boards), roles, fetch=lambda a, s: boards[(a, s)])
+    assert counts == {"em": 3, "head": 2, "pm": 1} and failed == ["ashby:b"]
+    assert any(h.startswith("a: Senior Engineering Manager") for h in hits)
+    import planner
+    assert "greenhouse:gitlab" in planner.barometer_config()["watchlist"]
+
+
+def test_hiringlab_monthly_mean_and_series(client, monkeypatch):
+    """Hiring Lab: monthly mean of 'total postings' for Software Development (other
+    sectors and 'new postings' skipped); it_eu|hiringlab and it_broad|hiringlab series
+    live outside the configured roles; a country lacking a sector averages the ones it
+    has; re-running does not duplicate rows."""
+    import barometer_collect as bc, planner
+    import engine_bridge as eb
+    csv = ("date,jobcountry,indeed_job_postings_index,variable,display_name\n"
+           "2026-01-01,DE,40,total postings,Software Development\n"
+           "2026-01-02,DE,60,total postings,Software Development\n"
+           "2026-01-02,DE,99,new postings,Software Development\n"
+           "2026-01-02,DE,99,total postings,Accounting\n"
+           "2026-02-01,DE,80,total postings,Software Development\n"
+           "2026-01-01,DE,20,total postings,Data & Analytics\n"
+           "2026-01-01,DE,30,total postings,IT Systems & Solutions\n"
+           "2026-01-01,DE,100,total postings,\"IT Infrastructure, Operations & Support\"\n")
+    assert bc.hiringlab_monthly(csv, {"2026-01", "2026-02"}) == {"2026-01": 50.0, "2026-02": 80.0}
+    monkeypatch.setattr(bc, "HIRINGLAB_COUNTRIES", ["DE"])
+    out = bc.collect_hiringlab(force=True, fetch=lambda c: csv)
+    assert "2026-01" in out["added"]
+    b = planner.list_barometer()
+    s = b["series"]["it_eu|hiringlab"]
+    assert s["index"][b["months"].index("2026-02")] == 160.0
+    assert all(p["stream"] != "hiringlab" for p in b["points"])
+    assert b["series"]["it_broad|hiringlab"]["counts"][b["months"].index("2026-01")] == 50.0  # (50+20+30+100)/4
+    monkeypatch.setattr(bc, "HIRINGLAB_COUNTRIES", ["DE", "FR"])
+    bc.collect_hiringlab(force=True, fetch=lambda c: csv if c == "DE" else csv.replace("Data & Analytics", "X"))
+    b = planner.list_barometer()
+    assert b["series"]["it_broad|hiringlab"]["counts"][b["months"].index("2026-01")] == 55.0  # (50 + 60)/2
+    bc.collect_hiringlab(force=True, fetch=lambda c: csv)
+    assert eb._rows("select count(*) n from market_barometer where stream='hiringlab' and month='2026-01'")[0]["n"] == 1
