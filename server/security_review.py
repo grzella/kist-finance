@@ -743,6 +743,19 @@ def _check_view_escaping(repo):
                        "${h.title}", "${h.text}", "${g.title}", "${g.text}",
                        "${p.stance}", "${p.text}", "${p.ticker}", "].comment}"),
          ("esc(b.headline)", "esc(p.text)", "esc(p.stance)", "esc(h.title)", "esc(g.text)")),
+        # career analysis (/api/analysis/career) = AI-authored blob + scraped
+        # research (headline, paths, trainings, conferences, source URLs).
+        ("career.js", ("${a.headline}", "${a.head_of_eng}", "${a.skills_note}",
+                       "${p.text}", "${p.verdict}", "${t.why}", "${t.boss_pitch}",
+                       "${c.why}", "${r.title}", "${a.philosophies.note}",
+                       "<a href=\"${t.url}\"", "<a href=\"${c.url}\"", "<a href=\"${u}\""),
+         ("esc(a.headline)", "esc(p.text)", "esc(a.head_of_eng)", "esc(t.url)")),
+        # ads performance (Supabase + ads-analyst LLM output): weekly summary,
+        # insights, hypotheses, plus free-text expense entries.
+        ("business.js", ("${i.insight}", "${i.category}", "${h.title}",
+                         "${h.predicted_outcome", "${e.category}", "${e.kind}",
+                         "${mkt.error}"),
+         ("esc(i.insight)", "esc(h.title)", "esc(e.category)", "esc(mkt.error)")),
     )
     for fname, raw_sinks, escaped in checks:
         try:

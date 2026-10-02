@@ -10,6 +10,7 @@ aggregate. Ported from the twin instance.
 Tests run on the throwaway DB from conftest (data_dir) — real data untouched.
 """
 import time
+from pathlib import Path
 
 import pytest
 
@@ -314,7 +315,7 @@ def test_request_caps_convergence_check_recognises_hardened(client):
 def test_view_escaping_check_recognises_hardened():
     import security_review as sr
     items = sr._check_view_escaping(sr._repo_root())
-    assert [i["status"] for i in items] == ["pass"] * 3, items
+    assert [i["status"] for i in items] == ["pass"] * 5, items
 
 
 def test_view_escaping_check_flags_a_raw_sink(tmp_path):
@@ -324,6 +325,30 @@ def test_view_escaping_check_flags_a_raw_sink(tmp_path):
     (views / "market.js").write_text("`<div>${b.headline}</div>`", encoding="utf-8")
     items = sr._check_view_escaping(tmp_path)
     assert any(i["status"] == "fail" and "market.js" in i["title"] for i in items), items
+
+
+_VIEWS = Path(__file__).resolve().parent.parent / "static" / "js" / "views"
+
+
+@pytest.mark.parametrize("fname,sink", [
+    ("career.js", "${a.headline}"), ("career.js", "${p.text}"),
+    ("career.js", "${t.why}"), ("career.js", '<a href="${t.url}"'),
+    ("career.js", '<a href="${u}"'),
+    ("business.js", "${i.insight}"), ("business.js", "${h.title}"),
+    ("business.js", "${e.category}"), ("business.js", "${mkt.error}"),
+])
+def test_career_and_business_fields_are_escaped(fname, sink):
+    src = (_VIEWS / fname).read_text(encoding="utf-8")
+    assert sink not in src, f"{fname}: raw {sink} = stored XSS (part of K-XSS-1)"
+
+
+def test_view_escaping_check_flags_career_raw_sink(tmp_path):
+    import security_review as sr
+    views = tmp_path / "static" / "js" / "views"
+    views.mkdir(parents=True)
+    (views / "career.js").write_text("`<b>${a.headline}</b>`", encoding="utf-8")
+    items = sr._check_view_escaping(tmp_path)
+    assert any(i["status"] == "fail" and "career.js" in i["title"] for i in items), items
 
 
 def test_offer_status_is_stored_raw_so_the_view_must_escape(client):

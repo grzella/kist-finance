@@ -22,8 +22,8 @@ async function renderCareer(el) {
     ${em0 ? `<div class="card mt" style="border-left:4px solid var(--pos)" id="emCard"></div>` : ""}
     ${CAREER_TAB_INFO}
     <div class="card" style="border-left:4px solid var(--pos)">
-      <div style="font-size:1.05em"><b>${a.headline}</b></div>
-      <div class="muted mt" style="font-size:.82em">As of ${a.as_of}.</div>
+      <div style="font-size:1.05em"><b>${esc(a.headline)}</b></div>
+      <div class="muted mt" style="font-size:.82em">As of ${esc(a.as_of)}.</div>
     </div>
 
     <div class="card mt">
@@ -31,8 +31,8 @@ async function renderCareer(el) {
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Level / role</th><th style="text-align:right">Compensation/yr</th></tr></thead>
         <tbody>${a.comp_levels.map((c) => `<tr style="${c.you ? "background:rgba(62,207,142,0.12)" : ""}">
-          <td>${c.you ? "⭐ " : ""}<b>${c.role}</b></td>
-          <td style="text-align:right" class="${c.you ? "pos" : ""}"><b>${c.comp}</b></td>
+          <td>${c.you ? "⭐ " : ""}<b>${esc(c.role)}</b></td>
+          <td style="text-align:right" class="${c.you ? "pos" : ""}"><b>${esc(c.comp)}</b></td>
         </tr>`).join("")}</tbody>
       </table></div>
     </div>
@@ -41,82 +41,82 @@ async function renderCareer(el) {
       <h3>Where MORE money realistically comes from — 3 paths</h3>
       <div class="grid cols-3">
         ${a.money_paths.map((p) => `<div class="card" style="margin:0;border-left:3px solid ${p.tag === "A" ? TOKENS.pos : p.tag === "B" ? TOKENS.accent : TOKENS.warn}">
-          <h4 style="margin:0 0 4px">${p.tag}. ${p.title}</h4>
-          <div class="pos" style="font-size:.85em;margin-bottom:6px">${p.verdict}</div>
-          <div style="font-size:.9em">${p.text}</div>
+          <h4 style="margin:0 0 4px">${esc(p.tag)}. ${esc(p.title)}</h4>
+          <div class="pos" style="font-size:.85em;margin-bottom:6px">${esc(p.verdict)}</div>
+          <div style="font-size:.9em">${esc(p.text)}</div>
         </div>`).join("")}
       </div>
     </div>
 
     <div class="card mt" style="border-left:4px solid var(--amber)">
-      <h3>🎯 ${a.target_role || "Your target role"} — should you aim for it?</h3>
-      <div style="font-size:.95em">${a.head_of_eng}</div>
+      <h3>🎯 ${esc(a.target_role || "Your target role")} — should you aim for it?</h3>
+      <div style="font-size:.95em">${esc(a.head_of_eng)}</div>
     </div>
 
     <div class="card mt">
       <h3>🤖 AI — taking jobs or not?</h3>
-      <ul style="padding-left:18px">${a.ai_impact.map((x) => `<li class="mt" style="font-size:.92em">${x}</li>`).join("")}</ul>
+      <ul style="padding-left:18px">${a.ai_impact.map((x) => `<li class="mt" style="font-size:.92em">${esc(x)}</li>`).join("")}</ul>
     </div>
 
     <div class="card mt">
       <h3>📚 What to train in and why</h3>
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Skill</th><th>Why</th></tr></thead>
-        <tbody>${a.skills.map((s) => `<tr><td><b>${s.skill}</b></td><td class="muted" style="font-size:.9em">${s.why}</td></tr>`).join("")}</tbody>
+        <tbody>${a.skills.map((s) => `<tr><td><b>${esc(s.skill)}</b></td><td class="muted" style="font-size:.9em">${esc(s.why)}</td></tr>`).join("")}</tbody>
       </table></div>
-      <div class="muted mt" style="font-size:.85em">${a.skills_note}</div>
+      <div class="muted mt" style="font-size:.85em">${esc(a.skills_note)}</div>
     </div>
 
     ${a.trainings ? `<div class="card mt" style="border-left:4px solid var(--accent)">
-      <h3>🎓 Specific trainings — for a ${a.trainings.budget} budget</h3>
-      <div class="muted" style="font-size:.88em;margin-bottom:10px">${a.trainings.strategy}</div>
+      <h3>🎓 Specific trainings — for a ${esc(a.trainings.budget)} budget</h3>
+      <div class="muted" style="font-size:.88em;margin-bottom:10px">${esc(a.trainings.strategy)}</div>
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Program</th><th>Where</th><th style="text-align:right">Cost</th><th>Priority</th><th>Why / how to pitch it to your boss</th></tr></thead>
         <tbody>${a.trainings.items.map((t) => `<tr>
-          <td><b>${t.url ? `<a href="${t.url}" target="_blank">${t.name} ↗</a>` : t.name}</b></td>
-          <td class="muted" style="font-size:.88em">${t.provider}<br><span style="font-size:.92em">${t.format}</span></td>
-          <td style="text-align:right;white-space:nowrap">${t.cost}</td>
-          <td><span class="badge ${/wysoki/.test(t.priority) ? "pos" : ""}">${t.priority}</span></td>
-          <td style="font-size:.88em">${t.why}
-            ${t.boss_pitch ? `<div class="mt" style="font-size:.9em;padding:4px 8px;background:rgba(62,207,142,0.1);border-radius:5px">🗣️ <b>To your boss:</b> <i>${t.boss_pitch}</i></div>` : ""}
-            <div class="muted mt" style="font-size:.92em">🔗 ${t.linkedin}</div></td>
+          <td><b>${t.url ? `<a href="${esc(t.url)}" target="_blank">${esc(t.name)} ↗</a>` : esc(t.name)}</b></td>
+          <td class="muted" style="font-size:.88em">${esc(t.provider)}<br><span style="font-size:.92em">${esc(t.format)}</span></td>
+          <td style="text-align:right;white-space:nowrap">${esc(t.cost)}</td>
+          <td><span class="badge ${/wysoki/.test(t.priority) ? "pos" : ""}">${esc(t.priority)}</span></td>
+          <td style="font-size:.88em">${esc(t.why)}
+            ${t.boss_pitch ? `<div class="mt" style="font-size:.9em;padding:4px 8px;background:rgba(62,207,142,0.1);border-radius:5px">🗣️ <b>To your boss:</b> <i>${esc(t.boss_pitch)}</i></div>` : ""}
+            <div class="muted mt" style="font-size:.92em">🔗 ${esc(t.linkedin)}</div></td>
         </tr>`).join("")}</tbody>
       </table></div>
       <div class="mt" style="font-size:.92em;padding:8px 12px;background:var(--inset);border-radius:6px">
-        <b>💡 Plan for this year:</b> ${a.trainings.recommended_year}</div>
+        <b>💡 Plan for this year:</b> ${esc(a.trainings.recommended_year)}</div>
 
       ${a.trainings.conferences ? `<h4 class="mt">🎤 Conferences — local</h4>
-      <div class="muted" style="font-size:.85em;margin-bottom:6px">${a.trainings.conferences_note}</div>
+      <div class="muted" style="font-size:.85em;margin-bottom:6px">${esc(a.trainings.conferences_note)}</div>
       <table><tbody>${a.trainings.conferences.map((c) => `<tr>
-        <td><b>${c.url ? `<a href="${c.url}" target="_blank">${c.name} ↗</a>` : c.name}</b><div class="muted" style="font-size:.82em">${c.when}</div></td>
-        <td style="font-size:.88em">${c.why}</td>
+        <td><b>${c.url ? `<a href="${esc(c.url)}" target="_blank">${esc(c.name)} ↗</a>` : esc(c.name)}</b><div class="muted" style="font-size:.82em">${esc(c.when)}</div></td>
+        <td style="font-size:.88em">${esc(c.why)}</td>
       </tr>`).join("")}</tbody></table>` : ""}
     </div>` : ""}
 
     <div class="card mt">
       <h3>🛣️ Long-term path</h3>
       ${a.roadmap.map((r) => `<div class="mt" style="display:flex;gap:12px">
-        <div style="min-width:110px"><span class="badge">${r.period}</span></div>
-        <div><b>${r.title}</b><div class="muted" style="font-size:.9em">${r.text}</div></div>
+        <div style="min-width:110px"><span class="badge">${esc(r.period)}</span></div>
+        <div><b>${esc(r.title)}</b><div class="muted" style="font-size:.9em">${esc(r.text)}</div></div>
       </div>`).join("")}
     </div>
 
     <div class="card mt" style="border-left:4px solid var(--violet)">
       <h3>Two philosophies — choose consciously</h3>
       <div class="grid cols-2">
-        <div class="card" style="margin:0"><h4 style="margin:0 0 4px">🚀 ${a.philosophies.max.title}</h4><div style="font-size:.9em">${a.philosophies.max.text}</div></div>
-        <div class="card" style="margin:0"><h4 style="margin:0 0 4px">🌊 ${a.philosophies.coast.title}</h4><div style="font-size:.9em">${a.philosophies.coast.text}</div></div>
+        <div class="card" style="margin:0"><h4 style="margin:0 0 4px">🚀 ${esc(a.philosophies.max.title)}</h4><div style="font-size:.9em">${esc(a.philosophies.max.text)}</div></div>
+        <div class="card" style="margin:0"><h4 style="margin:0 0 4px">🌊 ${esc(a.philosophies.coast.title)}</h4><div style="font-size:.9em">${esc(a.philosophies.coast.text)}</div></div>
       </div>
-      <div class="mt" style="font-size:.92em;padding:8px 12px;background:var(--inset);border-radius:6px"><b>${a.philosophies.note}</b></div>
+      <div class="mt" style="font-size:.92em;padding:8px 12px;background:var(--inset);border-radius:6px"><b>${esc(a.philosophies.note)}</b></div>
     </div>
 
     <div class="card mt" style="border-left:4px solid var(--pos)">
       <h3>✅ Next steps</h3>
-      <ol style="padding-left:18px">${a.next_steps.map((s) => `<li class="mt" style="font-size:.92em">${s}</li>`).join("")}</ol>
+      <ol style="padding-left:18px">${a.next_steps.map((s) => `<li class="mt" style="font-size:.92em">${esc(s)}</li>`).join("")}</ol>
     </div>
 
     <div class="card mt muted" style="font-size:.8em">Analysis from market research — a snapshot. To refresh: "refresh the career analysis".
-      Sources: ${a.sources.map((u, i) => `<a href="${u}" target="_blank">[${i + 1}]</a>`).join(" ")}</div>`;
+      Sources: ${a.sources.map((u, i) => `<a href="${esc(u)}" target="_blank">[${i + 1}]</a>`).join(" ")}</div>`;
 
   // ---- Evidence & rhythm: measuring growth as a leader (in place, no page jump)
   const plan90 = (a.market_2026 && a.market_2026.plan_90d) || a.plan_90d || [];
@@ -149,7 +149,7 @@ async function renderCareer(el) {
           ${plan90.length ? `<div style="height:6px;background:var(--inset);border-radius:3px;margin-bottom:8px"><div style="height:6px;width:${Math.round(done / plan90.length * 100)}%;background:${TOKENS.pos};border-radius:3px"></div></div>
           ${plan90.map((p, i) => { const it = st[i] || {}; return `<div class="row" style="gap:6px;align-items:flex-start;margin-top:6px;font-size:.88em">
             <select data-plan="${i}" style="font-size:.85em">${["todo", "doing", "done"].map((x) => `<option value="${x}" ${(it.status || "todo") === x ? "selected" : ""}>${{ todo: "☐", doing: "◐", done: "☑" }[x]}</option>`).join("")}</select>
-            <div style="${it.status === "done" ? "opacity:.6;text-decoration:line-through" : ""}">${p}${it.at ? ` <span class="muted" style="font-size:.85em">(${it.at})</span>` : ""}</div></div>`; }).join("")}`
+            <div style="${it.status === "done" ? "opacity:.6;text-decoration:line-through" : ""}">${esc(p)}${it.at ? ` <span class="muted" style="font-size:.85em">(${esc(it.at)})</span>` : ""}</div></div>`; }).join("")}`
           : `<div class="muted" style="font-size:.85em">The 90-day plan comes from the career analysis JSON (key <code>plan_90d</code>: a list of steps). Add it there and the checklist appears here.</div>`}
         </div>
       </div>
@@ -164,7 +164,7 @@ async function renderCareer(el) {
         <button class="primary" id="emAdd">Add</button>
       </div>
       ${em.log.length ? `<table class="mt" style="font-size:.88em"><tbody>${em.log.slice(0, 30).map((r) => `<tr>
-        <td style="white-space:nowrap" class="muted">${r.date}</td><td>${kindIcon[r.kind] || ""} <span class="badge">${r.kind}</span></td>
+        <td style="white-space:nowrap" class="muted">${esc(r.date)}</td><td>${kindIcon[r.kind] || ""} <span class="badge">${esc(r.kind)}</span></td>
         <td>${esc(r.text)}${r.metric ? ` <span class="muted">· ${esc(r.metric)}${r.value != null ? ` = <b>${fmt.num(r.value, 0)}</b>` : ""}</span>` : ""}${r.link ? ` <a href="${esc(r.link)}" target="_blank">↗</a>` : ""}</td>
         <td><button class="danger" data-emdel="${r.id}" title="delete">✕</button></td></tr>`).join("")}</tbody></table>` : `<div class="muted mt" style="font-size:.85em">Empty. One entry a week is enough: a decision with its result, a talk, a merged PR, feedback from a VP.</div>`}`;
     const refresh = async () => paintEm(await api.get("/api/em").catch(() => null));
