@@ -361,3 +361,76 @@ def test_offer_status_is_stored_raw_so_the_view_must_escape(client):
         assert off["status"] == xss
     finally:
         client.delete(f"/api/offers/{oid}")
+
+
+# ── Server header version leak (ASVS V14.3.3 / CWE-200) ───────────────────────
+# The Werkzeug dev server appended `Server: Werkzeug/x.y.z Python/x.y.z` to every
+# response (incl. the guard's 403) → version recon for targeted CVEs. test_client
+# bypasses the WSGI layer (version_string), so the regression MUST go through a real
+# make_server. Isolation: the `client` fixture points FINANCE_PROJECT_DIR at a tmp
+# dir (seed.py) before app imports — no request touches the live DB/:8321.
+def _live_server_header(method, path, headers=None):
+    import http.client
+    import os
+    import tempfile
+    import threading
+    import time
+    from werkzeug.serving import make_server
+    import app as kistapp
+    _proj = os.environ.get("FINANCE_PROJECT_DIR", "")
+    assert _proj.startswith(tempfile.gettempdir()) and "vault" not in _proj, \
+        f"isolation: test must never hit live data (dir={_proj})"
+
+    srv = make_server("127.0.0.1", 0, kistapp.app, threaded=True)
+    port = srv.server_port
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    try:
+        time.sleep(0.2)
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+        conn.request(method, path, headers=headers or {})
+        r = conn.getresponse()
+        r.read()
+        hdr = r.getheader("Server")
+        conn.close()
+        return r.status, hdr
+    finally:
+        srv.shutdown()
+
+
+def test_server_header_no_version_leak(client):
+    # `/` serves the static index (cheap) and still goes through the WSGI handler
+    # layer — not `/api/health`, which fires run_due (scheduled work) and may hang.
+    st, hdr = _live_server_header("GET", "/", {"Host": "127.0.0.1"})
+    assert hdr is not None
+    assert "Werkzeug" not in hdr and "Python" not in hdr, f"version leak in Server: {hdr!r}"
+
+
+def test_server_header_no_version_leak_on_blocked_403(client):
+    """Worst case: the guard blocks a foreign Host (403) but the adversary still gets
+    the Server header — it must not reveal versions for targeted CVEs."""
+    st, hdr = _live_server_header("GET", "/api/health", {"Host": "evil.attacker.com"})
+    assert st == 403
+    assert hdr is not None
+    assert "Werkzeug" not in hdr and "Python" not in hdr, f"version leak on 403: {hdr!r}"
+
+
+def test_server_header_check_recognises_hardened():
+    import security_review as sr
+    items = sr._check_server_header()
+    assert not [i for i in items if i["status"] == "fail"], \
+        f"hardened tree reported as fail: {items}"
+    assert any(i["status"] == "pass" for i in items)
+
+
+def test_server_header_check_flags_missing_override(tmp_path, monkeypatch):
+    """Negative control: panel goes red when the version_string override is gone
+    (setting resp.headers['Server'] = ... is not enough — Werkzeug appends to it)."""
+    import security_review as sr
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / "app.py").write_text(
+        '@app.after_request\ndef _harden(resp):\n    resp.headers["Server"] = "kist"\n',
+        encoding="utf-8")
+    monkeypatch.setattr(sr, "__file__", str(tmp_path / "server" / "security_review.py"))
+    items = sr._check_server_header()
+    assert any(i["status"] == "fail" for i in items), f"missing override not detected: {items}"

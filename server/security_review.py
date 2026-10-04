@@ -775,6 +775,32 @@ def _check_view_escaping(repo):
     return out
 
 
+def _check_server_header():
+    """ASVS V14.3.3 / CWE-200 — the Werkzeug dev server leaks
+    `Server: Werkzeug/x.y.z Python/x.y.z` on every response (incl. the 403 from
+    _guard_local_only), handing version recon for targeted CVEs. The header is built
+    in the handler layer (version_string), BEFORE after_request, so setting
+    resp.headers['Server'] only appends a second value — the only effective fix is
+    overriding WSGIRequestHandler.version_string. Static scan of app.py."""
+    out = []
+    f = _finder(out, "server-header", "SERVER HEADER (version leak)")
+    ap = Path(__file__).resolve().parent / "app.py"
+    try:
+        src = ap.read_text(encoding="utf-8")
+    except Exception as e:
+        f("info", "pass", "app.py unreadable for scan", str(e)[:80])
+        return out
+    if "WSGIRequestHandler.version_string" in src:
+        f("info", "pass", "Server header does not leak versions",
+          "WSGIRequestHandler.version_string overridden — no Werkzeug/Python in Server")
+    else:
+        f("low", "fail", "Server header leaks Werkzeug/Python versions",
+          "WSGIRequestHandler.version_string not overridden — version recon for targeted "
+          "CVEs even on the guard's 403 (ASVS V14.3.3/CWE-200)",
+          "WSGIRequestHandler.version_string = lambda self: \"kist\" at module level in app.py")
+    return out
+
+
 def _check_market_fetch():
     """Convergence check: the keyless Yahoo fetch builds its outbound URL from
     request-controlled `ticker` (path) and `range` (body). `market._yf_chart_url`
@@ -907,6 +933,7 @@ def run(full=True):
         findings += _check_ai_tools()
         findings += _check_web_guard()
         findings += _check_view_escaping(repo)
+        findings += _check_server_header()
         findings += _check_market_fetch()
         findings += _check_request_caps()
 

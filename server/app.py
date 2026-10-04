@@ -9,6 +9,15 @@ import config
 CFG = config.setup()  # must run before engine imports (FINANCE_PROJECT_DIR)
 
 from flask import Flask, jsonify, request, send_from_directory  # noqa: E402
+from werkzeug.serving import WSGIRequestHandler  # noqa: E402
+
+# ASVS V14.3.3 / CWE-200: the Werkzeug dev server appends
+# `Server: Werkzeug/x.y.z Python/x.y.z` to EVERY response, including the 403 from
+# `_guard_local_only` — a DNS-rebind / cross-origin page learns exact versions for
+# targeted CVEs despite the block. The header is built in the handler layer
+# (BaseHTTPRequestHandler.send_response -> version_string()) BEFORE after_request, so
+# setting resp.headers["Server"] only appends a second value. Silence it at the source.
+WSGIRequestHandler.version_string = lambda self: "kist"  # noqa: E731
 
 import db  # noqa: E402
 import engine_bridge as eb  # noqa: E402
