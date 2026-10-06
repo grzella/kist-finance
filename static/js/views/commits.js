@@ -29,7 +29,7 @@ async function renderCommits(el) {
         ${gh.github && gh.github.connected
           ? `<b class="pos">Full GitHub activity</b> (commits + PRs + issues + reviews, all repos — including merged contributions to other projects) merged with local repos (${gh.repos}) over ${gh.days} days. In window: ${gh.github.prs} PRs · ${gh.github.issues} issues · ${gh.github.reviews} reviews.`
           : `Your commits from local repos (${gh.repos}) over ${gh.days} days (GitHub offline — local only).`}
-        <div style="font-size:.82em;margin:4px 0;padding:6px 10px;background:var(--accent)18;border-radius:6px">⚠️ Whose data is this? Activity found on <b>this machine</b>: local git repos scanned here${gh.github && gh.github.connected && gh.github.login ? ` + the gh CLI account (<a href="https://github.com/${gh.github.login}" target="_blank">@${gh.github.login}</a>)` : ""}. If you cloned this app, these may be someone else's numbers — switch to yours: run <code>gh auth login</code> with your account and set <code>commit_repos</code> / <code>commit_author</code> in the Data tab → Settings.</div>
+        <div style="font-size:.82em;margin:4px 0;padding:6px 10px;background:var(--accent)18;border-radius:6px">⚠️ Whose data is this? Activity found on <b>this machine</b>: local git repos scanned here${gh.github && gh.github.connected && gh.github.login ? ` + the gh CLI account (<a href="https://github.com/${esc(gh.github.login)}" target="_blank">@${esc(gh.github.login)}</a>)` : ""}. If you cloned this app, these may be someone else's numbers — switch to yours: run <code>gh auth login</code> with your account and set <code>commit_repos</code> / <code>commit_author</code> in the Data tab → Settings.</div>
         Goal: coding activity every day — builds an AI-native, "I code with AI" profile. Status also in Control Center → Automation &amp; health.</div>
       <div class="grid cols-4">
         <div class="card kpi"><div class="label">Today</div><div class="value ${gh.today > 0 ? "pos" : ""}">${gh.today}</div><div class="sub">contributions</div></div>
@@ -39,9 +39,9 @@ async function renderCommits(el) {
       </div>
       <canvas id="ghChart" height="60" class="mt"></canvas>
       ${gh.github && gh.github.pr_list && gh.github.pr_list.length ? `<details class="mt"><summary class="muted">🟣 Pull requests in the window (${gh.github.pr_list.length}) — purple triangles above the bars</summary>
-        <table class="mt"><tbody>${gh.github.pr_list.slice(0, 30).map((p) => `<tr><td class="muted" style="width:100px">${p.date}</td>
-          <td><span class="badge ${p.state === "merged" ? "pos" : p.state === "open" ? "" : "neg"}">${p.state}</span></td>
-          <td class="muted" style="font-size:.9em">${p.repo}</td><td><a href="${p.url}" target="_blank">${p.title}</a></td></tr>`).join("")}</tbody></table></details>` : ""}
+        <table class="mt"><tbody>${gh.github.pr_list.slice(0, 30).map((p) => `<tr><td class="muted" style="width:100px">${esc(p.date)}</td>
+          <td><span class="badge ${p.state === "merged" ? "pos" : p.state === "open" ? "" : "neg"}">${esc(p.state)}</span></td>
+          <td class="muted" style="font-size:.9em">${esc(p.repo)}</td><td><a href="${esc(p.url)}" target="_blank">${esc(p.title)}</a></td></tr>`).join("")}</tbody></table></details>` : ""}
       <div class="muted mt" style="font-size:.82em">${gh.today > 0 ? "✅ You already committed today — the streak lives." : "⚠️ Still 0 commits today — a small commit will keep the streak alive."}
         Avg ${gh.avg_per_active} commits/active day. Even a tiny daily commit keeps the streak and the green square on GitHub.</div>
     </div>` : ""}
@@ -49,22 +49,22 @@ async function renderCommits(el) {
     ${c && c.goal ? `
     <div class="card mt" style="border-left:4px solid var(--accent)">
       <h3>🎯 Where to contribute (open source for the business)</h3>
-      <div style="font-size:1.0em"><b>${c.goal}</b></div>
-      <div class="muted mt" style="font-size:.85em">${c.method}</div>
+      <div style="font-size:1.0em"><b>${esc(c.goal)}</b></div>
+      <div class="muted mt" style="font-size:.85em">${esc(c.method)}</div>
       <div class="mt" style="display:grid;gap:10px">${reposSorted.map((r, i) => `
         ${(i === 0 || grp(reposSorted[i - 1]) !== grp(r)) ? `<div style="margin-top:${i === 0 ? 0 : 10}px"><span class="badge ${grp(r) === "done" ? "pos" : grp(r) === "now" ? "warn" : ""}">${GROUP_LABEL[grp(r)]}</span></div>` : ""}
         <div style="display:grid;grid-template-columns:minmax(260px,1.1fr) minmax(0,1.6fr);gap:14px;padding:12px 14px;border-radius:10px;background:var(--panel2);border:1px solid var(--hairline)">
           <div style="min-width:0">
-            <div><b><a href="${r.url}" target="_blank">${r.name} ↗</a></b></div>
-            ${r.tag ? `<div class="muted" style="font-size:.85em;margin-top:2px">${r.tag}</div>` : ""}
+            <div><b><a href="${esc(r.url)}" target="_blank">${esc(r.name)} ↗</a></b></div>
+            ${r.tag ? `<div class="muted" style="font-size:.85em;margin-top:2px">${esc(r.tag)}</div>` : ""}
             <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">
-              <span class="badge ${/bardzo|very/.test(r.activity) ? "pos" : ""}" title="Activity">${r.activity}</span>
-              <span class="badge" title="Language">${r.lang}</span>
-              <span class="badge ${diffCls(r.difficulty)}" title="Difficulty">${r.difficulty}</span>
+              <span class="badge ${/bardzo|very/.test(r.activity) ? "pos" : ""}" title="Activity">${esc(r.activity)}</span>
+              <span class="badge" title="Language">${esc(r.lang)}</span>
+              <span class="badge ${diffCls(r.difficulty)}" title="Difficulty">${esc(r.difficulty)}</span>
             </div>
-            <div class="${/✅/.test(r.status || "") ? "pos" : /✗/.test(r.status || "") ? "neg" : "muted"}" style="font-size:.88em;margin-top:8px" title="Your status">${r.status || "—"}</div>
+            <div class="${/✅/.test(r.status || "") ? "pos" : /✗/.test(r.status || "") ? "neg" : "muted"}" style="font-size:.88em;margin-top:8px" title="Your status">${esc(r.status || "—")}</div>
           </div>
-          <div style="font-size:.93em">${r.why}</div>
+          <div style="font-size:.93em">${esc(r.why)}</div>
         </div>`).join("")}</div>
     </div>
 
@@ -72,14 +72,14 @@ async function renderCommits(el) {
       <div class="card">
         <h3>🏆 Badges to earn</h3>
         <table><tbody>${c.badges.map((b) => `<tr>
-          <td><b>${b.name}</b><div class="muted" style="font-size:.82em">${b.how}</div></td>
-          <td style="text-align:right"><span class="badge ${/instant|easy/i.test(b.status) ? "pos" : ""}">${b.status}</span></td>
+          <td><b>${esc(b.name)}</b><div class="muted" style="font-size:.82em">${esc(b.how)}</div></td>
+          <td style="text-align:right"><span class="badge ${/instant|easy/i.test(b.status) ? "pos" : ""}">${esc(b.status)}</span></td>
         </tr>`).join("")}</tbody></table>
         <div class="muted mt" style="font-size:.82em">You already have: Pull Shark, Pair Extraordinaire, Quickdraw, YOLO.</div>
       </div>
       <div class="card">
         <h3>✅ Playbook (first PR)</h3>
-        <ol style="padding-left:18px">${c.playbook.map((p) => `<li class="mt" style="font-size:.9em">${p}</li>`).join("")}</ol>
+        <ol style="padding-left:18px">${c.playbook.map((p) => `<li class="mt" style="font-size:.9em">${esc(p)}</li>`).join("")}</ol>
       </div>
     </div>` : `<div class="card mt muted">No contribution research — ask Claude to "refresh the contribution research".</div>`}`;
 

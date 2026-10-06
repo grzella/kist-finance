@@ -315,7 +315,7 @@ def test_request_caps_convergence_check_recognises_hardened(client):
 def test_view_escaping_check_recognises_hardened():
     import security_review as sr
     items = sr._check_view_escaping(sr._repo_root())
-    assert [i["status"] for i in items] == ["pass"] * 5, items
+    assert [i["status"] for i in items] == ["pass"] * 6, items
 
 
 def test_view_escaping_check_flags_a_raw_sink(tmp_path):
@@ -336,6 +336,10 @@ _VIEWS = Path(__file__).resolve().parent.parent / "static" / "js" / "views"
     ("career.js", '<a href="${u}"'),
     ("business.js", "${i.insight}"), ("business.js", "${h.title}"),
     ("business.js", "${e.category}"), ("business.js", "${mkt.error}"),
+    # commits.js: PR title/repo/url are external GitHub-API data; goal/why/badges are AI research
+    ("commits.js", "${p.title}"), ("commits.js", "${p.repo}"),
+    ("commits.js", '<a href="${p.url}"'), ("commits.js", "${c.goal}"),
+    ("commits.js", "${r.why}"), ("commits.js", "${b.name}"),
 ])
 def test_career_and_business_fields_are_escaped(fname, sink):
     src = (_VIEWS / fname).read_text(encoding="utf-8")
@@ -349,6 +353,15 @@ def test_view_escaping_check_flags_career_raw_sink(tmp_path):
     (views / "career.js").write_text("`<b>${a.headline}</b>`", encoding="utf-8")
     items = sr._check_view_escaping(tmp_path)
     assert any(i["status"] == "fail" and "career.js" in i["title"] for i in items), items
+
+
+def test_view_escaping_check_flags_commits_raw_sink(tmp_path):
+    import security_review as sr
+    views = tmp_path / "static" / "js" / "views"
+    views.mkdir(parents=True)
+    (views / "commits.js").write_text('`<a href="${p.url}">${p.title}</a>`', encoding="utf-8")
+    items = sr._check_view_escaping(tmp_path)
+    assert any(i["status"] == "fail" and "commits.js" in i["title"] for i in items), items
 
 
 def test_offer_status_is_stored_raw_so_the_view_must_escape(client):

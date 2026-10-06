@@ -756,6 +756,14 @@ def _check_view_escaping(repo):
                          "${h.predicted_outcome", "${e.category}", "${e.kind}",
                          "${mkt.error}"),
          ("esc(i.insight)", "esc(h.title)", "esc(e.category)", "esc(mkt.error)")),
+        # GitHub activity (/api/github-activity): PR title/repo/url come STRAIGHT
+        # from the GraphQL API (planner_ops._github_contribution_calendar) — a PR
+        # title is attacker-authorable free text. Plus the AI contribution research
+        # (goal/method, repo why/tag/status, badges, playbook).
+        ("commits.js", ("${p.title}", "${p.repo}", '<a href="${p.url}"',
+                        "${c.goal}", "${c.method}", "${r.why}", "${r.name}",
+                        "${b.name}", "${b.how}", "${p}</li>"),
+         ("esc(p.title)", "esc(p.repo)", "esc(c.goal)", "esc(r.why)", "esc(b.name)")),
     )
     for fname, raw_sinks, escaped in checks:
         try:
