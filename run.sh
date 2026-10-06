@@ -16,5 +16,12 @@ else
 fi
 "$PY" -c "import flask, pytrends" 2>/dev/null || "$PY" -m pip install -q -r "$APP_DIR/requirements.txt"
 
+# A previous instance (nohup, another terminal) keeps the port and Flask dies with
+# "Address already in use"; ./run.sh means "run the current code", so stop it first.
+if pkill -f "$APP_DIR/server/app.py" 2>/dev/null; then
+  for _ in $(seq 1 20); do lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1 || break; sleep 0.25; done
+  echo "[kist] previous instance stopped"
+fi
+
 ( sleep 1.5 && open "http://127.0.0.1:$PORT" ) &
 exec "$PY" "$APP_DIR/server/app.py"
