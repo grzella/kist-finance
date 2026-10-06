@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Ported from the private instance (2026-10-06)
+- **Investment policy card** in Forecasts (`/api/invest-plan`, `planner_fire.invest_plan`): a model portfolio for money with no goal (core / bonds / themes / satellites / sandbox, weights from the `invest_model` setting), the brokerage positions from Wealth sorted into buckets (employer stock excluded), a buy list that splits the next vest and the surpluses until then across the buckets below weight (nothing sold), a 5/10/15-year projection at 4% / blended / 9%, and an optional themes plan (`invest_themes` setting) with cached prices and 1-year change.
+- **Broker-confirmed vest total** (`confirmed_shares_per_vest`, `confirmed_until` in the RSU grant parameters): the broker's shares-per-vest overrides the pricing-window estimate until the given month, the difference shows up as a "broker correction" source so Career and Cash-flow sum what the broker shows.
+- **Forecasts fold completed scenarios**: once no loan is left to overpay, the loan scenarios move to a collapsed "Completed" section at the bottom instead of showing an empty calculator on top.
+
 ### Ported from the private instance (2026-10-01)
 - **Barometer watchlist stream** (`barometer_collect.collect_watchlist`, monthly `barometer_watchlist` task): counts real open roles for your configured roles at an editable list of companies, read keyless from their public Greenhouse / Lever / Ashby boards. Only postings in Europe or remote without a restriction to another continent count; sales / solutions / support engineering roles are skipped and a role posted once per country counts once. The built-in `em` / `head` role keys use title families (Senior/Staff EM, Head/Director); other roles match their query. Edited in ⚙️ next to roles and geography; the latest snapshot's matches are listed under the table.
 - **Indeed Hiring Lab stream** (`collect_hiringlab`, monthly `barometer_hiringlab` task): Software Development and "IT broad" (four Indeed IT sectors) posting indices averaged over GB/DE/FR, drawn as dotted lines; a country lacking a sector averages the ones it has. Rewrites the whole series each run without duplicating rows.

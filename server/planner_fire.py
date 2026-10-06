@@ -244,3 +244,107 @@ def fire_tracking(contrib, freed, base_annual):
     return {"status": "ok", "rows": rows[-6:], "cum_delta": round(cum_delta),
             "verdict": verdict, "months_tracked": len(snaps),
             "latest_liquid": round(snaps[-1]["liquid"])}
+
+
+# ---------- investment policy: a model portfolio for new money ----------
+
+# weights for money AFTER the cushion, the tax reserve and tax-advantaged account limits (no short-term goal);
+# sector satellites are kept small: pay and equity from one employer are already one big sector bet
+INVEST_MODEL = {"core": 70, "bonds": 15, "themes": 0, "satellite": 10, "sandbox": 5}
+INVEST_BUCKETS = {
+    "core": {"label": "🌍 Core: whole world", "instrument": "global all-world equity ETF", "ret": 6.5},
+    "bonds": {"label": "🛡️ Ballast: bonds", "instrument": "inflation-linked government bonds", "ret": 4.5},
+    "themes": {"label": "🧭 Themes", "instrument": "per the themes table below", "ret": 6.5},
+    "satellite": {"label": "🚀 Satellites: sectors", "instrument": "sector ETFs (e.g. tech, semiconductors)", "ret": 6.5},
+    "sandbox": {"label": "🧪 Sandbox: own picks", "instrument": "individual stocks", "ret": 6.5},
+}
+
+
+def _invest_bucket(name, theme_keys=()):
+    n = name.lower()
+    if any(k in n for k in theme_keys):
+        return "themes"
+    if any(k in n for k in ("world", "core", "global", "vwce")):
+        return "core"
+    if any(k in n for k in ("bond", "treasur", "gilt")):
+        return "bonds"
+    if any(k in n for k in ("nasdaq", "semicond", "sector", "s&p")):
+        return "satellite"
+    return "sandbox"
+
+
+def invest_plan(today=None):
+    """Model portfolio for new money vs the brokerage positions in Wealth, a buy list for the next
+    vest (top up what is below weight, never sell) and a 5/10/15-year projection when the whole
+    surplus is invested."""
+    weights = dict(INVEST_MODEL)
+    for k, v in (P.get_json_setting("invest_model") or {}).items():
+        if k in weights and P._num(v) is not None:
+            weights[k] = float(v)
+    wsum = sum(weights.values()) or 1
+
+    # themes plan (setting invest_themes): amount per quarter per theme; tickers of the "themes"
+    # rows recognise Wealth positions, prices come from the market cache
+    themes = P.get_json_setting("invest_themes") or {}
+    theme_keys = tuple(i["ticker"].split(".")[0].lower() for r in themes.get("rows") or []
+                       if r.get("bucket") == "themes" for i in r.get("items") or [] if i.get("ticker"))
+    try:
+        import market as _mkt
+        for r in themes.get("rows") or []:
+            for i in r.get("items") or []:
+                h = _mkt.prices(i["ticker"], days=400) if i.get("ticker") else []
+                if h:
+                    i["last"] = round(h[-1]["close"], 2)
+                    i["ccy"] = h[-1].get("currency")
+                    i["chg_1y_pct"] = round(100 * (h[-1]["close"] / h[0]["close"] - 1), 1) if len(h) >= 200 and h[0]["close"] else None
+    except Exception:
+        pass
+
+    cur = {k: 0.0 for k in weights}
+    for it in P.wealth_summary().get("items", []):
+        if it.get("group") != "invest" or P._alloc_class(it.get("name", "")) == "rsu":
+            continue
+        cur[_invest_bucket(it.get("name", ""), theme_keys)] += it.get("latest_value") or 0
+    total = sum(cur.values())
+
+    deploy, deploy_month, surplus_until = 0.0, None, 0.0
+    try:
+        for r in P.cashflow(months=6, today=today)["rows"]:
+            deploy += r["inflow"]
+            if r["is_vest"]:
+                deploy_month = r["month"]
+                break
+            surplus_until += r["inflow"]
+    except Exception:
+        pass
+
+    rows, buy_raw = [], {}
+    for k, w in weights.items():
+        if not w and not cur[k]:
+            continue
+        tgt = w / wsum
+        pct = 100 * cur[k] / total if total else 0
+        drift = pct - 100 * tgt
+        buy_raw[k] = max(0.0, (total + deploy) * tgt - cur[k])
+        rows.append({"key": k, **INVEST_BUCKETS[k], "target": round(100 * tgt, 1), "value": round(cur[k]),
+                     "pct": round(pct, 1), "drift": round(drift, 1),
+                     # 5/25 as in Allocation: ±5 pp or 25% of the weight
+                     "flag": ("overweight" if drift > 0 else "top up") if (abs(drift) >= 5 or abs(drift) >= 25 * tgt) else "ok"})
+    scale = deploy / sum(buy_raw.values()) if sum(buy_raw.values()) else 0
+    for r in rows:
+        r["buy"] = round(buy_raw[r["key"]] * scale)
+
+    blended = sum(INVEST_BUCKETS[k]["ret"] * w for k, w in weights.items()) / wsum
+    contrib = (P.monthly_surplus() or 0) + (P._annual_extras().get("monthly_equivalent") or 0)
+    proj = []
+    for yrs in (5, 10, 15):
+        row = {"years": yrs, "contributed": round(total + contrib * 12 * yrs)}
+        for name, r in (("cautious", 4.0), ("base", blended), ("optimistic", 9.0)):
+            bal, rm = total, r / 100 / 12
+            for _ in range(yrs * 12):
+                bal = bal * (1 + rm) + contrib
+            row[name] = round(bal)
+        proj.append(row)
+    return {"rows": rows, "total": round(total), "deploy": round(deploy), "deploy_month": deploy_month,
+            "surplus_until_vest": round(surplus_until), "contrib_monthly": round(contrib),
+            "blended_return_pct": round(blended, 1), "projection": proj, "themes": themes}

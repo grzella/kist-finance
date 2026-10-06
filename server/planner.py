@@ -133,4 +133,5 @@ from planner_ops import (  # noqa: F401
 from planner_fire import (  # noqa: F401
     fire_projection,
     record_fire_snapshot,
+    invest_plan,
 )

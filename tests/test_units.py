@@ -499,6 +499,35 @@ def test_package_by_month_steps_with_raise_and_new_grants(client, monkeypatch):
     assert nov == round((120000 + (15 * 100 + 1000) * 4 * 4) / 12)  # new grant + cash-vest
 
 
+def test_vest_schedule_confirmed_total_from_broker(client):
+    """The broker's total overrides the pricing-window estimate until confirmed_until, then drops out."""
+    import datetime, market
+    hist = [{"date": "2026-08-15", "close": 100.0}]
+    g = {"vest_months": [2, 5, 8, 11], "vests_per_year": 4, "vesting_years": 4, "legacy_shares_per_vest": 10,
+         "legacy_until": "2027-05", "grant_value_usd": 1600, "pricing_window": "2026-08", "first_vest": "2026-11",
+         "confirmed_shares_per_vest": 13, "confirmed_until": "2027-05", "_today": datetime.date(2026, 10, 2)}
+    m = {r["month"]: r["shares"] for r in market.vest_schedule(g, hist)["months"]}
+    assert m["2026-11"] == m["2027-05"] == 13
+    assert m["2027-08"] == 1  # legacy grants and the correction expired, the 1600/100/16 grant remains
+
+
+def test_invest_plan_buys_where_below_weight(client, monkeypatch):
+    """The buy list splits the inflow across buckets below weight; the overweight one gets 0; sum = inflow."""
+    import planner
+    monkeypatch.setattr(planner, "wealth_summary", lambda: {"items": [
+        {"name": "Broker: Core all-world ETF", "group": "invest", "latest_value": 1000},
+        {"name": "Broker: NASDAQ 100 ETF", "group": "invest", "latest_value": 9000},
+        {"name": "Employer stock (RSU)", "group": "invest", "latest_value": 5000}]})
+    monkeypatch.setattr(planner, "cashflow", lambda **kw: {"rows": [
+        {"month": "2026-10", "inflow": 1000, "is_vest": False}, {"month": "2026-11", "inflow": 9000, "is_vest": True}]})
+    out = planner.invest_plan()
+    by = {r["key"]: r for r in out["rows"]}
+    assert out["total"] == 10000 and out["deploy"] == 10000 and out["deploy_month"] == "2026-11"
+    assert by["satellite"]["buy"] == 0 and by["satellite"]["flag"] == "overweight"
+    assert sum(r["buy"] for r in out["rows"]) == 10000
+    assert by["core"]["buy"] > by["bonds"]["buy"] > by["sandbox"]["buy"] > 0
+
+
 def test_monthly_surplus_follows_dashboard_unless_set(client):
     """Empty cf_monthly_surplus = income − fixed costs (as on the Dashboard); a manual value wins."""
     import planner

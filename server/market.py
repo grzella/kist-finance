@@ -434,6 +434,16 @@ def vest_schedule(grant, hist, months=48, today=None):
                        "n_vests": g_n, "priced_from": g_src,
                        "window_days_counted": len([r for r in hist if r["date"].startswith(g.get("pricing_window") or "")])})
 
+    # broker-confirmed total per vest (split across grants unknown): the difference to the
+    # pricing-window estimate is its own source, so Career and Cash-flow sum what the broker shows
+    conf, conf_until = float(grant.get("confirmed_shares_per_vest") or 0), grant.get("confirmed_until")
+    if conf and conf_until and start <= conf_until:
+        win = [m for m in horizon if m <= conf_until]
+        # ponytail: one flat correction from the first month; per-month if the estimate varies inside the window
+        delta = conf - rows[win[0]]["shares"]
+        if abs(delta) >= 0.05:
+            add("broker correction", win[0], len(win), delta)
+
     out = []
     for m in horizon:
         r = rows[m]
@@ -715,7 +725,8 @@ def rsu_shares_history(grant=None):
 
 
 _RSU_EXTRA_KEYS = ("legacy_shares_per_vest", "legacy_until", "extra_grants", "new_grants_vesting",
-                   "equity_cash_split_pct", "cash_vest_usd_per_quarter", "first_vest")
+                   "equity_cash_split_pct", "cash_vest_usd_per_quarter", "first_vest",
+                   "confirmed_shares_per_vest", "confirmed_until")
 
 
 def update_rsu(data):

@@ -522,6 +522,11 @@ def fire_projection():
     return jsonify(planner.fire_projection())
 
 
+@app.get("/api/invest-plan")
+def invest_plan():
+    return jsonify(planner.invest_plan())
+
+
 @app.get("/api/github-activity")
 def github_activity():
     return jsonify(planner.github_activity(int(request.args.get("days", 90))))

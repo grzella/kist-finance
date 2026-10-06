@@ -1,12 +1,13 @@
 async function renderForecasts(el) {
   el.innerHTML = '<div class="empty">Computing scenarios…</div>';
-  const [debtsData, rsu, cfg, sum, fire, stress, calib, traj0] = await Promise.all([
+  const [debtsData, rsu, cfg, sum, fire, stress, calib, traj0, ip] = await Promise.all([
     api.get("/api/debts"), api.get("/api/rsu"),
     api.get("/api/settings"), api.get("/api/dashboard/summary"),
     api.get("/api/fire-projection").catch(() => null),
     api.get("/api/stress-test").catch(() => null),
     api.get("/api/forecast/calibration").catch(() => null),
-    api.get("/api/trajectory").catch(() => null)]);
+    api.get("/api/trajectory").catch(() => null),
+    api.get("/api/invest-plan").catch(() => null)]);
 
   const loan = debtsData.debts.find((d) => d.balance > 0);
   const secondLoan = debtsData.debts.filter((d) => d.balance > 0)[1];
@@ -47,27 +48,71 @@ async function renderForecasts(el) {
     ["Shortened by", ym(r.months_saved)],
   ] : [["—", "the overpayment covers the whole balance — loan paid off 🎉", "pos"]];
 
+  // Scenarios that need a loan fold into "Completed" once nothing is left to overpay.
+  const loanCards = [
+    scenarioCard(`Annual bonus (~${fmt.pln(bonus)}) → loan overpayment`, op(bonusLoan),
+      loan ? `Loan balance: ${fmt.pln(loan.balance)} · installment ${fmt.pln(loan.minimum_payment)}` : ""),
+    scenarioCard(`Next vest of ${rsu.shares_next_vest} shares (≈${fmt.pln(vestPln)}) → loan overpayment`, op(vestLoan),
+      "Sell at vest — capital gains tax only on the gain after vest (≈0 when selling right away)"),
+    scenarioCard("Vest + bonus combined (≈" + fmt.pln(bonus + vestPln) + ") → loan", op(bothLoan),
+      bothLoan ? "" : "This combination covers the whole balance — loan paid off 🎉"),
+    scenarioCard(`Refinance/renegotiation scenario${secondLoan ? " for " + esc(secondLoan.name) : ""}: rate −1.0 pp`, [
+      ["Savings per year (example)", fmt.pln(refiSavYr), "pos"],
+      ["Over ~18 months", fmt.pln(refiSavYr * 1.5), "pos"],
+      ["Capital involved", "0"],
+    ], "Playbook: collect real competing offers → ask your bank's retention team to match"),
+    scenarioCard(loan ? "After the loan is paid off — what gets freed" : "✅ Loan paid off — what got freed", [
+      ["Installment + insurance", fmt.pln(loanFreed) + "/mo", "pos"],
+      ["Property unencumbered", "yes — profile ready for a property mortgage"],
+    ], "From this moment all surpluses build the goal contribution"),
+  ];
+  const openCards = loan ? loanCards : [];
+  const doneCards = loan ? [] : loanCards;
+
   el.innerHTML = `
     <h2>Forecasts — your scenarios</h2>
     <div class="muted" style="margin-bottom:12px">Computed on live data: loan balances,
       the RSU stock price, savings pace. Amounts come from your settings (e.g. annual_bonus_net).</div>
-    <div class="grid cols-2">
-      ${scenarioCard(`Annual bonus (~${fmt.pln(bonus)}) → loan overpayment`, op(bonusLoan),
-        loan ? `Loan balance: ${fmt.pln(loan.balance)} · installment ${fmt.pln(loan.minimum_payment)}` : "")}
-      ${scenarioCard(`Next vest of ${rsu.shares_next_vest} shares (≈${fmt.pln(vestPln)}) → loan overpayment`, op(vestLoan),
-        "Sell at vest — capital gains tax only on the gain after vest (≈0 when selling right away)")}
-      ${scenarioCard("Vest + bonus combined (≈" + fmt.pln(bonus + vestPln) + ") → loan", op(bothLoan),
-        bothLoan ? "" : "This combination covers the whole balance — loan paid off 🎉")}
-      ${scenarioCard(`Refinance/renegotiation scenario${secondLoan ? " for " + secondLoan.name : ""}: rate −1.0 pp`, [
-        ["Savings per year (example)", fmt.pln(refiSavYr), "pos"],
-        ["Over ~18 months", fmt.pln(refiSavYr * 1.5), "pos"],
-        ["Capital involved", "0"],
-      ], "Playbook: collect real competing offers → ask your bank's retention team to match")}
-      ${scenarioCard("After the loan is paid off — what gets freed", [
-        ["Installment + insurance", fmt.pln(loanFreed) + "/mo", "pos"],
-        ["Property unencumbered", "yes — profile ready for a property mortgage"],
-      ], "From this moment all surpluses build the goal contribution")}
-    </div>
+    ${openCards.length ? `<div class="grid cols-2">${openCards.join("")}</div>` : '<div class="muted">No open scenarios: no loan left to overpay. The completed ones are folded at the bottom.</div>'}
+
+    ${ip ? `<div class="card mt" style="border-left:4px solid var(--accent)">
+      <h3>📐 Investment policy: what to do with money that has no goal</h3>
+      <div class="muted" style="font-size:.88em;margin-bottom:8px">For money AFTER the cushion, the tax reserve and tax-advantaged account limits. Model portfolio ${ip.rows.map((r) => `${r.target}% ${r.label.replace(/^\S+\s/, "").split(":")[0].toLowerCase()}`).join(" / ")},
+        expected return about ${fmt.pct(ip.blended_return_pct, 1)} a year. The "buy" column splits the next inflow so the buckets reach their weights: new money goes where the portfolio is short, nothing is sold.</div>
+      <table><thead><tr><th>Bucket</th><th>Instrument</th><th style="text-align:right">Target</th><th style="text-align:right">Now</th><th style="text-align:right">Value</th><th>State</th><th style="text-align:right">Buy ${ip.deploy_month || ""}</th></tr></thead>
+        <tbody>${ip.rows.map((r) => `<tr><td><b>${esc(r.label)}</b></td><td class="muted">${esc(r.instrument)}</td>
+          <td style="text-align:right">${r.target}%</td><td style="text-align:right">${r.pct}%</td><td style="text-align:right">${fmt.pln(r.value)}</td>
+          <td class="${r.flag === "ok" ? "pos" : "warn"}">${r.flag}</td><td style="text-align:right" class="${r.buy ? "pos" : "muted"}"><b>${r.buy ? fmt.pln(r.buy) : "—"}</b></td></tr>`).join("")}
+        <tr><td colspan="4"><b>Total</b></td><td style="text-align:right"><b>${fmt.pln(ip.total)}</b></td><td></td><td style="text-align:right"><b>${fmt.pln(ip.deploy)}</b></td></tr></tbody></table>
+      <div class="muted mt" style="font-size:.85em">To deploy in ${ip.deploy_month || "the next vest month"}: vest + cash-vest net and the surpluses until then (${fmt.pln(ip.surplus_until_vest)}). The tax reserve on shares is already taken out.</div>
+      <div class="grid cols-2 mt">
+        <div>
+          <b>Rules (5):</b>
+          <ol style="margin:6px 0 0 18px;font-size:.9em;line-height:1.5">
+            <li>Sell vested shares on vest day and invest the money the same week. No waiting for a "better price".</li>
+            <li>Every month the surplus follows the same table (standing orders at the broker).</li>
+            <li>Top up the bucket below its weight. Sell only when the drift passes 5 pp (the 5/25 rule), at most once a year, because selling is a tax event.</li>
+            <li>Satellites and sandbox together stay under 15%. If your pay and equity already come from one sector, that sector is your biggest bet already.</li>
+            <li>Bonds are ballast, not a goal: 15% softens drawdowns and gives cash to buy equity after a crash. More than that loses to inflation after tax.</li>
+          </ol>
+        </div>
+        <div>
+          <b>What it adds up to (the whole inflow of ${fmt.pln(ip.contrib_monthly)}/mo invested):</b>
+          <table class="mt" style="font-size:.9em"><thead><tr><th>In</th><th style="text-align:right">Contributed</th><th style="text-align:right" class="neg">4%</th><th style="text-align:right">${fmt.pct(ip.blended_return_pct, 1)}</th><th style="text-align:right" class="pos">9%</th></tr></thead>
+            <tbody>${ip.projection.map((p) => `<tr><td>${p.years} yrs</td><td style="text-align:right" class="muted">${fmt.pln(p.contributed)}</td><td style="text-align:right">${fmt.pln(p.cautious)}</td><td style="text-align:right"><b>${fmt.pln(p.base)}</b></td><td style="text-align:right">${fmt.pln(p.optimistic)}</td></tr>`).join("")}</tbody></table>
+          <div class="muted mt" style="font-size:.82em">Nominal, before capital gains tax; assumes grants keep renewing as they have so far. The gap between "contributed" and the result is the market's work.</div>
+        </div>
+      </div>
+      ${ip.themes && ip.themes.rows ? `<div class="mt" style="border-top:1px solid var(--line);padding-top:10px">
+        <b>🧭 Themes variant: ${fmt.pln(ip.themes.quarterly)} a quarter</b>${ip.themes.source ? ` <span class="muted" style="font-size:.85em">(source: ${esc(ip.themes.source)})</span>` : ""}
+        <div style="overflow-x:auto"><table class="mt" style="font-size:.88em"><thead><tr><th>Theme</th><th style="text-align:right">Per quarter</th><th>Instruments (price · 1 yr)</th><th>Thesis</th><th>Risk</th></tr></thead>
+          <tbody>${ip.themes.rows.map((t) => `<tr><td><b>${esc(t.theme)}</b></td><td style="text-align:right"><b>${fmt.pln(t.amount)}</b></td>
+            <td>${(t.items || []).map((i) => `<div><b>${esc(i.ticker || "")}</b> ${esc(i.name || "")} <span class="muted">${fmt.pln(i.amount)}</span>${i.last != null ? ` <span class="muted">· ${i.last} ${esc(i.ccy || "")}</span>` : ""}${i.chg_1y_pct != null ? ` <span class="${i.chg_1y_pct >= 0 ? "pos" : "neg"}">${i.chg_1y_pct >= 0 ? "+" : ""}${i.chg_1y_pct}%</span>` : ""}</div>`).join("")}</td>
+            <td class="muted">${esc(t.thesis || "")}</td><td class="muted">${esc(t.risk || "")}</td></tr>`).join("")}</tbody></table></div>
+        <div class="muted mt" style="font-size:.82em">The "buy" column above splits the real inflow by the model weights; this table splits the model quarterly amount. Prices come from the Market cache (tickers on the watch list); 1 yr = change since the oldest cached quote.</div>
+      </div>` : ""}
+      ${help(`The table reads Wealth (brokerage positions, employer stock excluded) and Cash-flow (the next vest). Change the weights with the <code>invest_model</code> setting (JSON, e.g. {"core":50,"bonds":10,"themes":30,"satellite":5,"sandbox":5}) and the themes plan with <code>invest_themes</code> ({"quarterly": 25000, "rows": [{"theme": "...", "bucket": "themes", "amount": 10000, "thesis": "...", "risk": "...", "items": [{"ticker": "XYZ", "name": "...", "amount": 5000}]}]}). A Wealth position whose name contains a theme ticker lands in the Themes bucket. Pace tracking is below, in "Progress vs plan".`, "how it works")}
+    </div>` : ""}
 
     ${fire ? `<div class="card mt" style="border-left:4px solid var(--pos)">
       <h3>🏁 Path to work-optional (${fmt.pln(fire.target)} liquid portfolio)</h3>
@@ -180,7 +225,13 @@ async function renderForecasts(el) {
         <button class="primary" id="mRun">Compute</button>
       </div>
       <div id="mOut" class="mt"></div>
-    </div>`;
+    </div>
+
+    ${doneCards.length ? `<details class="mt">
+      <summary class="pill">✅ Completed (${doneCards.length})</summary>
+      <div class="muted mt" style="font-size:.88em">Scenarios that already happened: kept for the record, no decision needed.</div>
+      <div class="grid cols-2 mt">${doneCards.join("")}</div>
+    </details>` : ""}`;
 
   document.getElementById("mRun").addEventListener("click", async () => {
     const debt = debtsData.debts.find((d) => d.id === document.getElementById("mDebt").value);

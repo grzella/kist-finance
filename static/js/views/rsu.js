@@ -243,6 +243,8 @@ async function renderRsu(el) {
         <input id="rWindow" value="${r.pricing_window}" title="pricing window YYYY-MM" style="width:110px">
         <input id="rFirst" value="${r.first_vest || ""}" placeholder="1st vest YYYY-MM" title="first vest of the new grant" style="width:130px">
         <input id="rLegacyUntil" value="${r.legacy_until || ""}" placeholder="legacy grants until YYYY-MM" title="last vest month of the legacy grants (from the broker)" style="width:190px">
+        <input type="number" id="rConf" value="${r.confirmed_shares_per_vest || ""}" placeholder="broker: shares/vest" title="total shares per vest as the broker shows it (overrides the estimate until the month on the right)" style="width:150px">
+        <input id="rConfUntil" value="${r.confirmed_until || ""}" placeholder="confirmed until YYYY-MM" title="last vest month the broker's schedule covers" style="width:170px">
         <button class="primary" id="rSave">Save</button>
       </div>
       <div class="muted mt">held · next vest · grant value USD · pricing window.
@@ -284,6 +286,8 @@ async function renderRsu(el) {
       pricing_window: document.getElementById("rWindow").value,
       first_vest: document.getElementById("rFirst").value || null,
       legacy_until: document.getElementById("rLegacyUntil").value || null,
+      confirmed_shares_per_vest: +document.getElementById("rConf").value || null,
+      confirmed_until: document.getElementById("rConfUntil").value || null,
     });
     route();
   });
