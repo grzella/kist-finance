@@ -48,7 +48,7 @@ def _run_forecast_cycle():
 
 def _run_rag_reindex():
     import rag
-    return rag.reindex() >= 0
+    return rag.reindex()["chunks"] >= 0
 
 
 def _run_risk_radar():
@@ -107,6 +107,14 @@ REGISTRY = [
      "kind": "app", "runner": lambda: __import__("barometer_collect").collect_watchlist(),
      "note": "counts your roles in Europe on public Greenhouse/Lever/Ashby boards (keyless)",
      "default": {"freq": "monthly", "day": 28, "hour": 9}},
+    {"id": "ai_eval", "label": "AI quality eval (when there is a reason)",
+     "kind": "app", "runner": lambda: __import__("ai_improve").run_eval(),
+     "note": "daily check; the eval runs only after a model change, after 30 days or when the question set changed, and only while the local model is online",
+     "default": {"freq": "daily", "day": 0, "hour": 7}},
+    {"id": "barometer_boards", "label": "Barometer: postings on IT job boards (No Fluff Jobs, monthly)",
+     "kind": "app", "runner": lambda: __import__("barometer_collect").collect_boards(),
+     "note": "postings per role on No Fluff Jobs (keyless); other boards block bots, LinkedIn cannot be counted",
+     "default": {"freq": "monthly", "day": 28, "hour": 11}},
     {"id": "rates_refresh", "label": "NBP reference rate + WIBOR 3M (monthly, PLN base only)",
      "kind": "app", "runner": lambda: __import__("market").refresh_market_rates(),
      "note": "feeds the post-fixed-rate installment projection and the refinancing recommendation; sources: static.nbp.pl, stooq",

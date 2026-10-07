@@ -19,7 +19,7 @@ async function renderOffers(el) {
           <span class="muted">(${s.ge_current_count} of ${s.quantified_count})</span></span>
       </div>
       <div class="muted mt" style="font-size:.8em">A healthy result with zero applying: ~1 tier-1/mo.
-        The key long-term metric is <b>% ≥ current</b> — only when several in a row clearly beat the package has the market "outgrown" you.</div>
+        The metric to watch over time is <b>% ≥ current</b>: only when several in a row clearly beat the package has the market "outgrown" you.</div>
     </div>` : "";
   el.innerHTML = `
     <h2>💼 Career — offers, market, growth</h2>
@@ -147,15 +147,15 @@ async function renderOffers(el) {
   const months = baro.months || [];
   const readCls = (r) => /shrink|fall/.test(r || "") ? "neg" : /grow/.test(r || "") ? "pos" : "muted";
   const roleColor = {}; broles.forEach((r, i) => { roleColor[r.key] = [CHART_COLORS[0], CHART_COLORS[1], CHART_COLORS[4], CHART_COLORS[3]][i % 4]; });
-  const streamShort = { trends: "interest", openings: "openings", watchlist: "open roles", hiringlab: "IT postings" };
-  const streamIcon = { trends: "📈", openings: "🎯", watchlist: "🏢", hiringlab: "🌍" };
+  const streamShort = { trends: "interest", openings: "openings", watchlist: "open roles", hiringlab: "IT postings", boards: "job boards" };
+  const streamIcon = { trends: "📈", openings: "🎯", watchlist: "🏢", hiringlab: "🌍", boards: "🗂️" };
   roleColor.it_eu = CHART_COLORS[4];  // not [2]: warn is the inbound bar colour
   roleColor.it_broad = CHART_COLORS[5];
   const hlLabel = { it_eu: "🌍 Indeed: Software Development (Europe)", it_broad: "🌍 Indeed: IT broad (Europe)" };
   if (bpts.length) {
     // readings per role×stream: one tile per series (marker as on the chart), direction and %/3m
     const srcName = { trends: "Google Trends · searches", watchlist: "watchlist · open roles",
-                      openings: "JSearch · openings", hiringlab: "Indeed · postings GB/DE/FR" };
+                      openings: "JSearch · openings", hiringlab: "Indeed · postings GB/DE/FR", boards: "No Fluff Jobs · postings" };
     const legend = Object.values(bser).filter((s) => s.reading).map((s) => {
       const r = broles.find((x) => x.key === s.role) || { label: (hlLabel[s.role] || s.role).replace(/^🌍 Indeed: /, "") };
       const dash = s.stream === "hiringlab" ? "dotted" : s.stream === "trends" ? "solid" : "dashed";

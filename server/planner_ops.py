@@ -250,6 +250,18 @@ def data_inventory():
     brief_asof, brief_has = setting_asof("analysis_market_brief")
     vest_asof, vest_has = setting_asof("rsu_vest_analysis", "vest_month")
     prop_asof, prop_has = setting_asof("analysis_property")
+    ft_c, ft_last = cnt_last("forecast_track", "made_on")
+    llm_c, llm_last = cnt_last("llm_log", "ts")
+    import llm_log
+    rated_c = llm_log.stats()["rated"]
+    les_c, _ = cnt_last("agent_experiences")
+    rec_out = one("select count(*) c, max(outcome_at) m from rec_log where outcome is not null")
+    try:
+        import ai_improve
+        ev = ai_improve.eval_history()
+        ev_c, ev_last = len(ev), (ev[-1]["ts"][:10] if ev else None)
+    except Exception:
+        ev_c, ev_last = 0, None
     try:
         import market as _mkt
         sync = _mkt.last_sync()
@@ -274,6 +286,8 @@ def data_inventory():
                  "on demand / daily", None, note="computed from git, you enter nothing"),
             item("Sensitive-data audit", "auto", "git ls-files + secret scan",
                  "on push / weekly", None, note="makes sure .finance/.env never lands in git"),
+            item("AI quality eval", "auto", "schedule → <data>/eval",
+                 "when there is a reason (auto)", ev_last, ev_c, note="fixed questions with your own facts; result in Control → AI improvement"),
          ]},
         {"key": "derived", "title": "\U0001F535 Derived from other data \u2014 zero effort",
          "note": "The app computes these itself from what you already have. Also nothing to enter.",
@@ -289,6 +303,8 @@ def data_inventory():
             item("Loan balance (model)", "derived", "installment \u2212 interest each month",
                  "monthly (auto)", debt_last, debt_c,
                  note="the balance drops by itself; a per-bank correction only occasionally (below)"),
+            item("Forecast journal (band self-calibration)", "derived", "forecast_track",
+                 "daily (auto)", ft_last, ft_c, note="p10–p90 bands settled against real prices; new bands computed from own errors"),
          ]},
         {"key": "claude", "title": "🟣 AI research notes (optional) — monthly/on demand",
          "note": "Deep-dive snapshots authored by you or any AI assistant (Claude Code, the built-in local AI, or plain notes). The app only reads them — empty is fine.",
@@ -323,7 +339,7 @@ def data_inventory():
                  suggest="import 1 number from the bank statement (PSD2) instead of a manual correction"),
          ]},
         {"key": "manual_rare", "title": "\u26AA Manual \u2014 rare / event-driven (setup)",
-         "note": "Entered once or only when something actually changes \u2014 no monthly burden.",
+         "note": "Entered once or only when something actually changes, so nothing recurs monthly.",
          "items": [
             item("Job offers", "manual", "you (Career tab)",
                  "as they arrive (event-driven)", off_last, off_c, minutes=0,
@@ -336,6 +352,12 @@ def data_inventory():
                  "rarely", None, minutes=0, note="updated on grant/vest"),
             item("Watchlist + price targets", "manual", "you (Market tab)",
                  "occasionally", None, minutes=0, note="you add a ticker/target when you want to track it"),
+            item("AI answer ratings and lessons", "manual", "Control → AI improvement",
+                 "in passing (seconds)", llm_last, llm_c, minutes=0,
+                 note=f"{rated_c} rated answers of {llm_c}, {les_c} lessons"),
+            item("Recommendation outcomes", "manual", "Recommendations tab",
+                 "when a recommendation disappears", rec_out.get("m"), rec_out.get("c", 0), minutes=0,
+                 note="done / rejected / obsolete; a change of numbers only is marked by itself"),
          ]},
     ]
 

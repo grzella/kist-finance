@@ -28,14 +28,10 @@ function securityReviewHtml(rev) {
 }
 
 async function renderControl(el) {
-  const [d, rev, ai, ragStatus, bk, aiLog, exp] = await Promise.all([
+  const [d, rev, bk] = await Promise.all([
     api.get("/api/health"),
     api.get("/api/security-review").catch(() => ({})),
-    api.get("/api/llm/config").catch(() => null),
-    api.get("/api/rag/status").catch(() => null),
     api.get("/api/backup/status").catch(() => null),
-    api.get("/api/llm/log").catch(() => null),
-    api.get("/api/experiences").catch(() => null),
   ]);
   const s = d.summary;
   const vColor = { ok: TOKENS.pos, warn: TOKENS.warn, error: TOKENS.neg };
@@ -77,59 +73,12 @@ async function renderControl(el) {
       </div>
     </div>
 
-    ${ai ? `<div class="card mt" style="border-left:4px solid ${ai.ai_mode === "both" ? "#b78cff" : TOKENS.pos}">
-      <h3>🤖 AI mode
-        <span class="badge" style="background:${ai.ai_mode === "both" ? "#b78cff22;color:#b78cff" : "var(--pos)22;color:var(--pos)"}">${ai.ai_mode === "both" ? "local + cloud" : "local only"}</span></h3>
-      <div class="muted" style="font-size:.85em;margin-bottom:8px">This mode governs <b>every AI feature in the app</b>:
-        the "AI second opinion" on Recommendations, forecast narration and questions typed below. The default is local only —
-        nothing leaves your machine. "Local + cloud" asks BOTH engines and synthesizes one verdict (usually the best result),
-        but <b class="neg">the cloud sends your question + snippets of your data to Anthropic</b> — enable deliberately.</div>
-      <div class="row" style="gap:16px;flex-wrap:wrap">
-        <label style="cursor:pointer"><input type="radio" name="aiMode" value="local" ${ai.ai_mode !== "both" ? "checked" : ""}>
-          🔒 Local only <span class="muted" style="font-size:.85em">(${ai.local.online ? "🟢 " + ai.local.model : "🔴 offline — " + (ai.local.hint || "")})</span></label>
-        <label style="cursor:pointer"><input type="radio" name="aiMode" value="both" ${ai.ai_mode === "both" ? "checked" : ""} ${ai.cloud.online ? "" : "disabled"}>
-          🔒+☁️ Local + Claude <span class="muted" style="font-size:.85em">(${ai.cloud.online ? "🟢 " + ai.cloud.model : "🔴 no key — " + (ai.cloud.hint || "")})</span></label>
-      </div>
-      <div class="row mt" style="gap:8px">
-        <input id="aiPrompt" placeholder="ask a question… (e.g. overpay the mortgage or invest?)" style="flex:1">
-        <button class="primary" id="aiAsk">Ask</button>
-      </div>
-      <div id="aiOut" class="mt"></div>
-      ${ragStatus ? `<div class="mt" style="font-size:.85em;padding-top:8px;border-top:1px solid #2a2f45">
-        <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
-          <span>📇 The AI's private memory: <b>${ragStatus.chunks}</b> snippets of your data</span>
-          <button id="ragReindex">Refresh memory</button>
-        </div>
-        <div class="muted" style="margin-top:4px">Before the AI answers, the app hands it the matching snippets of <b>your</b>
-          data (goals, wealth, recommendations, reminders) — so it talks about your numbers, not generic advice.
-          It also refreshes automatically (schedule: Control Center → Data → Schedules); the button is for right-now.
-          <span class="muted">(technically: RAG, ${ragStatus.engine}${ragStatus.embedded ? ", " + ragStatus.embedded + " embedded" : ""})</span></div>
-      </div>` : ""}
-      ${aiLog && aiLog.stats.total ? `<details class="mt" style="font-size:.85em">
-        <summary>📊 AI prompt log (${aiLog.stats.total}) — ${aiLog.stats.rag_grounded} RAG-grounded · ${aiLog.stats.cloud_calls} cloud calls</summary>
-        <div class="mt">${aiLog.recent.slice(0, 8).map((e) => { const ans = e.synthesis_text || e.cloud_text || e.local_text; return `<div style="border-top:1px solid #2a2f45;padding:6px 0">
-          <div class="muted" style="font-size:.8em">${e.ts} · ${e.mode}${e.rag_used ? " · RAG" : ""}</div>
-          <div><b>${esc(e.prompt)}</b></div>
-          <div style="white-space:pre-wrap;color:#c9cee0">${esc(ans)}</div>
-          ${ans ? `<button class="expLearn" style="font-size:.78em;margin-top:4px" data-q="${encodeURIComponent(e.prompt || "")}" data-a="${encodeURIComponent(ans)}">💡 Learn from this</button> <span class="expMsg muted" style="font-size:.78em"></span>` : ""}</div>`; }).join("")}</div>
-      </details>` : ""}
-
-      <details class="mt" style="font-size:.85em" ${exp && exp.experiences.length ? "open" : ""}>
-        <summary>🧠 Learned experiences (${(exp && exp.experiences.length) || 0})</summary>
-        <div class="muted mt" style="font-size:.82em">Lessons distilled from answers you marked as good. They're indexed into the AI's memory (RAG) and injected as guidance on similar questions — so the assistant improves without retraining. Prune any that don't hold up.</div>
-        <div class="mt">${(exp && exp.experiences.length) ? exp.experiences.map((x) => `<div style="border-top:1px solid #2a2f45;padding:6px 0;display:flex;gap:8px;align-items:flex-start">
-          <div style="flex:1"><div style="white-space:pre-wrap;color:#c9cee0">${esc(x.lesson)}</div>
-            <div class="muted" style="font-size:.75em">${x.created_at}${x.question ? " · from: " + esc(x.question) : ""}</div></div>
-          <button class="expDel danger" style="font-size:.75em" data-id="${x.id}">✕</button></div>`).join("")
-          : `<div class="muted" style="font-size:.82em">Nothing yet — ask the AI something, then click <b>💡 Learn from this</b> on a good answer above.</div>`}</div>
-      </details>
-    </div>` : ""}
 
     ${bk ? `<div class="card mt" style="border-left:4px solid var(--accent)">
       <h3>💾 Data backup
         <span class="badge" style="background:${bk.configured ? "var(--pos)22;color:var(--pos)" : "var(--warn)22;color:var(--warn)"}">${bk.configured ? "configured" : "not set"}</span></h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">Writes a consistent snapshot of the database into a folder your
-        Google Drive / Dropbox / iCloud client already syncs. No API keys — your desktop client pushes the file to the cloud.</div>
+        Google Drive / Dropbox / iCloud client already syncs. It needs no API keys: your desktop client pushes the file to the cloud.</div>
       <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
         <select id="bkDest" style="min-width:300px">
           <option value="">— choose a synced folder —</option>
@@ -167,7 +116,7 @@ async function renderControl(el) {
         <button class="primary" id="secRun">🔐 Run security &amp; tests</button>
       </div>
       <div class="muted" style="font-size:.85em;margin:6px 0 4px">Full pentest + functional tests: secret leaks in the working tree
-        <b>and in git history</b> (crucial for a public repo), maintainer personal-data audit, code review from a contributor's perspective
+        <b>and in git history</b> (this matters for a public repo), maintainer personal-data audit, code review from a contributor's perspective
         (eval/exec, shell, SQL injection, debug, bind 0.0.0.0), configuration/connection hygiene and endpoint smoke tests.
         Runs automatically weekly (GitHub Actions on PRs) or manually with this button.</div>
       <div id="secBody">${securityReviewHtml(rev)}</div>
@@ -205,57 +154,6 @@ async function renderControl(el) {
     await api.post("/api/app-config", { base_currency: e.target.value });
     window.APP_CURRENCY = e.target.value; location.reload();
   });
-  document.querySelectorAll('input[name="aiMode"]').forEach((r) =>
-    r.addEventListener("change", (e) =>
-      api.post("/api/llm/config", { ai_mode: e.target.value }).then(() => route())));
-  const aiAsk = document.getElementById("aiAsk");
-  if (aiAsk) {
-    aiAsk.addEventListener("click", async () => {
-      const prompt = document.getElementById("aiPrompt").value.trim();
-      if (!prompt) return;
-      const out = document.getElementById("aiOut");
-      aiAsk.disabled = true; out.innerHTML = '<div class="muted">Asking…</div>';
-      try {
-        const r = await api.post("/api/llm/ask", { prompt });
-        const card = (label, res, col) => res ? `<div class="card" style="border-left:3px solid ${col};margin:0">
-          <div style="font-weight:600;font-size:.85em">${label}</div>
-          <div style="white-space:pre-wrap;font-size:.9em">${res.ok ? esc(res.text) : '<span class="neg">offline / no answer</span>'}</div></div>` : "";
-        const syn = r.synthesis && r.synthesis.ok ? `<div class="card" style="border-left:4px solid var(--warn);margin:0 0 10px">
-          <div style="font-weight:600;font-size:.85em">🧭 Verdict — synthesis of both models <span class="muted">(${r.synthesis.by === "cloud" ? "Claude" : "local"})</span></div>
-          <div style="white-space:pre-wrap;font-size:.9em">${esc(r.synthesis.text)}</div></div>` : "";
-        out.innerHTML = syn + `<div class="grid ${r.cloud ? "cols-2" : ""}">
-          ${card("🔒 " + (r.local.label || "local"), r.local, TOKENS.pos)}
-          ${r.cloud ? card("☁️ " + (r.cloud.label || "Claude"), r.cloud, "#b78cff") : ""}</div>`;
-      } catch (e) { out.innerHTML = `<div class="neg">Error: ${e.message}</div>`; }
-      finally { aiAsk.disabled = false; }
-    });
-  }
-  const ragBtn = document.getElementById("ragReindex");
-  if (ragBtn) {
-    ragBtn.addEventListener("click", async () => {
-      ragBtn.disabled = true; ragBtn.textContent = "Indexing…";
-      try { await api.post("/api/rag/reindex", {}); } finally { route(); }
-    });
-  }
-  // experience distillation: "learn from this" on a good answer, and pruning
-  document.querySelectorAll(".expLearn").forEach((b) => b.addEventListener("click", async () => {
-    const msg = b.nextElementSibling;
-    b.disabled = true; if (msg) msg.textContent = "distilling…";
-    try {
-      const r = await api.post("/api/experience", {
-        question: decodeURIComponent(b.dataset.q), answer: decodeURIComponent(b.dataset.a) });
-      if (r.ok) { if (msg) msg.textContent = "✅ learned"; setTimeout(route, 700); }
-      else { if (msg) msg.textContent = "no transferable lesson"; b.disabled = false; }
-    } catch (e) {
-      // show the reason instead of a bare "error" — a 404 usually means a stale
-      // server (endpoint added after ./run.sh started → restart the app)
-      if (msg) msg.textContent = /404/.test(e.message) ? "error: restart the app (new endpoint)" : "error: " + e.message;
-      b.disabled = false;
-    }
-  }));
-  document.querySelectorAll(".expDel").forEach((b) => b.addEventListener("click", async () => {
-    await api.del("/api/experiences/" + b.dataset.id); route();
-  }));
   const bkDest = document.getElementById("bkDest");
   if (bkDest) {
     bkDest.addEventListener("change", async (e) => {

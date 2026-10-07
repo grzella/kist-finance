@@ -216,11 +216,26 @@ def short_term_bands_calibrated(closes, residuals_by_h=None, horizons=(5, 21, 63
     return base
 
 
+def independent_windows(rows):
+    """How many NON-overlapping forecast windows the rows contain. Daily 21-day forecasts
+    share 20 of 21 days with their neighbours, so 100 of them are ~5 independent outcomes;
+    a coverage verdict must be judged on this count, not on len(rows)."""
+    n, free_from = 0, ""
+    for r in sorted(rows, key=lambda r: r.get("made_on") or ""):
+        made, done = r.get("made_on"), r.get("realized_on")
+        if not made or not done:
+            continue
+        if made >= free_from:
+            n += 1
+            free_from = done
+    return n
+
+
 def interval_scores(rows, alpha=0.2):
     """INTERVAL evaluation of settled forecasts (not just hit/miss): p10–p90 coverage,
     share of misses below/above (direction of the miscalibration) and the mean Winkler
     score as % of the base price (band width + 2/α penalty per miss; lower is better).
-    rows: dicts with p10, p90, realized_close (+ base_close)."""
+    rows: dicts with p10, p90, realized_close (+ base_close, made_on, realized_on)."""
     n = inside = below = above = 0
     wsum = 0.0
     for r in rows:
@@ -243,12 +258,20 @@ def interval_scores(rows, alpha=0.2):
         return None
     cov = inside / n * 100.0
     bel, abv = below / n * 100.0, above / n * 100.0
-    if cov < 72:
+    n_ind = independent_windows(rows) or n
+    target = (1 - alpha) * 100.0
+    # 95% binomial noise band on the independent count: with 12 windows, 66% coverage is
+    # still consistent with a correct 80% band, and re-tuning on it would chase noise
+    noise = 1.96 * math.sqrt(alpha * (1 - alpha) / n_ind) * 100.0
+    if abs(cov - target) <= noise and (cov < 72 or cov > 90):
+        verdict = "too few windows"
+    elif cov < 72:
         skew = " (misses low)" if bel > 2 * abv + 3 else " (misses high)" if abv > 2 * bel + 3 else ""
         verdict = "too narrow" + skew
     elif cov > 90:
         verdict = "too wide"
     else:
         verdict = "ok"
-    return {"n": n, "coverage_pct": round(cov, 1), "below_pct": round(bel, 1), "above_pct": round(abv, 1),
-            "winkler_pct": round(wsum / n, 2), "verdict": verdict, "target_pct": int((1 - alpha) * 100)}
+    return {"n": n, "n_independent": n_ind, "coverage_pct": round(cov, 1), "below_pct": round(bel, 1),
+            "above_pct": round(abv, 1), "winkler_pct": round(wsum / n, 2), "verdict": verdict,
+            "target_pct": int(target)}

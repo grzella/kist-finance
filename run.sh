@@ -18,10 +18,15 @@ fi
 
 # A previous instance (nohup, another terminal) keeps the port and Flask dies with
 # "Address already in use"; ./run.sh means "run the current code", so stop it first.
-if pkill -f "$APP_DIR/server/app.py" 2>/dev/null; then
-  for _ in $(seq 1 20); do lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1 || break; sleep 0.25; done
-  echo "[kist] previous instance stopped"
+# Stop the port owner (not a process pattern: pkill -f from a child of the server missed it
+# and the new instance died with "Address already in use"). TERM first, KILL after 8 s.
+OLD="$(lsof -ti tcp:"$PORT" -sTCP:LISTEN 2>/dev/null | tr '\n' ' ' || true)"
+if [ -n "$OLD" ]; then
+  kill $OLD 2>/dev/null
+  for _ in $(seq 1 32); do lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1 || break; sleep 0.25; done
+  if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then kill -9 $OLD 2>/dev/null; sleep 0.5; fi
+  echo "[budget-app] previous instance ($OLD) stopped"
 fi
 
-( sleep 1.5 && open "http://127.0.0.1:$PORT" ) &
+[ -n "${KIST_NO_OPEN:-}" ] || ( sleep 1.5 && open "http://127.0.0.1:$PORT" ) &  # no new tab on in-app restart
 exec "$PY" "$APP_DIR/server/app.py"

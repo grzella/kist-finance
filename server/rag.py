@@ -114,9 +114,14 @@ def _gather():
     except Exception:
         pass
     try:
-        for d in eb._rows("select * from debts"):
+        for d in eb._rows("select d.*, m.fixed_until, m.margin_after_fixed, m.months_left from debts d "
+                          "left join debt_meta m on m.debt_id = d.id"):
+            extra = "".join(t for t in (
+                f", fixed rate until {d['fixed_until']}" if d.get("fixed_until") else "",
+                f", margin after the fixed period {d['margin_after_fixed']}%" if d.get("margin_after_fixed") else "",
+                f", {d['months_left']} installments left" if d.get("months_left") else ""))
             add("debt", d.get("name"), f"Debt: {d.get('name')} — balance {d.get('balance')}, "
-                f"rate {d.get('interest_rate')}%, installment {d.get('minimum_payment')}/mo".strip())
+                f"rate {d.get('interest_rate')}%, installment {d.get('minimum_payment')}/mo{extra}".strip())
     except Exception:
         pass
     try:
@@ -159,9 +164,9 @@ def _gather():
     # distilled experiences — lessons from past good answers, injected as guidance
     # so the assistant improves on similar questions (see experience.py, book ch. 8)
     try:
-        for e in eb._rows("select question, lesson from agent_experiences "
+        for e in eb._rows("select id, question, lesson from agent_experiences "
                           "order by created_at desc"):
-            add("experience", (e.get("question") or "")[:60],
+            add("experience", e["id"],  # id, not question text: two lessons may share a question prefix
                 f"LEARNED LESSON (apply if relevant): {e.get('lesson', '')}")
     except Exception:
         pass
@@ -249,25 +254,36 @@ def _gather_markdown():
 
 
 def reindex():
-    """Rebuild the index from scratch. Returns the number of chunks.
+    """Rebuild the index. Returns {chunks, embedded, reused, seconds}.
 
-    If a local embedding server is reachable, each chunk is embedded (stored
-    L2-normalized) so search can run the semantic + lexical hybrid. If not,
-    chunks are stored without embeddings and search stays pure BM25."""
+    Embeddings of chunks whose text did not change are carried over from the old
+    index (key: sha1 of the text), so after a small data change a reindex takes
+    seconds, not minutes, and can run by itself. Without an embedding server new
+    chunks stay vector-less and search falls back to pure BM25 for them. Clears
+    `rag_dirty` at the end."""
+    import hashlib
+    import time
     import llm_local
+    import planner
+    t0 = time.time()
     ensure_tables()
+    old = {}
+    for r in eb._rows("select text, embedding from rag_chunks where embedding is not null"):
+        old[hashlib.sha1(r["text"].encode("utf-8")).hexdigest()] = r["embedding"]
     eb._exec("delete from rag_chunks")
-    use_emb = llm_local.embed("probe") is not None   # one probe, not per-chunk
+    use_emb = llm_local.embed("probe") is not None   # one probe, not per chunk
     now = datetime.now().isoformat(timespec="seconds")
-    n = 0
+    n = embedded = reused = 0
     items = [(src, ref, text, now) for src, ref, text in _gather()]
     try:
         items += _gather_markdown()
     except Exception:
-        pass  # missing note folders must not break reindexing the app's own data
+        pass  # missing note directories must not break the reindex of app data
     for source, ref, text, stamp in items:
-        emb = None
-        if use_emb:
+        emb = old.get(hashlib.sha1(text.encode("utf-8")).hexdigest())
+        if emb:
+            reused += 1
+        elif use_emb:
             vec = llm_local.embed(text)
             if vec:
                 emb = json.dumps(_normalize(vec))
@@ -275,7 +291,9 @@ def reindex():
                  "values (?,?,?,?,?,?)",
                  (uuid.uuid4().hex, source, ref, text, stamp, emb))
         n += 1
-    return n
+        embedded += bool(emb)
+    planner.set_settings({"rag_dirty": ""})
+    return {"chunks": n, "embedded": embedded, "reused": reused, "seconds": round(time.time() - t0, 1)}
 
 
 def _bm25_scores(query, rows):
@@ -381,15 +399,25 @@ def context_for(query, k=6, max_chars=2200):
 def context_with_sources(query, k=6, max_chars=2200):
     """(context block, sources used) — the sources go back to the UI as citations
     (source · ref · date) so an answer can be checked."""
-    hits = search(query, k=k)
+    # spare candidates: some drop out below (extra lessons, oversized chunks)
+    hits = search(query, k=k * 2)
     if not hits:
         return "", []
     lines, used, total = [], [], 0
+    lesson_in = False
     for h in hits:
+        if len(used) >= k:
+            break
+        # one lesson per answer: similar lessons rank together and pushed out the data itself
+        # (a "what are my goals" question got three goal lessons instead of the goals)
+        if h.get("source") == "experience":
+            if lesson_in:
+                continue
+            lesson_in = True
         tag = h.get("source", "") + (f" · {h['ref']}" if h.get("ref") else "")
         line = f"[{tag}] {h.get('text', '')}"
         if total + len(line) > max_chars:
-            break
+            continue  # an oversized chunk must not block shorter relevant ones below
         lines.append(line)
         used.append({"source": h.get("source", ""), "ref": h.get("ref", ""), "date": h.get("date", ""),
                      "score": h.get("score")})

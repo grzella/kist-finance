@@ -573,6 +573,7 @@ def health():
     # The server runs older code than what is on disk (git pull / edit without a
     # restart): the browser gets the new JS, the backend the old API — "nothing works".
     out["code_stale"] = _code_mtime() > _CODE_MTIME_AT_START + 1
+    out["restart_cmd"] = f"cd {Path(__file__).resolve().parent.parent} && ./run.sh"
     if out["code_stale"]:
         out["tasks"].append({"name": "App server", "freq": "—", "last": "—", "status": "warn",
                              "detail": "server/ code changed after start — restart the app (./run.sh)"})
@@ -705,7 +706,6 @@ def _ai_answer(prompt, system=None, use_rag=True):
     if use_rag and planner.get_setting("rag_dirty") == "1":
         try:
             rag.reindex()
-            planner.set_settings({"rag_dirty": ""})
         except Exception:
             pass
     ctx, sources = rag.context_with_sources(prompt) if use_rag else ("", [])
@@ -756,7 +756,7 @@ def _ai_answer(prompt, system=None, use_rag=True):
     # best single answer (synthesis > cloud > local)
     out["best"] = (out.get("synthesis") or {}).get("text") or \
                   (out.get("cloud") or {}).get("text") or out["local"]["text"]
-    llm_log.record(prompt, out)
+    out["log_id"] = llm_log.record(prompt, out)
     return out
 
 
@@ -794,6 +794,42 @@ def llm_log_view():
     return jsonify({"stats": llm_log.stats(), "recent": llm_log.recent(int(request.args.get("n", 25)))})
 
 
+@app.get("/api/ai/improve")
+def ai_improve_status():
+    """The "AI improvement" area in Control: state, what runs by itself, what to do."""
+    import ai_improve
+    return jsonify(ai_improve.status())
+
+
+@app.post("/api/restart")
+def app_restart():
+    """Restart from the "old code" banner: launches run.sh in a new process session (run.sh stops
+    the port owner and starts a new instance on the current code) and this instance exits once
+    the response is out. Not an in-place execv: Werkzeug makes the listening socket inheritable
+    (WERKZEUG_SERVER_FD), so the new image hit "Address already in use". Fixed path."""
+    import os
+    import subprocess
+    import threading
+    app_dir = Path(__file__).resolve().parent.parent
+    log = open(app_dir / "outputs" / "restart.log", "ab") if (app_dir / "outputs").is_dir() else subprocess.DEVNULL
+    subprocess.Popen(["bash", str(app_dir / "run.sh")], cwd=str(app_dir), stdout=log, stderr=subprocess.STDOUT,
+                     stdin=subprocess.DEVNULL, start_new_session=True, env=dict(os.environ, KIST_NO_OPEN="1"))
+    threading.Timer(1.0, lambda: os._exit(0)).start()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/llm/log/<lid>/rating")
+def llm_log_rate(lid):
+    """👍/👎 on an answer — the only signal of whether answers (and the lessons that
+    shaped them) are actually good."""
+    import llm_log
+    try:
+        llm_log.rate(lid, (request.get_json(silent=True) or {}).get("rating", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "rating must be -1, 0 or 1"}), 400
+    return jsonify({"ok": True})
+
+
 @app.post("/api/experience")
 def experience_learn():
     """Distill a good Q+A into a transferable lesson and store it (user-triggered
@@ -801,6 +837,11 @@ def experience_learn():
     import experience
     b = request.get_json(force=True)
     lesson = experience.learn(b.get("question", ""), b.get("answer", ""))
+    if lesson and b.get("log_id"):
+        # "learn from this" is a stronger "good answer", so it counts as 👍 too;
+        # otherwise the answer stayed in the "unrated" step despite the click
+        import llm_log
+        llm_log.rate(b["log_id"], 1)
     return jsonify({"ok": True, "lesson": lesson} if lesson else
                    {"ok": False, "error": "no transferable lesson found (or AI offline)"})
 
@@ -827,7 +868,7 @@ def rag_status():
 @app.post("/api/rag/reindex")
 def rag_reindex():
     import rag
-    return jsonify({"chunks": rag.reindex()})
+    return jsonify(rag.reindex())
 
 
 @app.get("/api/backup/status")

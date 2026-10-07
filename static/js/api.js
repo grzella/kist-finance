@@ -110,6 +110,31 @@ function analysisStaleBanner(a) {
 // especially anything from an external source (e.g. market data synced from
 // Supabase) so a crafted string can't inject markup. Numbers/computed values
 // don't need it. (The CSP already blocks script execution as a second layer.)
+// A long analysis paragraph (LLMs write walls of text) → short 2-sentence paragraphs and "- " lists.
+// The author may split with a blank line; then we split only there.
+function paras(text, maxChars = 320) {
+  const t = String(text || "").trim();
+  if (!t) return "";
+  const blocks = t.includes("\n\n") ? t.split(/\n{2,}/) : [t];
+  const out = [];
+  blocks.forEach((b) => {
+    const lines = b.split("\n");
+    if (lines.length > 1 && lines.every((l) => /^\s*[-•]\s/.test(l))) {
+      out.push(`<ul style="margin:0 0 .6em;padding-left:18px">${lines.map((l) => `<li>${esc(l.replace(/^\s*[-•]\s/, ""))}</li>`).join("")}</ul>`);
+      return;
+    }
+    if (b.length <= maxChars) { out.push(`<p style="margin:0 0 .6em">${esc(b)}</p>`); return; }
+    const sents = b.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [b];
+    let cur = "";
+    sents.forEach((sn) => {
+      if (cur && (cur.length + sn.length > maxChars || (cur.match(/[.!?]/g) || []).length >= 2)) { out.push(`<p style="margin:0 0 .6em">${esc(cur.trim())}</p>`); cur = ""; }
+      cur += sn;
+    });
+    if (cur.trim()) out.push(`<p style="margin:0 0 .6em">${esc(cur.trim())}</p>`);
+  });
+  return out.join("");
+}
+
 function esc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -150,7 +175,7 @@ document.addEventListener("click", async (e) => {
 
 // Control Center sub-navigation, shared by #control, #reminders and #data.
 function ctrlTabs(active) {
-  return `<div class="row" style="gap:8px;margin-bottom:12px">${[["control", "🛠️ Automation &amp; health"], ["reminders", "🔔 Reminders"], ["data", "📊 Data in the app"]]
+  return `<div class="row" style="gap:8px;margin-bottom:12px">${[["control", "🛠️ Automation &amp; health"], ["reminders", "🔔 Reminders"], ["data", "📊 Data in the app"], ["ai", "🎓 AI improvement"]]
     .map(([v, label]) => `<a href="#${v}" class="pill${v === active ? " active" : ""}">${label}</a>`).join("")}</div>`;
 }
 

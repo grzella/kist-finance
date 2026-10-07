@@ -42,3 +42,18 @@ def test_recommendation_memory_and_after_tax_text(client):
     planner.set_settings({"debt_strategy": "TEST strategia"})
     assert planner.get_setting("debt_strategy_at")
     planner.set_settings({"debt_strategy": ""})
+
+
+def test_recommendation_with_new_numbers_supersedes_old(client):
+    import engine_bridge as eb
+    import planner_recs as R
+    # new numbers in the same area = the same recommendation: keeps its age, the old row is superseded, not 'resolved'
+    R._rec_memory([{"area": "zz-test", "text": "rate 8.03%"}, {"area": "zz-gone", "text": "x"}])
+    first = eb._rows("select first_seen from rec_log where area='zz-test'")[0]["first_seen"]
+    items = [{"area": "zz-test", "text": "rate 8.04%"}]
+    R._rec_memory(items)
+    rows = {r["text"]: r for r in eb._rows("select * from rec_log where area in ('zz-test','zz-gone')")}
+    assert rows["rate 8.03%"]["outcome"] == "obsolete" and rows["rate 8.03%"]["resolved_at"]
+    assert rows["rate 8.04%"]["first_seen"] == first and items[0]["since"] == first[:10]
+    assert rows["x"]["resolved_at"] and rows["x"]["outcome"] is None   # really gone: left for the user to judge
+    eb._exec("delete from rec_log where area in ('zz-test','zz-gone')")

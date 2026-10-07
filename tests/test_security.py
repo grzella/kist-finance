@@ -315,7 +315,7 @@ def test_request_caps_convergence_check_recognises_hardened(client):
 def test_view_escaping_check_recognises_hardened():
     import security_review as sr
     items = sr._check_view_escaping(sr._repo_root())
-    assert [i["status"] for i in items] == ["pass"] * 6, items
+    assert [i["status"] for i in items] == ["pass"] * 7, items
 
 
 def test_view_escaping_check_flags_a_raw_sink(tmp_path):
@@ -447,3 +447,26 @@ def test_server_header_check_flags_missing_override(tmp_path, monkeypatch):
     monkeypatch.setattr(sr, "__file__", str(tmp_path / "server" / "security_review.py"))
     items = sr._check_server_header()
     assert any(i["status"] == "fail" for i in items), f"missing override not detected: {items}"
+
+
+def test_request_caps_check_does_not_call_the_model(client, monkeypatch):
+    """The caps check must not ask the model: it used to write a question into the
+    user's AI log every week and took ~80 s."""
+    import app as _app
+    import llm_log
+    import security_review as sr
+    monkeypatch.setattr(_app, "_ai_answer", lambda *a, **k: (_ for _ in ()).throw(AssertionError("model called")))
+    before = llm_log.stats()["total"]
+    items = sr._check_request_caps()
+    assert all(i["status"] == "pass" for i in items), items
+    assert llm_log.stats()["total"] == before
+
+
+
+def test_view_escaping_check_flags_ai_raw_sink(tmp_path):
+    import security_review as sr
+    views = tmp_path / "static" / "js" / "views"
+    views.mkdir(parents=True)
+    (views / "ai.js").write_text("`<div>${x.lesson}</div>`", encoding="utf-8")
+    items = sr._check_view_escaping(tmp_path)
+    assert any(i["status"] == "fail" and "ai.js" in i["title"] for i in items), items

@@ -79,7 +79,11 @@ def _rec_memory(items):
     disappearing = 'resolved'. Without memory every recommendation looked new every day.
     Each item also carries its `key` and a recorded `outcome`, if any."""
     _ensure_rec_log()
-    now = P._now(); seen = set()
+    now = P._now(); seen = set(); new_areas = set()
+    # a topic whose numbers changed (8.03% → 8.04%) gets a new key; that is the same
+    # recommendation, not a resolved one, so it keeps its age and the old row is marked superseded
+    open_before = eb._rows("select key, area, first_seen from rec_log where resolved_at is null")
+    current = {_rec_key(r["area"], r["text"]) for r in items}
     for r in items:
         k = _rec_key(r["area"], r["text"]); seen.add(k)
         r["key"] = k
@@ -90,11 +94,19 @@ def _rec_memory(items):
             r["outcome"] = row[0].get("outcome")
             r["outcome_note"] = row[0].get("outcome_note")
         else:
+            first = min((o["first_seen"] for o in open_before
+                         if o["area"] == r["area"] and o["key"] not in current), default=now)
             eb._exec("insert into rec_log (key, area, text, first_seen, last_seen) values (?,?,?,?,?)",
-                     (k, r["area"], r["text"], now, now))
-            r["since"] = now[:10]
-    for row in eb._rows("select key from rec_log where resolved_at is null"):
-        if row["key"] not in seen:
+                     (k, r["area"], r["text"], first, now))
+            r["since"] = first[:10]
+            new_areas.add(r["area"])
+    for row in open_before:
+        if row["key"] in seen:
+            continue
+        if row["area"] in new_areas:
+            eb._exec("update rec_log set resolved_at=?, outcome=?, outcome_note=?, outcome_at=? where key=?",
+                     (now, "obsolete", "superseded by a newer version", now, row["key"]))
+        else:
             eb._exec("update rec_log set resolved_at=? where key=?", (now, row["key"]))
     hist = eb._rows("select key, area, text, first_seen, resolved_at, outcome, outcome_note from rec_log "
                     "where resolved_at is not null order by resolved_at desc limit 10")
@@ -106,14 +118,28 @@ def _rec_memory(items):
 REC_OUTCOMES = ("done", "rejected", "obsolete")
 
 
+_REC_LOG_MIGRATED = False
+
+
 def _ensure_rec_log():
     eb._exec("""create table if not exists rec_log (
-        key text primary key, area text, text text, first_seen text, last_seen text, resolved_at text)""")
-    for col in ("outcome", "outcome_note", "outcome_at"):
+        key text primary key, area text, text text, first_seen text, last_seen text, resolved_at text,
+        outcome text, outcome_note text, outcome_at text)""")
+    global _REC_LOG_MIGRATED
+    if _REC_LOG_MIGRATED:
+        return
+    for col in ("outcome", "outcome_note", "outcome_at"):  # databases from before the outcome columns
         try:
             eb._exec("alter table rec_log add column " + eb._ident(col) + " text")
         except Exception:
-            pass  # column already exists
+            pass
+    # the same rule backwards, for rows logged before it existed: a row resolved at the very
+    # moment a new one in its area appeared was superseded, not acted on
+    eb._exec("update rec_log set outcome=?, outcome_note=?, outcome_at=resolved_at "
+             "where outcome is null and resolved_at is not null and exists (select 1 from rec_log n "
+             "where n.area = rec_log.area and n.key <> rec_log.key and n.first_seen = rec_log.resolved_at)",
+             ("obsolete", "superseded by a newer version"))
+    _REC_LOG_MIGRATED = True
 
 
 def set_rec_outcome(key, outcome, note=""):

@@ -2,9 +2,9 @@
 const CAREER_TAB_INFO = `<details style="margin:6px 0 12px;padding:8px 12px;background:var(--accent)14;border-radius:8px">
       <summary style="font-size:.9em"><b>👀 What this tab is (and is not)</b> — market monitoring, not job hunting <span class="muted" style="font-weight:normal">· click for details</span></summary>
       <div class="muted" style="font-size:.87em;margin-top:6px">This tab watches the <b>job market as a signal</b>, the same way the Market tab watches stock prices:
-        what is the sentiment around your role, how many offers reach you <i>without applying anywhere</i>, and how demand shifts over time —
-        especially as AI reshapes engineering roles. Tracking inbound offers measures your market value and the health of your niche;
-        it is not a sign of looking for a new job. Think of it as a personal labor-market index.</div>
+        the sentiment around your role, how many offers reach you <i>without applying anywhere</i>, and how demand shifts
+        as AI reshapes engineering roles. Inbound offers measure your market value and the health of your niche,
+        a personal labor-market index.</div>
     </details>`;
 
 async function renderCareer(el) {
@@ -43,7 +43,7 @@ async function renderCareer(el) {
         ${a.money_paths.map((p) => `<div class="card" style="margin:0;border-left:3px solid ${p.tag === "A" ? TOKENS.pos : p.tag === "B" ? TOKENS.accent : TOKENS.warn}">
           <h4 style="margin:0 0 4px">${esc(p.tag)}. ${esc(p.title)}</h4>
           <div class="pos" style="font-size:.85em;margin-bottom:6px">${esc(p.verdict)}</div>
-          <div style="font-size:.9em">${esc(p.text)}</div>
+          <div style="font-size:.9em;line-height:1.5">${paras(p.text)}</div>
         </div>`).join("")}
       </div>
     </div>

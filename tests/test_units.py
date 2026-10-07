@@ -145,14 +145,17 @@ def test_rag_reindex_embeds_new_data_and_degrades_without_server(client, monkeyp
 
     # (1) server alive → everything embedded, status = hybrid
     monkeypatch.setattr(llm_local, "embed", lambda t: [0.1, 0.2, 0.3] if t else None)
-    n = rag.reindex()
+    n = rag.reindex()["chunks"]
     st = rag.status()
     assert n > 0 and st["embedded"] == st["chunks"] == n
     assert "hybrid" in st["engine"]
 
-    # (2) server down → reindex passes, zero embeddings, engine = BM25 + hint
+    # (2) server down and no old index to carry over → reindex passes, zero embeddings,
+    # engine = BM25 + hint (with an old index the embeddings would be kept, see the test below)
+    import engine_bridge as eb
+    eb._exec("delete from rag_chunks")
     monkeypatch.setattr(llm_local, "embed", lambda t: None)
-    n2 = rag.reindex()
+    n2 = rag.reindex()["chunks"]
     st2 = rag.status()
     assert n2 == n and st2["embedded"] == 0
     assert "BM25" in st2["engine"] and "hybrid" not in st2["engine"]
@@ -181,6 +184,41 @@ def test_llm_log_records_and_reads(client):
     recent = llm_log.recent(5)
     assert any(r["prompt"] == "test question?" for r in recent)
     assert llm_log.stats()["total"] >= 1
+
+
+def test_llm_log_rating_feeds_lesson_stats(client):
+    import llm_log
+    lid = llm_log.record("q with a lesson", {"mode": "local", "local": {"ok": True, "text": "a"},
+                                             "sources": [{"source": "experience", "ref": "how to size a buffer"},
+                                                         {"source": "goal", "ref": "car"}]})
+    assert client.post(f"/api/llm/log/{lid}/rating", json={"rating": -1}).status_code == 200
+    assert client.post(f"/api/llm/log/{lid}/rating", json={"rating": 5}).status_code == 400
+    assert llm_log.lesson_stats()["how to size a buffer"] == {"used": 1, "up": 0, "down": 1}
+    assert next(r for r in llm_log.recent(5) if r["id"] == lid)["rating"] == -1
+
+
+def test_rag_context_keeps_one_lesson(client):
+    import experience, rag
+    for i in range(3):
+        experience.save(f"which savings goal is closest {i}", "Rank savings goals by percent done, not by amount left.")
+    rag.reindex()
+    _, used = rag.context_with_sources("which savings goal is closest to done")
+    assert sum(u["source"] == "experience" for u in used) == 1
+    for e in experience.listing():
+        if e["question"].startswith("which savings goal is closest"):
+            experience.delete(e["id"])
+
+
+def test_fire_tracking_uses_plan_frozen_in_snapshot(client):
+    import engine_bridge as eb
+    import planner_fire
+    eb._exec("delete from fire_snapshots")
+    for m, liquid, flow in (("2026-01", 100000, 5000), ("2026-02", 105000, None)):
+        eb._exec("insert into fire_snapshots (month, liquid, created_at, plan_flow) values (?,?,?,?)",
+                 (m, liquid, "2026-01-01", flow))
+    row = planner_fire.fire_tracking(contrib=9000, freed=0, base_annual=0)["rows"][0]
+    assert row["expected_growth"] == 5000   # the plan of January, not today's 9000
+    eb._exec("delete from fire_snapshots")
 
 
 def test_security_review_runs_and_reports(client):
@@ -566,3 +604,80 @@ def test_tax_reserve_set_aside_frees_cash(client, monkeypatch):
     assert o["tax_set_aside"] == 4950 and o["tax_uncovered"] == 0  # 50 < one lot of 100
     # the cushion is charged only for the uncovered 50, not the whole 5000
     assert planner.liquid_cushion()["cash"] == planner.liquid_cushion({**real(), "tax_reserve": 0})["cash"] - 50
+
+
+def test_ai_improve_status_lists_steps(client):
+    import ai_improve
+    r = client.get("/api/ai/improve").get_json()
+    assert r["todo"] == sum(1 for s in r["steps"] if s["state"] == "todo")
+    assert r["errors"] == sum(1 for s in r["steps"] if s["state"] == "error")
+    order = {"error": 0, "todo": 1, "auto": 2, "ok": 3}
+    assert [order[s["state"]] for s in r["steps"]] == sorted(order[s["state"]] for s in r["steps"])   # most urgent first
+    areas = {s["area"] for s in r["steps"]}
+    assert {"rag", "ratings", "lessons", "eval", "recs", "data"} <= areas
+    assert ai_improve.eval_history() == []   # the test DB has no eval folder
+
+
+def test_ai_eval_runs_only_with_a_reason(client, monkeypatch):
+    import ai_improve
+    monkeypatch.setattr(ai_improve, "eval_cmd", lambda: None)
+    assert ai_improve.run_eval() is True            # no command = nothing to do, not a failure
+    due, why = ai_improve.eval_due("some-model")
+    assert due and why                              # with no results the eval has a reason
+
+
+def test_whole_sentences_drops_cut_tail_but_keeps_abbreviations():
+    import experience
+    cut = "Count goals by percent done. Watch cash burn (np. marketing bez popytu) and set a hard limit to"
+    assert experience.whole_sentences(cut) == "Count goals by percent done."
+    full = "Keep it short. Check the currency, e.g. EUR vs PLN."
+    assert experience.whole_sentences(full) == full
+
+
+def test_rag_reindex_reuses_embeddings_and_clears_dirty(client, monkeypatch):
+    import llm_local, planner, rag
+    import engine_bridge as eb
+    monkeypatch.setattr(llm_local, "embed", lambda text: [1.0, 0.0])
+    rag.reindex()
+    monkeypatch.setattr(llm_local, "embed", lambda text: [0.0, 1.0] if text == "probe" else None)
+    planner.set_settings({"rag_dirty": "1"})
+    r = rag.reindex()                      # no embedder for chunks: everything must come from the old index
+    assert r["reused"] == r["chunks"] > 0 and r["embedded"] == r["chunks"]
+    assert planner.get_setting("rag_dirty") in ("", None)
+    assert eb._rows("select count(*) c from rag_chunks where embedding is null")[0]["c"] == 0
+
+
+def test_barometer_boards_snapshot_is_idempotent(client):
+    import barometer_collect as bc
+    import planner
+    calls = []
+    fake = lambda q, region: calls.append((q, region)) or 42
+    r = bc.collect_boards(force=True, fetch=fake)
+    assert r["ok"] and r["counts"] and all(v == 42 for v in r["counts"].values())
+    assert calls and calls[0][1] == "pl"
+    assert bc.collect_boards(fetch=fake)["skipped"]                 # second time in a month: no-op
+    pts = [p for p in planner.list_barometer()["points"] if p["stream"] == "boards"]
+    assert len(pts) == 1
+    for p in pts:
+        planner.delete_barometer_point(p["id"])
+
+
+def test_restart_endpoint_spawns_run_sh(client, monkeypatch):
+    import subprocess
+    import threading
+    calls = []
+    monkeypatch.setattr(subprocess, "Popen", lambda args, **kw: calls.append((args, kw)) or None)
+    monkeypatch.setattr(threading, "Timer", lambda *a, **kw: type("T", (), {"start": lambda self: None})())
+    assert client.post("/api/restart").get_json() == {"ok": True}
+    assert calls and calls[0][0][1].endswith("/run.sh") and calls[0][1]["start_new_session"]
+
+
+def test_learn_from_this_counts_as_thumbs_up(client, monkeypatch):
+    import experience, llm_log
+    monkeypatch.setattr(experience, "distill", lambda q, a: "Rank goals by percent done.")
+    lid = llm_log.record("which goal is closest?", {"mode": "local", "local": {"ok": True, "text": "a"}})
+    assert client.post("/api/experience", json={"question": "which goal is closest?", "answer": "a", "log_id": lid}).get_json()["ok"]
+    assert next(r for r in llm_log.recent(10) if r["id"] == lid)["rating"] == 1
+    for e in experience.listing():
+        if e["question"] == "which goal is closest?":
+            experience.delete(e["id"])

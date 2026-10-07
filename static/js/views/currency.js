@@ -56,7 +56,7 @@ async function renderCurrency(el) {
   el.innerHTML = `
     <h2>💱 FX — exposure, signals and conversion assistant</h2>
     <div class="muted" style="margin-bottom:12px">Rates refreshed daily (status in Control Center → "Market rates").
-      The signal combines level + trend + momentum + deviation from the average — not just "is it near the top".
+      The signal combines level + trend + momentum + deviation from the average.
       The backtest shows how often the signal actually caught a good moment.</div>
 
     <div class="card">

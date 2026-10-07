@@ -2,10 +2,10 @@ function marketBriefHtml(b, controls) {
   const hi = (b.highlights || []).map((h) => `<div class="card" style="margin:0">
       <div style="font-size:1.4em">${esc(h.icon || "•")}</div>
       <div style="font-weight:600;margin:2px 0">${esc(h.title)}</div>
-      <div class="muted" style="font-size:.9em">${esc(h.text)}</div></div>`).join("");
+      <div class="muted" style="font-size:.9em;line-height:1.5">${paras(h.text)}</div></div>`).join("");
   const geo = (b.geopolitics || []).map((g) => `<details class="mt">
       <summary style="font-weight:600">${esc(g.title)}</summary>
-      <div class="muted mt" style="font-size:.92em">${esc(g.text)}</div></details>`).join("");
+      <div class="muted mt" style="font-size:.92em;line-height:1.5">${paras(g.text)}</div></details>`).join("");
   const stanceColor = (s) => /sell/i.test(s) ? TOKENS.pos : /hold|core/i.test(s) ? TOKENS.accent
     : /accumulate|dca|buduj|stopniowo/i.test(s) ? TOKENS.warn : "#9aa";
   const pos = (b.positions || []).map((p) => `<tr>
@@ -70,7 +70,7 @@ async function renderMarket(el) {
         ? `<div class="mt"><canvas id="radarChart" height="50"></canvas>
            ${radar.history[radar.history.length-1].comment ? `<div class="muted mt" style="font-size:.85em">🤖 Comment (local AI): ${esc(radar.history[radar.history.length-1].comment)}</div>` : ""}</div>`
         : `<div class="muted mt" style="font-size:.82em">No readings yet — the radar stores the first one on the next daily cycle (or once the nightly sync delivers quotes).</div>`}
-      <div class="muted mt" style="font-size:.78em">The reading = the sum of component scores (each 0🟢/1🟡/2🔴, max 8 total). The radar predicts nothing — it contextualizes. Hover rows/columns for explanations.</div>
+      <div class="muted mt" style="font-size:.78em">The reading = the sum of component scores (each 0🟢/1🟡/2🔴, max 8 total). The radar predicts nothing; it describes how nervous the market is today. Hover rows/columns for explanations.</div>
     </div>` : ""}
 
     ${(() => {

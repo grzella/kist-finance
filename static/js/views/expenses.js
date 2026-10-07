@@ -110,8 +110,8 @@ async function renderExpenses(el) {
       <ul class="mt" style="margin:0;padding-left:18px">
         ${s.optimizations.map((o) => `<li class="mt ${o.severity === "warn" ? "" : "muted"}">${o.text}</li>`).join("")}
       </ul>
-      ${help(`These hints are computed from your own data — they don't scan the
-        market for live deals (that would fit a scheduled job, not a page render).`, "where these hints come from")}
+      ${help(`These hints are computed from your own data; they don't scan the
+        market for live deals.`, "where these hints come from")}
     </div>` : ""}
     <div class="row mt">
       <button id="invToggle" class="${invOnly ? "primary" : ""}" aria-pressed="${invOnly}">📄 Invoice items only (${invItems.length})</button>

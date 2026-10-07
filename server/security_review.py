@@ -105,6 +105,8 @@ _PERSONAL_MARKERS = [
 ]
 
 # Excludes for content scans (docs / vendored / sample data are not code).
+# tests hold eval()/exec()/os.system as fixtures for this very scanner; scanning them = false alarms
+_TEST_EXCLUDES = [":(exclude)tests/*", ":(exclude)*/tests/*"]
 _SCAN_EXCLUDES = [":(exclude)*.md", ":(exclude)posts/*", ":(exclude)doc-raw/*",
                   ":(exclude)*.html", ":(exclude)static/vendor/*",
                   ":(exclude)*.min.js", ":(exclude)seed.py",
@@ -259,7 +261,7 @@ def _check_code(repo):
     for sev, rx, title, fix in checks:
         files = (["*.py"] if any(k in title for k in py_only)
                  else ["*.py", "static/js/**"])
-        r = _git(repo, ["grep", "-nIE", rx, "--"] + files + _SCAN_EXCLUDES)
+        r = _git(repo, ["grep", "-nIE", rx, "--"] + files + _SCAN_EXCLUDES + _TEST_EXCLUDES)
         hits = [l for l in (r.stdout.splitlines() if r else []) if l.strip()]
         if hits:
             f(sev, "warn" if sev != "critical" else "fail", title,
@@ -268,8 +270,10 @@ def _check_code(repo):
     # SQL built by string interpolation inside a query call (execute/_exec/_rows)
     r = _git(repo, ["grep", "-nIE",
                     r"(execute|executescript|_exec|_rows)\s*\(\s*(f['\"]|['\"][^'\"]*(%s|%d|\{)|[^,)]*\.format\()",
-                    "--", "*.py"] + _SCAN_EXCLUDES)
-    sqlhits = [l for l in (r.stdout.splitlines() if r else []) if l.strip()]
+                    "--", "*.py"] + _SCAN_EXCLUDES + _TEST_EXCLUDES)
+    # identifiers from sqlite_master / the _ident() allow-list are not user input
+    sqlhits = [l for l in (r.stdout.splitlines() if r else []) if l.strip()
+               and "pragma table_info(" not in l and "_ident(" not in l]
     # elevate to injection if request data is on the same line
     inj = [h for h in sqlhits if re.search(r"request\.|args\[|\.json|get_json", h)]
     if inj:
@@ -334,7 +338,7 @@ def _check_config(repo, tracked):
 
     # .env.example must exist and hold NO real values
     exa = None
-    for cand in (root / ".env.example", root / "apps" / "budget" / ".env.example"):
+    for cand in (root / ".env.example", Path(__file__).resolve().parent.parent / ".env.example"):
         if cand.exists():
             exa = cand
             break
@@ -365,6 +369,7 @@ def _check_config(repo, tracked):
 
 
 # ---------------------------------------------------------------- 4. FUNCTIONAL
+
 
 def _check_functional():
     out = []
@@ -764,6 +769,11 @@ def _check_view_escaping(repo):
                         "${c.goal}", "${c.method}", "${r.why}", "${r.name}",
                         "${b.name}", "${b.how}", "${p}</li>"),
          ("esc(p.title)", "esc(p.repo)", "esc(c.goal)", "esc(r.why)", "esc(b.name)")),
+        # ai.js (AI improvement tab) renders the model's answers, the prompt log and
+        # distilled lessons: LLM self-ingest plus user free text, the highest-stakes sinks.
+        ("ai.js", ("${res.text}", "${r.synthesis.text}", "${ans}", "${e.prompt}",
+                   "${x.lesson}", "${x.question}", "${st.title}", "${st.detail}"),
+         ("esc(res.text)", "esc(r.synthesis.text)", "esc(ans)", "esc(x.lesson)", "esc(st.detail)")),
     )
     for fname, raw_sinks, escaped in checks:
         try:
@@ -775,7 +785,8 @@ def _check_view_escaping(repo):
         if hit:
             f("high", "fail", f"{fname}: DB/LLM field rendered without esc()",
               f"raw sinks {hit} = stored XSS", "Wrap each in esc(), e.g. `${esc(b.headline)}`")
-        elif all(e in src for e in escaped):
+        # paras() escapes every paragraph it emits (api.js), so it counts as esc()
+        elif all(e in src or e.replace("esc(", "paras(") in src for e in escaped):
             f("info", "pass", f"{fname}: fields escaped", f"uses {', '.join(escaped)}, no raw sink")
         else:
             f("warn", "warn", f"{fname}: render not recognised",
@@ -907,14 +918,15 @@ def _check_request_caps():
           "prompt/system fields reach the LLM without a length cap",
           "Define MAX_PROMPT_CHARS and enforce it in /api/llm/ask + /api/llm/chat")
 
-    ok_small = c.post("/api/llm/ask", json={"prompt": "how much have I saved?", "rag": False})
-    if ok_small.status_code != 413:
+    # no model call: a real /api/llm/ask took ~80 s and wrote the question into the user's AI log
+    blocked = _app._cap_prompt_fields(("prompt", "how much have I saved?"))
+    if blocked is None:
         f("info", "pass", "A legitimate small prompt passes",
-          f"real question → HTTP {ok_small.status_code} (no false positive)")
+          "a real question fits the cap (no false positive), checked without calling the model")
     else:
         f("med", "fail", "Cap too strict: blocks a legitimate prompt",
-          f"a small question got {ok_small.status_code}",
-          "Raise MAX_PROMPT_CHARS (a real question is far below 16 KiB)")
+          "a small question got 413",
+          "Raise MAX_PROMPT_CHARS (a real question << 16 KiB)")
     return out
 
 

@@ -78,7 +78,7 @@ async function renderForecasts(el) {
     ${ip ? `<div class="card mt" style="border-left:4px solid var(--accent)">
       <h3>📐 Investment policy: what to do with money that has no goal</h3>
       <div class="muted" style="font-size:.88em;margin-bottom:8px">For money AFTER the cushion, the tax reserve and tax-advantaged account limits. Model portfolio ${ip.rows.map((r) => `${r.target}% ${r.label.replace(/^\S+\s/, "").split(":")[0].toLowerCase()}`).join(" / ")},
-        expected return about ${fmt.pct(ip.blended_return_pct, 1)} a year. The "buy" column splits the next inflow so the buckets reach their weights: new money goes where the portfolio is short, nothing is sold.</div>
+        expected return about ${fmt.pct(ip.blended_return_pct, 1)} a year. The "buy" column splits the next inflow so the buckets reach their weights: new money goes where the portfolio is short and nothing is sold.</div>
       <table><thead><tr><th>Bucket</th><th>Instrument</th><th style="text-align:right">Target</th><th style="text-align:right">Now</th><th style="text-align:right">Value</th><th>State</th><th style="text-align:right">Buy ${ip.deploy_month || ""}</th></tr></thead>
         <tbody>${ip.rows.map((r) => `<tr><td><b>${esc(r.label)}</b></td><td class="muted">${esc(r.instrument)}</td>
           <td style="text-align:right">${r.target}%</td><td style="text-align:right">${r.pct}%</td><td style="text-align:right">${fmt.pln(r.value)}</td>
@@ -89,11 +89,11 @@ async function renderForecasts(el) {
         <div>
           <b>Rules (5):</b>
           <ol style="margin:6px 0 0 18px;font-size:.9em;line-height:1.5">
-            <li>Sell vested shares on vest day and invest the money the same week. No waiting for a "better price".</li>
+            <li>Sell vested shares on vest day and invest the money the same week. Do not wait for a "better price".</li>
             <li>Every month the surplus follows the same table (standing orders at the broker).</li>
             <li>Top up the bucket below its weight. Sell only when the drift passes 5 pp (the 5/25 rule), at most once a year, because selling is a tax event.</li>
             <li>Satellites and sandbox together stay under 15%. If your pay and equity already come from one sector, that sector is your biggest bet already.</li>
-            <li>Bonds are ballast, not a goal: 15% softens drawdowns and gives cash to buy equity after a crash. More than that loses to inflation after tax.</li>
+            <li>Bonds are ballast: 15% softens drawdowns and gives cash to buy equity after a crash. More than that loses to inflation after tax.</li>
           </ol>
         </div>
         <div>
@@ -136,7 +136,7 @@ async function renderForecasts(el) {
         <table><tbody>
           ${Object.entries(fire.milestones).map(([k, when]) => `<tr><td>${fmt.pln(Number(k))}${Number(k) === fire.target ? " — work-optional 🏁" : ""}</td><td${Number(k) === fire.target ? ' class="pos"' : ""}><b>${when}</b></td></tr>`).join("") || `<tr><td class="muted">No milestone within the horizon</td></tr>`}
         </tbody></table></div>
-      ${help(`This replaces Monte Carlo with readable lines. Hover over the chart to see the value in a given month. "Real" uses the after-inflation return (~3.5% real) — the date in today's purchasing power.`, "how to read the chart")}
+      ${help(`This replaces Monte Carlo with readable lines. Hover over the chart to see the value in a given month. "Real" uses the after-inflation return (~3.5% real): the date is in today's purchasing power.`, "how to read the chart")}
     </div>
 
     <div class="grid cols-2 mt">
@@ -202,16 +202,18 @@ async function renderForecasts(el) {
       <h3>🎯 Forecast calibration — per ticker × horizon <span class="muted" style="font-weight:normal;font-size:.75em">(${calib.total_scored} settled · volatility regime: ${calib.regime.label})</span></h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">The p10–p90 band should cover ~80%. "Too narrow" = volatility underestimated (the miss direction tells which way),
         "too wide" = a uselessly cautious band. Winkler = band width + a penalty per miss, as % of price — lower is better. New bands use a rolling window of 120 own settlements
-        per horizon and a VIX regime multiplier; the "self-cal." column shows how the already-calibrated ones score.</div>
-      <table><thead><tr><th>Horizon</th><th style="text-align:right">n</th><th style="text-align:right">Coverage</th><th style="text-align:right">↓ / ↑</th><th style="text-align:right">Winkler</th><th>Verdict</th></tr></thead>
-        <tbody>${calib.by_horizon.map((h) => `<tr><td><b>${h.horizon_days} days</b></td><td style="text-align:right">${h.n}</td>
-          <td style="text-align:right" class="${h.verdict === "ok" ? "pos" : "warn"}"><b>${h.coverage_pct}%</b></td>
+        per horizon and a VIX regime multiplier; the "self-cal." column shows how the already-calibrated ones score.
+        "indep." = non-overlapping windows: daily 21-day forecasts share most of their days, so only these count as separate outcomes,
+        and "too few windows" means the gap from 80% is still within noise (don't re-tune on it).</div>
+      <table><thead><tr><th>Horizon</th><th style="text-align:right">n (indep.)</th><th style="text-align:right">Coverage</th><th style="text-align:right">↓ / ↑</th><th style="text-align:right">Winkler</th><th>Verdict</th></tr></thead>
+        <tbody>${calib.by_horizon.map((h) => `<tr><td><b>${h.horizon_days} days</b></td><td style="text-align:right">${h.n} <span class="muted">(${h.n_independent})</span></td>
+          <td style="text-align:right" class="${h.verdict === "ok" ? "pos" : h.verdict === "too few windows" ? "muted" : "warn"}"><b>${h.coverage_pct}%</b></td>
           <td style="text-align:right" class="muted">${h.below_pct}% / ${h.above_pct}%</td><td style="text-align:right">${h.winkler_pct}%</td>
-          <td>${h.verdict === "ok" ? "🟢" : "🟡"} ${h.verdict}</td></tr>`).join("")}</tbody></table>
+          <td>${h.verdict === "ok" ? "🟢" : h.verdict === "too few windows" ? "⚪" : "🟡"} ${h.verdict}</td></tr>`).join("")}</tbody></table>
       <details class="mt"><summary class="muted">Per ticker (${calib.by_ticker.length} pairs)</summary>
-        <div style="overflow-x:auto"><table class="mt" style="font-size:.88em"><thead><tr><th>Ticker</th><th>Horizon</th><th style="text-align:right">n</th><th style="text-align:right">Coverage</th><th style="text-align:right">↓ / ↑</th><th style="text-align:right">Winkler</th><th style="text-align:right">self-cal.</th><th>Verdict</th></tr></thead>
-          <tbody>${calib.by_ticker.map((r) => `<tr><td><b>${r.ticker}</b></td><td>${r.horizon_days} d</td><td style="text-align:right">${r.n}</td>
-            <td style="text-align:right" class="${r.verdict === "ok" ? "pos" : "warn"}">${r.coverage_pct}%</td>
+        <div style="overflow-x:auto"><table class="mt" style="font-size:.88em"><thead><tr><th>Ticker</th><th>Horizon</th><th style="text-align:right">n (indep.)</th><th style="text-align:right">Coverage</th><th style="text-align:right">↓ / ↑</th><th style="text-align:right">Winkler</th><th style="text-align:right">self-cal.</th><th>Verdict</th></tr></thead>
+          <tbody>${calib.by_ticker.map((r) => `<tr><td><b>${r.ticker}</b></td><td>${r.horizon_days} d</td><td style="text-align:right">${r.n} <span class="muted">(${r.n_independent})</span></td>
+            <td style="text-align:right" class="${r.verdict === "ok" ? "pos" : r.verdict === "too few windows" ? "muted" : "warn"}">${r.coverage_pct}%</td>
             <td style="text-align:right" class="muted">${r.below_pct}% / ${r.above_pct}%</td><td style="text-align:right">${r.winkler_pct}%</td>
             <td style="text-align:right" class="muted">${r.calibrated_n}${r.calibrated_coverage_pct != null ? ` (${r.calibrated_coverage_pct}%)` : ""}</td>
             <td>${r.verdict}</td></tr>`).join("")}</tbody></table></div></details>

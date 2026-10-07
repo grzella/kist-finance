@@ -3,6 +3,7 @@ const views = {
   dashboard: renderDashboard,
   cashflow: renderCashflow,
   control: renderControl,
+  ai: renderAi,
   allocation: renderAllocation,
   taxes: renderTaxes,
   currency: renderCurrency,
@@ -189,5 +190,23 @@ route();
 // response also says whether the backend runs older code than the frontend.
 fetch("/api/health").then((r) => r.json()).then((h) => {
   const b = document.getElementById("staleBanner");
-  if (b && h && h.code_stale) b.style.display = "block";
+  if (b && h && h.code_stale) {
+    b.style.display = "block";
+    if (h.restart_cmd) document.getElementById("staleCmd").textContent = h.restart_cmd;
+    document.getElementById("staleRestart").addEventListener("click", async (e) => {
+      const btn = e.target, msg = document.getElementById("staleMsg");
+      btn.disabled = true; msg.textContent = "restarting…";
+      try { await api.post("/api/restart", {}); } catch (err) { /* the old instance dies mid-response, expected */ }
+      // wait for the new instance on the current code, then reload the page
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        try {
+          const fresh = await fetch("/api/health").then((r) => r.json());
+          if (fresh && !fresh.code_stale) { msg.textContent = "done, reloading"; location.reload(); return; }
+        } catch (err) { /* server not up yet */ }
+        msg.textContent = `restarting… ${i + 1} s`;
+      }
+      msg.textContent = "did not come back in 60 s: run the command in a terminal"; btn.disabled = false;
+    });
+  }
 }).catch(() => {});   // fire-and-forget, offline is fine

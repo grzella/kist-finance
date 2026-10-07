@@ -245,7 +245,7 @@ def _pct(cur, prev):
 
 
 _STREAM_LABEL = {"trends": "interest (Google Trends)", "openings": "openings (JSearch)",
-                 "watchlist": "open roles (watchlist)", "hiringlab": "IT postings in Europe (Indeed Hiring Lab)"}
+                 "watchlist": "open roles (watchlist)", "hiringlab": "IT postings in Europe (Indeed Hiring Lab)", "boards": "postings on IT job boards (No Fluff Jobs)"}
 
 
 def list_barometer():

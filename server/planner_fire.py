@@ -154,7 +154,7 @@ def fire_projection():
 
     # --- snapshot + tracking (plan vs actual) ---
     try:
-        record_fire_snapshot(start)
+        record_fire_snapshot(start, plan_flow=contrib + freed)
     except Exception:
         pass
     tracking = {}
@@ -201,11 +201,14 @@ def _liquid_now():
         return None
 
 
-def record_fire_snapshot(fallback_liquid=None):
+def record_fire_snapshot(fallback_liquid=None, plan_flow=None):
     from datetime import date
     month = date.today().strftime("%Y-%m")
-    exists = eb._rows("select 1 from fire_snapshots where month=?", (month,))
+    exists = eb._rows("select plan_flow from fire_snapshots where month=?", (month,))
     if exists:
+        if plan_flow is not None and exists[0]["plan_flow"] is None:  # a snapshot from a data save has no plan yet
+            eb._exec("update fire_snapshots set plan_flow=? where month=?",
+                     (plan_flow, month))
         return
     liquid = _liquid_now()
     if liquid is None:
@@ -216,13 +219,15 @@ def record_fire_snapshot(fallback_liquid=None):
         nw = w["total"] - w["debt_total"]
     except Exception:
         pass
-    eb._exec("insert into fire_snapshots (month, liquid, net_worth, created_at) values (?,?,?,?)",
-             (month, liquid, nw, P._now()))
+    eb._exec("insert into fire_snapshots (month, liquid, net_worth, created_at, plan_flow) values (?,?,?,?,?)",
+             (month, liquid, nw, P._now(), plan_flow))
 
 
 def fire_tracking(contrib, freed, base_annual):
-    """Compares real monthly snapshots with the expected pace (plan)."""
-    snaps = eb._rows("select month, liquid from fire_snapshots order by month asc")
+    """Compares real monthly snapshots with the expected pace (plan). The expected inflow
+    is the one frozen in the earlier snapshot, so editing the plan today doesn't rewrite
+    how past months score; older snapshots without it fall back to today's plan."""
+    snaps = eb._rows("select month, liquid, plan_flow from fire_snapshots order by month asc")
     if len(snaps) < 2:
         return {"status": "collecting data", "snapshots": len(snaps),
                 "first": snaps[0]["month"] if snaps else None}
@@ -232,7 +237,8 @@ def fire_tracking(contrib, freed, base_annual):
     for i in range(1, len(snaps)):
         prev, cur = snaps[i - 1], snaps[i]
         actual_growth = cur["liquid"] - prev["liquid"]
-        expected_growth = prev["liquid"] * base_r + contrib + freed
+        flow = prev["plan_flow"] if prev.get("plan_flow") is not None else contrib + freed
+        expected_growth = prev["liquid"] * base_r + flow
         delta = actual_growth - expected_growth
         cum_delta += delta
         rows.append({"month": cur["month"], "actual": round(cur["liquid"]),

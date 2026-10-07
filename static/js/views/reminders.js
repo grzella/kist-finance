@@ -8,9 +8,9 @@ async function renderReminders(el) {
 
   el.innerHTML = `
     <h2>🛠️ Control Center</h2>
-    <div class="muted" style="font-size:.85em;margin-bottom:10px">Two kinds: <b>automatic</b> — derived live from your data
-      (upcoming vests, a fixed-rate period ending, periodic security/backup nudges; they can't be deleted, they disappear
-      when the underlying fact changes) — and <b>manual</b> ones you add below. All reminders are also indexed into the
+    <div class="muted" style="font-size:.85em;margin-bottom:10px">Two kinds: <b>automatic</b>, derived live from your data
+      (upcoming vests, a fixed-rate period ending, periodic security/backup nudges; they can't be deleted and disappear
+      when the underlying fact changes), and <b>manual</b> ones you add below. All reminders are also indexed into the
       AI's private memory, so AI answers and the recommendations review can take them into account.</div>
     ${ctrlTabs("reminders")}
     <div class="muted" style="margin-bottom:12px">Automatic (from data: vests, bonus, fixed-rate end, targets, reviews)

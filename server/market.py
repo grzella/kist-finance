@@ -1405,7 +1405,7 @@ def forecast_calibration():
     the bands too narrow or too wide" instead of one global coverage number."""
     import forecast_models as fm
     rows = _ft_rows("select ticker, horizon_days, p10, p90, base_close, realized_close, "
-                    "coalesce(calibrated,0) calibrated, made_on from forecast_track "
+                    "coalesce(calibrated,0) calibrated, made_on, realized_on from forecast_track "
                     "where realized_close is not null order by ticker, horizon_days, made_on")
     groups = {}
     for r in rows:

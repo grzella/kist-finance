@@ -119,7 +119,7 @@ async function renderRsu(el) {
       ${analysisStaleBanner(deep)}
       ${(deep.sections || []).map((s) => `<details class="mt" ${s === deep.sections[0] ? "open" : ""}>
         <summary><b>${s.title}</b></summary>
-        <div class="mt" style="font-size:.93em">${s.text}</div>
+        <div style="font-size:.95em;line-height:1.5;max-width:90ch">${paras(s.text)}</div>
       </details>`).join("")}
       <div class="muted mt" style="font-size:.8em">A research snapshot (earnings, guidance, analyst targets) —
         not computed automatically. To refresh: ask Claude to "refresh the vest analysis".
@@ -127,7 +127,7 @@ async function renderRsu(el) {
     </div>` : ""}
     ${bands && bands.horizons ? `<div class="card mt" style="border-left:4px solid var(--accent)">
       <h3>📏 Short horizon — range, not direction
-        <span class="muted" style="font-weight:normal;font-size:.7em">(a single stock's direction cannot be predicted — we manage risk, not timing)</span></h3>
+        <span class="muted" style="font-weight:normal;font-size:.7em">(a single stock's direction cannot be predicted; the band sizes the risk)</span></h3>
       <table><thead><tr><th>Window</th><th>Pessimistic (p10)</th><th>Middle</th><th>Optimistic (p90)</th><th>Model</th></tr></thead>
       <tbody>${bands.horizons.map((h) => `<tr>
         <td>${h.days === 5 ? "1 week" : h.days === 21 ? "1 month" : "3 months"}</td>
@@ -273,8 +273,19 @@ async function renderRsu(el) {
             borderDash: [6, 4], tension: 0.2 },
         ],
       },
-      options: { plugins: { legend: { labels: { filter: (i) => !i.text.startsWith("p10") } } },
-        scales: { y: { ticks: { callback: (v) => (v / 1000) + "k" } } } },
+      options: {
+        plugins: {
+          legend: { labels: { filter: (i) => !i.text.startsWith("p10") } },
+          // without units the chart was unreadable: "median 700" meant 700k of share value, gross
+          tooltip: { callbacks: {
+            title: (items) => { const p = pj[items[0].dataIndex]; return `${p.month} · in ${p.months_ahead} mo · ${fmt.num(p.shares_base, 0)} shares (base)`; },
+            label: (it) => { const p = pj[it.dataIndex]; const price = { 0: p.p90_price, 1: p.p10_price, 2: p.p50_price }[it.datasetIndex];
+              return `${it.dataset.label}: ${fmt.pln(it.parsed.y)} gross${price ? ` (price $${price})` : ""}`; },
+          } },
+        },
+        scales: { y: { title: { display: true, text: "share value (held + vested), gross" }, ticks: { callback: (v) => (v / 1000) + "k" } },
+          x: { title: { display: true, text: "vest month" } } },
+      },
     }));
   }
 

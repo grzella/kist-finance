@@ -332,6 +332,53 @@ def collect_watchlist(force=False):
     return {"ok": True, "added": month, "counts": counts, "failed": failed}
 
 
+# ---------- IT job boards: No Fluff Jobs (keyless) ----------
+#
+# The watchlist only sees companies with a public ATS and JSearch needs a key. Regional IT job
+# boards carry more local EM/Head postings; No Fluff Jobs answers without a browser (checked
+# 2026-10-06; Just Join IT / RocketJobs sit behind Cloudflare, pracuj/theprotocol return 403).
+# LinkedIn cannot be counted. `region` comes from the config (default pl; nofluffjobs regions).
+# salaryCurrency/salaryPeriod are required: without them the API answers 400
+_NOFLUFF_URL = ("https://nofluffjobs.com/api/search/posting?page=1&pageSize=1&region={region}"
+                "&salaryCurrency=PLN&salaryPeriod=month")
+
+
+def nofluff_count(query, region="pl"):
+    """Number of postings matching the phrase (full text) in a region; a proxy like JSearch."""
+    import json as _json
+    import urllib.request
+    body = _json.dumps({"criteriaSearch": {"requirement": [], "keyword": [query]}}).encode()
+    req = urllib.request.Request(_NOFLUFF_URL.format(region=region), data=body, method="POST",
+                                 headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"})
+    data = _json.loads(urllib.request.urlopen(req, timeout=20).read())
+    return int(data.get("totalCount") or 0)
+
+
+def collect_boards(force=False, fetch=nofluff_count):
+    """Monthly snapshot of postings per role on No Fluff Jobs (stream 'boards').
+    A snapshot on the collection day, like the watchlist; idempotent within a month."""
+    import planner
+    cfg = planner.barometer_config()
+    region = (cfg.get("boards_region") or "pl").lower()
+    month = date.today().isoformat()[:7]
+    old = [p for p in planner.list_barometer()["points"] if p["stream"] == "boards" and p["month"] == month]
+    if old and not force:
+        return {"ok": True, "skipped": month}
+    counts = {}
+    try:
+        for r in cfg["roles"]:
+            counts[r["key"]] = fetch(r.get("query") or r["label"], region)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:140]}
+    for p in old:
+        planner.delete_barometer_point(p["id"])
+    planner.add_barometer_point({
+        "month": month, "counts": counts, "stream": "boards",
+        "sources": f"No Fluff Jobs ({region.upper()}, full text)", "geo": region.upper(),
+        "as_of": date.today().isoformat()})
+    return {"ok": True, "added": month, "counts": counts}
+
+
 # ---------- Indeed Hiring Lab: history of IT postings in Europe (backdrop for the watchlist) ----------
 #
 # The watchlist is a snapshot with no past. Hiring Lab publishes a daily index of

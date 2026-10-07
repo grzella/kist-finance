@@ -78,6 +78,22 @@ def test_interval_scores_verdicts_and_winkler():
     assert fm.interval_scores([]) is None
 
 
+def test_interval_scores_overlapping_windows_are_noise():
+    import forecast_models as fm
+    from datetime import date, timedelta
+    d0 = date(2026, 1, 1)
+    row = lambda i, step, y: {"p10": 90, "p90": 110, "realized_close": y, "base_close": 100,
+                              "made_on": (d0 + timedelta(i * step)).isoformat(),
+                              "realized_on": (d0 + timedelta(i * step + 21)).isoformat()}
+    # 30 daily 21-day forecasts = 2 independent windows: 60% is not evidence of a narrow band
+    daily = [row(i, 1, 100 if i % 5 < 3 else 80) for i in range(30)]
+    s = fm.interval_scores(daily)
+    assert s["n_independent"] == 2 and s["verdict"] == "too few windows"
+    # the same 60% over 60 separate windows is
+    spaced = [row(i, 22, 100 if i % 5 < 3 else 80) for i in range(60)]
+    assert fm.interval_scores(spaced)["verdict"].startswith("too narrow")
+
+
 def test_vol_regime_widens_longer_horizons_only():
     import forecast_models as fm
     c = _closes()
@@ -123,7 +139,7 @@ def test_rag_indexes_markdown_dirs_with_citations(client, tmp_path):
     (notes / "refinance.md").write_text("# Loan refinance\n\nWe negotiate the mortgage annex after a certificate from another bank; playbook: real offers, retention desk.\n" * 3, encoding="utf-8")
     (notes / ".hidden.md").write_text("# secret\n\ndo not index this ever at all\n", encoding="utf-8")
     planner.set_settings({"rag_dirs": json.dumps([str(notes)])})
-    n = rag.reindex()
+    n = rag.reindex()["chunks"]
     st = rag.status()
     assert n >= 2 and st["by_source"].get("note:knowledge", 0) >= 2
     assert str(notes) in st["dirs"]

@@ -40,7 +40,7 @@ async function renderData(el) {
     <h2>🛠️ Control Center</h2>
     ${ctrlTabs("data")}
     <div class="muted" style="margin-bottom:12px">What is pulled in automatically, what you have to enter yourself and how often.
-      Goal: as much as possible fully automated, with only the absolute monthly minimum done by hand. As of: ${d.generated_at}.</div>
+      Goal: automate as much as possible and keep the monthly manual work to a minimum. As of: ${d.generated_at}.</div>
 
     <div class="grid cols-4">
       <div class="card kpi"><div class="label">Zero-effort sources</div><div class="value pos">${s.auto}</div>
@@ -107,7 +107,7 @@ async function renderData(el) {
     <div class="card mt muted" style="font-size:.85em">
       <b>End state:</b> the only point that can't be automated "for free" is account balances —
       and even that goes away once free PSD2 (Open Banking) is hooked up via n8n. Once the roadmap is done
-      you only enter event-driven things by hand (a new offer, an ETF purchase, an installment change), nothing recurring.
+      the only manual entries left are event-driven ones, such as a new offer or an installment change.
     </div>
     
 `;

@@ -89,12 +89,16 @@ def ensure_tables():
     for col, ddl in (("counts", "text"), ("sources", "text"), ("geo", "text"),
                      ("as_of", "text"), ("stream", "text default 'trends'")):
         try:
-            eb._exec(f"alter table market_barometer add column {col} {ddl}")
+            eb._exec(f"alter table market_barometer add column {eb._ident(col)} {ddl}")
         except Exception:
             pass  # column already exists
     eb._exec("""create table if not exists fire_snapshots (
         month text primary key, liquid real not null, net_worth real,
         created_at text not null)""")
+    try:  # the monthly inflow the plan assumed WHEN the snapshot was taken (see fire_tracking)
+        eb._exec("alter table fire_snapshots add column plan_flow real")
+    except Exception:
+        pass  # column already exists
     # fixed expenses: item + amount PER MONTH (mirrors wealth_items/values) —
     # an item you don't touch this month simply carries its last value forward
     # (see expense_summary), so there's no monthly copy-paste of the whole list
@@ -262,7 +266,7 @@ MODULES = [
 ]
 
 CORE_VIEWS = ["dashboard", "cashflow", "recs", "wealth", "expenses", "allocation", "goals",
-              "forecasts", "metrics", "control", "reminders", "data", "wizard"]
+              "forecasts", "metrics", "control", "reminders", "data", "ai", "wizard"]
 
 
 def get_app_config():

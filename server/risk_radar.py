@@ -166,10 +166,10 @@ def _alert_if_hot(reading, comment=None):
     hot = ", ".join(f"{p['label']}: {p['level']} ({p['chg_1d']:+}%/d)"
                     for p in reading["components"]
                     if p.get("score") == 2 and p.get("level") is not None)
-    text = (f"🔴 Risk radar: {reading['score']}/{reading['max_score']} — markets are hot. "
+    text = (f"🔴 Risk radar {reading['score']}/{reading['max_score']}: markets are hot. "
             f"Drivers: {hot or 'see the app'}. "
             + (comment + " " if comment else "")
-            + "Worth a look — this is a signal to investigate, not to act.")
+            + "Worth a look: this is a signal to investigate, not to act.")
     try:
         req = urllib.request.Request(
             f"https://api.telegram.org/bot{token}/sendMessage",
