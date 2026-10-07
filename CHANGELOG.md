@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Ported from the private instance (2026-10-07)
+- **🎓 AI improvement tab** (Control Center → `#ai`, `server/ai_improve.py`, `/api/ai/improve`): AI mode, the ask box, the prompt log and learned lessons moved here from the main Control view, plus a red / amber / green checklist of the learning loop (model, RAG memory, ratings, lessons, quality eval, recommendation outcomes, forecasts, data freshness, failing scheduled tasks) sorted by urgency, and an improvement roadmap with evidence and a success criterion per item.
+- **👍/👎 on answers** (`POST /api/llm/log/<id>/rating`, values -1 / 0 / 1): ratings are attributed to the lessons that were in the answer's context (by lesson id), the lessons list shows uses and ratings and flags lessons that hurt more than they help; "Learn from this" counts as 👍. At most one lesson enters the RAG context. Distilled lessons are trimmed to whole sentences.
+- **Scheduled quality eval** (`ai_eval` task, `ai_eval_cmd` setting): runs only when the model, the question set or the 30-day window changed, and records its result in `<data>/eval/`.
+- **Incremental RAG reindex**: embeddings of unchanged chunks are carried over and the "new data" flag is cleared by the reindex itself; the response reports chunks, embedded, reused and seconds. Loan chunks include the fixed-rate end and remaining installments.
+- **Forecast calibration verdicts** count non-overlapping windows; a gap from 80% within binomial noise reads "too few windows". FIRE snapshots freeze the planned monthly inflow, so editing the plan does not rewrite how past months score.
+- **Recommendations**: a rewording with new numbers supersedes the previous entry (outcome "obsolete") and keeps its age, instead of piling up "resolved without an outcome".
+- **Barometer**: a 🗂️ job-boards stream (No Fluff Jobs postings per role, keyless, `barometer_boards`).
+- **Restart from the stale-code banner** (`POST /api/restart`); `run.sh` stops whoever owns the port.
+- **Monte Carlo cone** in the RSU tab: axis titles and tooltips with the month, share count, amount and price.
+- **Long analysis text** (career, market brief, RSU deep-dive) renders as short paragraphs and lists (`paras()` in `api.js`, which escapes what it emits).
+- **Security review**: the request-cap check no longer calls the model, tests are excluded from the dangerous-pattern grep, SQL identifiers go through `_ident()`, and `ai.js` is covered by the XSS view check.
+- **Demo**: the AI improvement tab ships with a coherent sample story (rated answers, lessons in use, three eval runs, an indexed memory).
+
 ### Ported from the private instance (2026-10-06)
 - **Investment policy card** in Forecasts (`/api/invest-plan`, `planner_fire.invest_plan`): a model portfolio for money with no goal (core / bonds / themes / satellites / sandbox, weights from the `invest_model` setting), the brokerage positions from Wealth sorted into buckets (employer stock excluded), a buy list that splits the next vest and the surpluses until then across the buckets below weight (nothing sold), a 5/10/15-year projection at 4% / blended / 9%, and an optional themes plan (`invest_themes` setting) with cached prices and 1-year change.
 - **Broker-confirmed vest total** (`confirmed_shares_per_vest`, `confirmed_until` in the RSU grant parameters): the broker's shares-per-vest overrides the pricing-window estimate until the given month, the difference shows up as a "broker correction" source so Career and Cash-flow sum what the broker shows.
