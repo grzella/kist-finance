@@ -357,6 +357,32 @@ for q, a in [
                 {"mode": "local", "rag_used": True,
                  "local": {"ok": True, "text": a}, "best": a})
 
+# --- the AI improvement tab: ratings attributed to the lessons in context, three quality-eval
+# runs and an indexed memory, so the tab tells the full loop instead of "nothing yet" ---
+def _ai_story():
+    import rag
+    lessons = {r["question"]: r["id"] for r in eb._rows("select id, question from agent_experiences")}
+    logs = eb._rows("select id, prompt from llm_log order by ts")
+    by_topic = [("overpay", "Overpay the mortgage or invest?", 1),
+                ("EUR", "Is the currency signal telling me to convert now?", -1),
+                ("RSU", "Should I sell RSU at vest?", 1)]
+    for word, lesson_q, rating in by_topic:
+        row = next((r for r in logs if word in r["prompt"]), None)
+        if row and lesson_q in lessons:
+            eb._exec("update llm_log set rating=?, lessons=? where id=?",
+                     (rating, json.dumps([lessons[lesson_q]]), row["id"]))
+    eval_dir = data_dir / "eval"
+    eval_dir.mkdir(exist_ok=True)
+    (eval_dir / "gold-demo.json").write_text("[]")
+    for days_ago, passed in ((40, 11), (19, 13), (3, 15)):
+        ts = (datetime.now() - timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M")
+        (eval_dir / f"run-{ts[:10]}.json").write_text(json.dumps(
+            {"variant": "baseline", "model": "local-9b-q6 (demo)", "ts": ts, "passed": passed, "total": 16, "cases": {}}))
+    rag.reindex()   # BM25 only on CI (no embedding server); clears the "new data" flag
+
+
+best_effort("AI improvement story", _ai_story)
+
 # --- market brief (handcrafted — no LLM in the build) ---
 brief = {
     "headline": "Markets are drifting sideways while rate-cut expectations firm up; "
@@ -478,8 +504,26 @@ for k, alts in _TJ_ALT.items():
 # empty; run this script on your own laptop and they leak your real
 # username/email into the committed-nowhere-but-deployed static demo. Scrub
 # them unconditionally so the demo is safe regardless of where it's built.
+def _demo_ai_improve(d):
+    """No model runs in the static demo: the "Local model" row would always be red there.
+    Say so instead, and recount the header from the rewritten rows."""
+    for st in d.get("steps", []):
+        if st["area"] == "model":
+            st.update(state="ok", action=None,
+                      detail="Static demo: no model runs here. In your install this row shows your llama-server and turns red when it stops.")
+        if st["area"] == "eval" and st["state"] != "ok":
+            st["detail"] = st["detail"].split(". Will not run")[0] + "."
+    d["errors"] = sum(1 for st in d["steps"] if st["state"] == "error")
+    d["todo"] = sum(1 for st in d["steps"] if st["state"] == "todo")
+    return d
+
+
 _SCRUB = {
     "/api/backup/status": lambda d: {**d, "destinations": [], "dir": ""},
+    "/api/ai/improve": _demo_ai_improve,
+    # local paths of the machine that builds the demo (restart command, checkout dir)
+    "/api/health": lambda d: {**d, "restart_cmd": "./run.sh"},
+    "/api/git": lambda d: {**d, "repo": ""},
 }
 
 ok = fail = 0

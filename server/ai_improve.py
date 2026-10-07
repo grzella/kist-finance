@@ -165,7 +165,7 @@ def status():
                            + ("New data: it indexes itself before the next AI question (and weekly on schedule). "
                               "The button does it now, usually in seconds, because embeddings of unchanged chunks are carried over."
                               if dirty else "")
-                           + (f" {missing} chunks without an embedding (the embedding server was offline); they get one at the next indexing." if missing > 0 else "")
+                           + (f"{missing} chunks without an embedding (the embedding server was offline); they get one at the next indexing." if missing > 0 else "")
                            + ("Current." if ok else ""),
                            None if ok else {"kind": "reindex", "label": "Refresh now"}))
     except Exception:
