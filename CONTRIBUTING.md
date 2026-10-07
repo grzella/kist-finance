@@ -41,12 +41,15 @@ independent of load, or mark the test as an integration test on purpose.
 
 ## Ground rules
 
-- **Runtime dependencies: Flask only.** Prefer the standard library. If a change
-  truly needs another package, raise it in an issue first — most things (RAG,
-  backups, forecasting) are built on stdlib on purpose.
+- **Runtime dependencies stay minimal:** Flask, `cryptography` for backup
+  encryption and `pytrends` for the barometer. Prefer the standard library. If a
+  change truly needs another package, raise it in an issue first — most things
+  (RAG, backups, forecasting) are built on stdlib on purpose.
 - **Keep it generic.** No real names, employers, cities, or personal figures in
   code — the security review's personal-data audit will fail the build. Real data
-  belongs only in your local, git-ignored `.finance/`.
+  lives in your local data directory, outside the repo
+  (`~/Library/Application Support/Kist` on macOS, `~/.local/share/kist` on Linux;
+  older installs keep a git-ignored `.finance/`).
 - **Local-first.** The server binds to `127.0.0.1`; cloud integrations
   (Supabase, n8n, a cloud LLM) are always opt-in and never required.
 - **Never commit** `.finance/`, `.env`, or `backups/` (they're git-ignored).

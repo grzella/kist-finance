@@ -26,7 +26,8 @@ local server or a local LLM.
   server; runs on every push/PR + weekly in CI and is available from the
   Control Center.
 - Scanner-efficacy tests plant synthetic leaks and assert they are caught.
-- CI enforces a coverage floor and a bandit gate; CodeQL and Dependabot are on.
+- CI enforces a coverage floor and a bandit gate. CodeQL (default setup), Dependabot
+  alerts and security updates, and secret scanning with push protection are on.
 
 ## Threat model — the localhost assumption (read before self-hosting)
 
