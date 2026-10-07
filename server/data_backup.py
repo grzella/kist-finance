@@ -195,16 +195,17 @@ def restore(filename):
     folder = _folder()
     if not folder:
         return {"ok": False, "error": "no backup folder set"}
-    if not filename or "/" in filename or ".." in filename:
+    base = os.path.normpath(folder)
+    src = os.path.normpath(os.path.join(base, filename or ""))
+    if not src.startswith(base + os.sep):  # normpath + prefix: the traversal guard CodeQL recognises
         return {"ok": False, "error": "invalid backup name"}
-    src = Path(folder) / filename
-    if not src.exists():
+    if not os.path.exists(src):
         return {"ok": False, "error": "backup not found"}
     live = _db_path()
     if not live or not os.path.exists(live):
         return {"ok": False, "error": "live database not found"}
 
-    plain, tmp = str(src), None
+    plain, tmp = src, None
     if filename.endswith(".enc"):
         if not os.environ.get("BACKUP_KEY"):
             return {"ok": False, "error": "encrypted backup — set BACKUP_KEY to restore"}
@@ -212,9 +213,9 @@ def restore(filename):
             import cryptography  # noqa: F401
         except Exception:
             return {"ok": False, "error": "encrypted backup — pip install cryptography to restore"}
-        tmp = str(src) + ".plain.tmp"
+        tmp = src + ".plain.tmp"
         try:
-            _decrypt_to(str(src), tmp)
+            _decrypt_to(src, tmp)
         except Exception as e:
             return {"ok": False, "error": "decrypt failed: " + str(e)[:60]}
         plain = tmp

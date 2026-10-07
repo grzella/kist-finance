@@ -100,6 +100,7 @@ def test_backup_restore_reverts_changes(client, tmp_path):
     assert len(client.get("/api/goals").get_json()) == before  # reverted
     # guard against path traversal
     assert backup.restore("../../etc/passwd")["ok"] is False
+    assert backup.restore("/etc/passwd")["ok"] is False
 
 
 def test_rag_semantic_hybrid_finds_without_lexical_overlap(client, monkeypatch):
