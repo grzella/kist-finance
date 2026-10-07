@@ -269,7 +269,7 @@ def reindex():
     ensure_tables()
     old = {}
     for r in eb._rows("select text, embedding from rag_chunks where embedding is not null"):
-        old[hashlib.sha1(r["text"].encode("utf-8")).hexdigest()] = r["embedding"]
+        old[hashlib.sha1(r["text"].encode("utf-8"), usedforsecurity=False).hexdigest()] = r["embedding"]
     eb._exec("delete from rag_chunks")
     use_emb = llm_local.embed("probe") is not None   # one probe, not per chunk
     now = datetime.now().isoformat(timespec="seconds")
@@ -280,7 +280,7 @@ def reindex():
     except Exception:
         pass  # missing note directories must not break the reindex of app data
     for source, ref, text, stamp in items:
-        emb = old.get(hashlib.sha1(text.encode("utf-8")).hexdigest())
+        emb = old.get(hashlib.sha1(text.encode("utf-8"), usedforsecurity=False).hexdigest())
         if emb:
             reused += 1
         elif use_emb:
