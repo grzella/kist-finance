@@ -49,6 +49,13 @@ def _model_name():
     return _MODEL_NAME
 
 
+def _think_suffix(prompt, think):
+    """Qwen3 soft switch: /think or /no_think at the end of the user turn; None leaves the default."""
+    if think is not None and "qwen3" in _model_name().lower():
+        return prompt + (" /think" if think else " /no_think")
+    return prompt
+
+
 def chat(prompt, system=None, max_tokens=400, temperature=0.2, json_schema=None,
          think=None):
     """Single completion. Returns text, or None when offline.
@@ -62,8 +69,7 @@ def chat(prompt, system=None, max_tokens=400, temperature=0.2, json_schema=None,
     True/False appends the /think or /no_think soft switch — thinking helps
     multi-step analysis, hurts latency on trivial calls. None = model default.
     """
-    if think is not None and "qwen3" in _model_name().lower():
-        prompt = prompt + (" /think" if think else " /no_think")
+    prompt = _think_suffix(prompt, think)
     msgs = ([{"role": "system", "content": system}] if system else []) + \
            [{"role": "user", "content": prompt}]
     payload = {"messages": msgs, "max_tokens": max_tokens, "temperature": temperature}
@@ -93,16 +99,18 @@ def chat_json(prompt, schema, system=None, max_tokens=400, temperature=0.2, thin
 
 
 def chat_with_tools(prompt, tools, handlers, system=None, max_tokens=700,
-                    temperature=0.2, max_rounds=4):
+                    temperature=0.2, max_rounds=4, think=False):
     """Agentic loop over llama-server's OpenAI-compatible function calling:
     send tools → execute requested calls locally → feed results back → repeat
     until the model answers in text. Returns the final text, or None when the
     server is offline / doesn't support tools (callers fall back to chat()).
 
     handlers: {tool_name: callable(**args) -> JSON-serializable result}."""
+    # Qwen3 thinks by default: the reasoning ate the whole 700-token budget and the
+    # answer came back empty or cut off (finish_reason "length"), so it is off here
+    prompt = _think_suffix(prompt, think)
     msgs = ([{"role": "system", "content": system}] if system else []) + \
            [{"role": "user", "content": prompt}]
-    text = None
     for _ in range(max_rounds):
         payload = {"messages": msgs, "max_tokens": max_tokens,
                    "temperature": temperature, "tools": tools}
@@ -117,7 +125,7 @@ def chat_with_tools(prompt, tools, handlers, system=None, max_tokens=700,
             return None
         calls = msg.get("tool_calls") or []
         if not calls:
-            return msg.get("content")
+            return msg.get("content") or None  # empty → None, so callers fall back
         msgs.append(msg)
         for c in calls:
             fn = (c.get("function") or {})
@@ -132,7 +140,7 @@ def chat_with_tools(prompt, tools, handlers, system=None, max_tokens=700,
                 result = {"error": str(e)[:200]}
             msgs.append({"role": "tool", "tool_call_id": c.get("id") or fn.get("name"),
                          "content": json.dumps(result, ensure_ascii=False, default=str)[:4000]})
-    return text
+    return None
 
 
 # --- reranking (optional, third RAG stage) ---

@@ -6,6 +6,7 @@ read-only at the SQLite level (file:...?mode=ro), on top of that only a single
 SELECT/WITH statement passes validation, and results are capped at MAX_ROWS.
 Every tool round-trip ends up in the prompt log like any other AI call.
 """
+import json
 import re
 import sqlite3
 import time
@@ -74,3 +75,51 @@ def run_select(sql=""):
         return {"ok": True, "rows": rows, "truncated": len(rows) == MAX_ROWS}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
+
+
+def ask_local(ask, system):
+    """Local model with the read-only `query_db` tool; plain chat when the server has no
+    tool support or the tool run yields nothing. Returns (text, via_tools, tool_results).
+    Shared by the app and the local eval, so the eval measures the answer the user sees."""
+    import llm_local
+    try:
+        sch = schema_summary()
+        if sch:
+            tools = [{"type": "function", "function": {
+                "name": "query_db",
+                "description": "Run ONE read-only SQL SELECT against the user's "
+                               "local finance database (SQLite) to check real "
+                               "numbers before answering. Tables: " + sch,
+                "parameters": {"type": "object", "required": ["sql"],
+                               "properties": {"sql": {"type": "string", "description": "a single SELECT statement"}}}}}]
+            seen = []
+            def query_db(sql=""):
+                res = run_select(sql)
+                seen.append(json.dumps(res, ensure_ascii=False, default=str))
+                return res
+            lt = llm_local.chat_with_tools(ask, tools, {"query_db": query_db}, system=system)
+            if lt is not None:
+                return lt, True, "\n".join(seen)
+    except Exception:
+        pass
+    return llm_local.chat(ask, system=system, think=False), False, ""
+
+
+_NUM = re.compile(r"\d+(?:[ \u00a0.,]\d+)*")
+
+
+def _digits(tok):
+    return re.sub(r"\D", "", tok).strip("0")
+
+
+def unsourced_numbers(answer, evidence):
+    """Numbers in the answer that appear nowhere in the evidence (context, question, SQL
+    results): computed, rounded or invented. Compared as digit strings, so "1 280,00"
+    matches "1280.0" in either locale; only numbers with 3+ digits or a fraction count."""
+    have = {_digits(t) for t in _NUM.findall(evidence or "")}
+    out = []
+    for tok in _NUM.findall(answer or ""):
+        d = _digits(tok)
+        if (len(d) >= 3 or re.search(r"[.,]\d", tok)) and d and d not in have and tok not in out:
+            out.append(tok)
+    return out

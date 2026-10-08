@@ -682,3 +682,10 @@ def test_learn_from_this_counts_as_thumbs_up(client, monkeypatch):
     for e in experience.listing():
         if e["question"] == "which goal is closest?":
             experience.delete(e["id"])
+
+
+def test_unsourced_numbers_flags_only_numbers_missing_from_evidence():
+    import db_tools
+    got = db_tools.unsourced_numbers("1 280,00 and 5,6% over 3 goals, about 1,3 m in 2026",
+                                     "balance 1280.0; rate 5.60; year 2026")
+    assert got == ["1,3"]

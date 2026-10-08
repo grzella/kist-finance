@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Fixed (2026-10-08)
+- **Empty or cut-off local answers with the SQL tool**: Qwen3 thinking was left on in `chat_with_tools` and the reasoning used the whole 700-token budget (`finish_reason: length`). Thinking is now off there, an empty answer counts as no answer, and the plain-chat fallback runs without thinking too.
+- **The tool path lives in `db_tools.ask_local()`**, shared by the app and the local eval, so the eval measures the answer the user sees.
+- **⚠️ on numbers not found in your data**: the answer lists numbers that appear neither in the context, the question nor the SQL results (computed, rounded or made up); also returned as `unsourced_numbers`.
+
 ### Ported from the private instance (2026-10-07)
 - **🎓 AI improvement tab** (Control Center → `#ai`, `server/ai_improve.py`, `/api/ai/improve`): AI mode, the ask box, the prompt log and learned lessons moved here from the main Control view, plus a red / amber / green checklist of the learning loop (model, RAG memory, ratings, lessons, quality eval, recommendation outcomes, forecasts, data freshness, failing scheduled tasks) sorted by urgency, and an improvement roadmap with evidence and a success criterion per item.
 - **👍/👎 on answers** (`POST /api/llm/log/<id>/rating`, values -1 / 0 / 1): ratings are attributed to the lessons that were in the answer's context (by lesson id), the lessons list shows uses and ratings and flags lessons that hurt more than they help; "Learn from this" counts as 👍. At most one lesson enters the RAG context. Distilled lessons are trimmed to whole sentences.

@@ -714,27 +714,8 @@ def _ai_answer(prompt, system=None, use_rag=True):
     # Local model gets a read-only SQL tool: it can CHECK real numbers in the
     # database instead of guessing from RAG excerpts. Falls back to plain chat
     # when the server has no tool support (or the tool run yields nothing).
-    lt, via_tools = None, False
-    try:
-        import db_tools
-        sch = db_tools.schema_summary()
-        if sch:
-            tools = [{"type": "function", "function": {
-                "name": "query_db",
-                "description": "Run ONE read-only SQL SELECT against the user's "
-                               "local finance database (SQLite) to check real "
-                               "numbers before answering. Tables: " + sch,
-                "parameters": {"type": "object", "required": ["sql"],
-                               "properties": {"sql": {"type": "string",
-                                   "description": "a single SELECT statement"}}}}}]
-            lt = llm_local.chat_with_tools(ask, tools,
-                                           {"query_db": db_tools.run_select},
-                                           system=system)
-            via_tools = lt is not None
-    except Exception:
-        lt = None
-    if lt is None:
-        lt = llm_local.chat(ask, system=system, think=True)
+    import db_tools
+    lt, via_tools, sql_out = db_tools.ask_local(ask, system)
     out["local"] = {"ok": lt is not None, "text": lt, "tools": via_tools,
                     "label": llm_local.status().get("model", "local")}
     if mode == "both":
@@ -754,8 +735,15 @@ def _ai_answer(prompt, system=None, use_rag=True):
             if sy:
                 out["synthesis"] = {"ok": True, "text": sy, "by": by}
     # best single answer (synthesis > cloud > local)
-    out["best"] = (out.get("synthesis") or {}).get("text") or \
-                  (out.get("cloud") or {}).get("text") or out["local"]["text"]
+    best = (out.get("synthesis") or {}).get("text") or \
+           (out.get("cloud") or {}).get("text") or out["local"]["text"]
+    # money answers: flag numbers the model did not get from the context or SQL
+    unsourced = db_tools.unsourced_numbers(best, ask + "\n" + sql_out) if best else []
+    if unsourced:
+        best += ("\n\n⚠️ Numbers not found verbatim in your data (computed, rounded or made up, "
+                 "check them): " + ", ".join(unsourced[:6]))
+    out["unsourced_numbers"] = unsourced
+    out["best"] = best
     out["log_id"] = llm_log.record(prompt, out)
     return out
 
