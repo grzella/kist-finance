@@ -694,11 +694,18 @@ def _check_web_guard():
         import planner
         base = planner.get_setting("commit_repos")
         r = c.put("/api/settings", headers={"Origin": f"http://127.0.0.1:{port}"},
-                  json={"commit_repos": "/tmp/pentest-probe"})
+                  json={"commit_repos": "/tmp/pentest-probe",
+                        "ai_eval_cmd": '["/bin/sh", "-c", "touch /tmp/pentest-pwn"]'})
         after = planner.get_setting("commit_repos")
-        if r.status_code == 200 and after == base:
+        # ai_eval_cmd -> argv run by run_eval()->subprocess.run: the worst sink key
+        eval_leaked = planner.get_setting("ai_eval_cmd") is not None
+        if r.status_code == 200 and after == base and not eval_leaked:
             f("info", "pass", "Protected settings keys are rejected",
-              "PUT /api/settings can't set commit_repos/ai_mode/backup_dir/... — no mass assignment")
+              "PUT /api/settings can't set commit_repos/ai_mode/ai_eval_cmd/rag_dirs/... — no mass assignment")
+        elif eval_leaked:
+            f("high", "fail", "ai_eval_cmd was writable via /api/settings (RCE)",
+              "the generic writer set an argv executed by run_eval()->subprocess.run",
+              "Add ai_eval_cmd/rag_dirs to _PROTECTED_SETTINGS")
         else:
             f("high", "fail", "Protected setting was writable via /api/settings",
               f"commit_repos changed to {after!r} through the generic settings writer",
@@ -791,6 +798,63 @@ def _check_view_escaping(repo):
         else:
             f("warn", "warn", f"{fname}: render not recognised",
               "neither raw nor escaped pattern found; check by hand after a refactor")
+    return out
+
+
+# K-XSS-1 sweep (2026-10-11): after the named sinks (control/market/career/commits/ai/offers/
+# goals), every view in both repos was swept. This map lists untrusted fields (LLM output /
+# external Supabase data / user free text) rendered into the DOM that MUST go through esc().
+# Positive assertion: esc(<field>) present. A generic "any ${x.field} without esc" lint produced
+# ~500 false positives (numbers, Chart.js callbacks, class maps, comparisons), so we keep a
+# curated list of real sinks: a refactor that renames a field -> warn "check by hand", while
+# unwrapping esc() on an existing field -> fail (regression).
+_XSS_ESCAPED_SINKS = {
+    "ailearn.js": ["a.as_of", "a.verdict", "a.warsaw_note", "a.score_label", "l.name",
+                   "l.desc", "c.name", "c.why", "c.provider", "s.how", "x.what", "x.name"],
+    "api.js": ["a.stale.as_of"],
+    "business.js": ["w.week", "m.month", "mkt.weeks[0].week"],
+    "cashflow.js": ["d.sweep_target_name"],
+    "dashboard.js": ["xtb.headline", "gs.goal"],
+    "expenses.js": ["o.text", "i.entity", "i.currency"],
+    "firma.js": ["x.gate", "x.track", "x.week", "h.title", "h.predicted_outcome",
+                 "i.insight", "e.category"],
+    "forecasts.js": ["r.ticker", "t.theme", "t.thesis", "fire.cone.benchmark", "r.instrument"],
+    "italy.js": ["a.headline", "a.as_of", "a.recommendation.pick", "c.verdict", "c.region",
+                 "l.verdict", "l.region", "a.countries.verdict"],
+    "market.js": ["a.currency"],
+    "offers.js": ["s.reading", "p.my_inbound", "p.month", "wl.month", "task.last_error.at"],
+    "property.js": ["a.headline", "a.recommendation.pick", "c.weight", "l.name", "l.region"],
+    "recs.js": ["h.text.slice"],
+    "rsu.js": ["deep.headline", "deep.as_of", "deep.vest_month", "deep.price", "r.ticker", "g.note"],
+}
+
+
+def _check_view_escaping_sweep():
+    """K-XSS-1 regression: every untrusted field in _XSS_ESCAPED_SINKS must go through esc().
+    A view missing in this repo (PL/EN drift) is skipped."""
+    out = []
+    f = _finder(out, "xss-sweep", "XSS (view sweep K-XSS-1)")
+    base = Path(__file__).resolve().parent.parent / "static" / "js"
+    for fname, flds in _XSS_ESCAPED_SINKS.items():
+        p = (base / "api.js") if fname == "api.js" else (base / "views" / fname)
+        try:
+            src = p.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        raw = [fld for fld in flds if ("esc(" + fld) not in src]
+        if not raw:
+            f("info", "pass", f"{fname}: untrusted sinks escaped",
+              f"{len(flds)} fields (LLM/external/free-text) go through esc()")
+            continue
+        reverted = [fld for fld in raw if fld in src]
+        gone = [fld for fld in raw if fld not in src]
+        if reverted:
+            f("high", "fail", f"{fname}: untrusted sink without esc() (K-XSS-1 regression)",
+              f"fields rendered raw into the DOM: {reverted}",
+              f"Wrap in esc(), e.g. `${{esc({reverted[0]})}}`")
+        if gone:
+            f("warn", "warn", f"{fname}: sink disappeared (refactor?)",
+              f"no esc({gone}) and field absent — check by hand after a refactor")
     return out
 
 
@@ -953,6 +1017,7 @@ def run(full=True):
         findings += _check_ai_tools()
         findings += _check_web_guard()
         findings += _check_view_escaping(repo)
+        findings += _check_view_escaping_sweep()
         findings += _check_server_header()
         findings += _check_market_fetch()
         findings += _check_request_caps()

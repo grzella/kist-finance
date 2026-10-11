@@ -245,10 +245,15 @@ def test_settings_endpoint_blocks_protected_keys(client):
     import planner
     before = planner.get_setting("commit_repos")
     r = client.put("/api/settings", headers={"Origin": "http://127.0.0.1:8321"}, json={
-        "commit_repos": "/etc", "ai_mode": "both", "monthly_savings": 4321}).get_json()
-    assert "commit_repos" in r["rejected"] and "ai_mode" in r["rejected"]
+        "commit_repos": "/etc", "ai_mode": "both", "monthly_savings": 4321,
+        "ai_eval_cmd": '["/bin/sh", "-c", "touch /tmp/pwn"]', "rag_dirs": '["/etc"]'}).get_json()
+    for k in ("commit_repos", "ai_mode", "ai_eval_cmd", "rag_dirs"):
+        assert k in r["rejected"]
     assert planner.get_setting("commit_repos") == before          # protected: unchanged
     assert planner.get_setting("ai_mode") != "both" or planner.get_setting("ai_mode") is None
+    # an argv for subprocess.run must NOT pass through the generic writer (RCE)
+    assert planner.get_setting("ai_eval_cmd") is None
+    assert planner.get_setting("rag_dirs") is None
     assert planner.get_setting("monthly_savings") == "4321"        # normal key: written
 
 

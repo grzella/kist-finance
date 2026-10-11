@@ -70,7 +70,7 @@ async function renderOffers(el) {
         : delta == null ? "set your current total above"
         : `${delta >= 0 ? "+" : ""}${fmt.pln(delta)}/mo vs current job`;
       const impact = (o.goal_impact || []).map((gi) =>
-        gi.new_months == null ? "" : `<tr><td>${gi.goal}</td>
+        gi.new_months == null ? "" : `<tr><td>${esc(gi.goal)}</td>
           <td>${fmt.num(gi.base_months, 1)} mo</td>
           <td>${fmt.num(gi.new_months, 1)} mo</td>
           <td class="${gi.months_saved > 0 ? "pos" : "neg"}">${gi.months_saved > 0 ? "−" : "+"}${fmt.num(Math.abs(gi.months_saved), 1)} mo</td>
@@ -113,7 +113,7 @@ async function renderOffers(el) {
     if (!trendMonths.includes(lastFull)) {
       const sched = await api.get("/api/schedules").catch(() => null);
       const task = sched && sched.tasks.find((x) => x.id === "barometer_collect");
-      const err = task && task.last_error ? ` Last attempt ${task.last_error.at}: <i>${esc(task.last_error.error)}</i>.` : "";
+      const err = task && task.last_error ? ` Last attempt ${esc(task.last_error.at)}: <i>${esc(task.last_error.error)}</i>.` : "";
       const box = document.getElementById("baroDesc");
       if (box) box.insertAdjacentHTML("beforebegin", `<div class="mt" style="padding:6px 10px;border-radius:6px;background:rgba(255,107,107,0.15);font-size:.88em">
         ⚠️ <b>No demand point for ${lastFull}</b> (last full month).${err} The collector retries on the next app open; see Control Center → Data → Schedules.</div>`);
@@ -125,7 +125,7 @@ async function renderOffers(el) {
 
   const cfgBox = document.getElementById("baroCfgBox");
   cfgBox.innerHTML = `<div class="muted" style="font-size:.82em">Geography (comma-separated) and roles (one per line, <code>Label = title query</code>). The n8n collector uses the <b>query</b> to count postings on job boards.</div>
-    <input id="baroGeo" value="${(baro.geo || []).join(", ")}" style="width:100%;margin-top:6px" placeholder="Remote, US, UK">
+    <input id="baroGeo" value="${esc((baro.geo || []).join(", "))}" style="width:100%;margin-top:6px" placeholder="Remote, US, UK">
     <textarea id="baroRoles" rows="3" style="width:100%;margin-top:6px" placeholder="Senior Engineer = senior software engineer">${esc(broles.map((r) => `${r.label} = ${r.query || r.label}`).join("\n"))}</textarea>
     <div class="muted mt" style="font-size:.82em">🏢 <b>Watchlist</b> (one company per line: <code>greenhouse:slug</code>, <code>lever:slug</code> or <code>ashby:slug</code>; the slug is the name in the job board URL, e.g. <code>boards.greenhouse.io/gitlab</code> → <code>greenhouse:gitlab</code>). A posting counts when its title contains a role's query, in Europe or remote without a restriction to another continent; sales / solutions / support engineering roles are skipped.</div>
     <textarea id="baroWatch" rows="6" style="width:100%;margin-top:6px">${esc((baro.watchlist || []).join("\n"))}</textarea>
@@ -164,9 +164,9 @@ async function renderOffers(el) {
         <div style="display:flex;align-items:center;gap:8px">
           <span style="width:18px;border-top:3px ${dash} ${roleColor[s.role]}"></span>
           <b style="font-size:.92em">${esc(r.label)}</b></div>
-        <div class="muted" style="font-size:.78em;margin:2px 0 4px 26px">${srcName[s.stream] || s.stream}</div>
+        <div class="muted" style="font-size:.78em;margin:2px 0 4px 26px">${srcName[s.stream] || esc(s.stream)}</div>
         <div style="margin-left:26px"><b class="${readCls(s.reading)}" style="font-size:1.15em">${pct}</b>
-          <span class="${readCls(s.reading)}" style="font-size:.85em"> ${s.reading}</span>
+          <span class="${readCls(s.reading)}" style="font-size:.85em"> ${esc(s.reading)}</span>
           <span class="muted" style="font-size:.78em"> · 3 mo</span></div></div>`;
     }).join("");
     // table: ONE row per data point (month × stream), columns = roles
@@ -175,14 +175,14 @@ async function renderOffers(el) {
       `<th title="Where this row comes from. 📈 interest = Google Trends (who searches for the role title, index 0–100, not a posting count; has history). 🏢 open roles = real postings at watchlist companies (public Greenhouse/Lever/Ashby boards, a snapshot as of the collection day). 🎯 openings = JSearch (needs a key).">Stream ⓘ</th>` +
       broles.map((r) => `<th style="text-align:right" title="query: ${esc(r.query || r.label)}">${esc(r.label)}</th>`).join("") +
       `<th style="text-align:right">Your inbound</th><th>Source</th><th></th></tr></thead><tbody>` +
-      [...bpts].reverse().map((p) => `<tr><td>${p.month}</td>
+      [...bpts].reverse().map((p) => `<tr><td>${esc(p.month)}</td>
         <td class="muted" style="font-size:.85em">${streamIcon[p.stream] || "📈"} ${streamShort[p.stream] || esc(p.stream)}</td>` +
         broles.map((r) => `<td style="text-align:right">${p.counts[r.key] != null ? fmt.grouped(p.counts[r.key]) : "—"}</td>`).join("") +
-        `<td style="text-align:right">${p.my_inbound}</td>
+        `<td style="text-align:right">${esc(p.my_inbound)}</td>
         <td class="muted" style="font-size:.82em" title="${p.geo ? "geo: " + esc(p.geo) + " · " : ""}${p.as_of ? "as of " + esc(p.as_of) : ""}">${esc(p.sources || "—")}</td>
         <td><button class="danger" data-bdel="${p.id}">✕</button></td></tr>`).join("") + "</tbody></table></div>";
     const wl = baro.watchlist_latest;
-    if (wl && wl.note) btbl.insertAdjacentHTML("beforeend", `<details class="mt"><summary class="pill" style="font-size:.78em">🏢 open roles on the watchlist (${wl.month}, ${esc(wl.sources)})</summary>
+    if (wl && wl.note) btbl.insertAdjacentHTML("beforeend", `<details class="mt"><summary class="pill" style="font-size:.78em">🏢 open roles on the watchlist (${esc(wl.month)}, ${esc(wl.sources)})</summary>
       <pre class="muted mt" style="font-size:.8em;white-space:pre-wrap">${esc(wl.note)}</pre></details>`);
     btbl.querySelectorAll("[data-bdel]").forEach((b) =>
       b.addEventListener("click", async () => { await api.del("/api/market-barometer/" + b.dataset.bdel); route(); }));
@@ -200,7 +200,7 @@ async function renderOffers(el) {
     const wlPts = bpts.filter((p) => p.stream === "watchlist");
     const wlNow = wlPts[wlPts.length - 1], wlPrev = wlPts[wlPts.length - 2];
     if (wlNow) document.getElementById("baroChart").insertAdjacentHTML("beforebegin",
-      `<div class="row mt" style="gap:18px;font-size:.92em">🏢 <b>Open roles at watchlist companies (${wlNow.month}):</b>` +
+      `<div class="row mt" style="gap:18px;font-size:.92em">🏢 <b>Open roles at watchlist companies (${esc(wlNow.month)}):</b>` +
       broles.map((r) => {
         const v = wlNow.counts[r.key], pv = wlPrev && wlPrev.counts[r.key];
         const d = v != null && pv != null ? v - pv : null;

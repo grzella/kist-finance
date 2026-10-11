@@ -19,7 +19,7 @@ function _row(i, cm) {
     <td>${bill}</td>
     <td>${esc(i.payer)}</td>
     <td>${i.essential ? "✓" : ""}</td>
-    <td style="text-align:right" data-val="${i.id}">${(i.currency || window.APP_CURRENCY || "PLN") !== (window.APP_CURRENCY || "PLN") ? `<span title="${i.fx_missing ? "no rate in the cache — amount not converted" : "rate " + fmt.num(i.fx_rate, 4)}">${fmt.num(i.latest_amount_ccy, 2)} ${i.currency} ${i.fx_missing ? "⚠️" : "≈ " + fmt.money(i.latest_amount)}</span>` : fmt.money(i.latest_amount)}</td>
+    <td style="text-align:right" data-val="${i.id}">${(i.currency || window.APP_CURRENCY || "PLN") !== (window.APP_CURRENCY || "PLN") ? `<span title="${i.fx_missing ? "no rate in the cache — amount not converted" : "rate " + fmt.num(i.fx_rate, 4)}">${fmt.num(i.latest_amount_ccy, 2)} ${esc(i.currency)} ${i.fx_missing ? "⚠️" : "≈ " + fmt.money(i.latest_amount)}</span>` : fmt.money(i.latest_amount)}</td>
     <td class="muted">${i.latest_month || "—"}</td>
     <td><button data-upd="${i.id}" title="${i.current_month_set ? "amount for " + cm + " already entered — correct it" : "enter the new amount effective from " + cm}">Change amount</button></td>
     <td><button class="danger" data-del="${i.id}">✕</button></td>
@@ -61,7 +61,7 @@ function _invoiceChecklist(items, month) {
         <td><input type="checkbox" data-invchk="${i.id}" ${done[i.id] ? "checked" : ""} aria-label="invoice checked: ${esc(i.name)}"></td>
         <td>${done[i.id] ? `<s>${esc(i.name)}</s>` : esc(i.name)}</td>
         <td class="muted">${(i.category || "").startsWith("subscription-") ? "subscription" : esc(i.entity || "personal")}</td>
-        <td style="text-align:right">${(i.currency || base) !== base ? `${fmt.num(i.latest_amount_ccy, 2)} ${i.currency}` : fmt.money(i.latest_amount)}</td>
+        <td style="text-align:right">${(i.currency || base) !== base ? `${fmt.num(i.latest_amount_ccy, 2)} ${esc(i.currency)}` : fmt.money(i.latest_amount)}</td>
         <td class="muted">${(i.billing || "monthly") === "yearly" ? "📅 yearly (one invoice a year)" : "monthly"}</td></tr>`).join("")}
       </tbody></table>` : '<div class="empty mt">No item has the “📄 Invoiced” tag.</div>'}
   </div>`;
@@ -108,7 +108,7 @@ async function renderExpenses(el) {
         <ul style="margin:6px 0 0;padding-left:18px">${s.savings_done.items.map((r) => `<li class="mt">${esc(r.date || "")} · <b>${esc(r.name)}</b>: ${fmt.money(r.before_monthly)} → ${fmt.money(r.after_monthly)}/mo
           <span class="pos">−${fmt.money(r.saved_yearly)}/yr</span>${r.note ? ` <span class="muted">· ${esc(r.note)}</span>` : ""}</li>`).join("")}</ul></div>` : ""}
       <ul class="mt" style="margin:0;padding-left:18px">
-        ${s.optimizations.map((o) => `<li class="mt ${o.severity === "warn" ? "" : "muted"}">${o.text}</li>`).join("")}
+        ${s.optimizations.map((o) => `<li class="mt ${o.severity === "warn" ? "" : "muted"}">${esc(o.text)}</li>`).join("")}
       </ul>
       ${help(`These hints are computed from your own data; they don't scan the
         market for live deals.`, "where these hints come from")}

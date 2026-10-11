@@ -76,7 +76,7 @@ async function renderRecs(el) {
         </tbody>
       </table>
       ${(rec.history || []).length ? `<details class="mt"><summary class="muted">✅ Resolved / gone (${rec.history.length})</summary>
-        <ul class="muted mt" style="padding-left:18px;font-size:.88em">${rec.history.map((h) => `<li><b>[${h.area}]</b> ${h.text.slice(0, 140)}${h.text.length > 140 ? "…" : ""} <span style="opacity:.7">(${h.since} → ${h.resolved})</span> ${outcomeSel(h.key, h.outcome)}</li>`).join("")}</ul></details>` : ""}
+        <ul class="muted mt" style="padding-left:18px;font-size:.88em">${rec.history.map((h) => `<li><b>[${h.area}]</b> ${esc(h.text.slice(0, 140))}${h.text.length > 140 ? "…" : ""} <span style="opacity:.7">(${h.since} → ${h.resolved})</span> ${outcomeSel(h.key, h.outcome)}</li>`).join("")}</ul></details>` : ""}
       ${review ? `<details class="mt"><summary class="muted">📋 Monthly recommendation review — execution ${review.execution_rate_pct != null ? review.execution_rate_pct + "%" : "—"} (${review.executed}/${review.total} done${review.pending.length ? `, <b class="warn">${review.pending.length} without an outcome</b>` : ""})</summary>
         ${help(`A recommendation that disappeared is not yet a success: the outcome (done / rejected / obsolete) says whether the engine was worth following. Resolved ones without an outcome land in Reminders after 7 days.`, "what “disappeared” means")}
         <table class="mt" style="font-size:.88em"><thead><tr><th>Month</th><th style="text-align:right">new</th><th style="text-align:right">resolved</th><th style="text-align:right">done</th><th style="text-align:right">rejected</th><th style="text-align:right">obsolete</th><th style="text-align:right">no outcome</th></tr></thead>

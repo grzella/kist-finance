@@ -23,7 +23,7 @@ async function renderRsu(el) {
         `capacity for the goal. After the loan is paid off, vests go toward the down payment (the mortgage rate is changed by renegotiating the contract, not with capital).`);
     } else if (topDebt && topDebt.effective_rate > 6.5 && nextVestPln) {
       parts.push(
-        `The ${topDebt.name} loan costs ${fmt.pct(topDebt.effective_rate, 2)} effective — selling the vest and overpaying ` +
+        `The ${esc(topDebt.name)} loan costs ${fmt.pct(topDebt.effective_rate, 2)} effective — selling the vest and overpaying ` +
         `is a guaranteed, untaxed return, more certain than a bet on a single stock rebounding.`);
     } else {
       parts.push(
@@ -33,7 +33,7 @@ async function renderRsu(el) {
     }
     if (r.shares_held > 0) {
       parts.push(
-        `Nuance: ${r.ticker} is at ~$${r.last_close}. If you'd rather not sell everything at this price, sell ` +
+        `Nuance: ${esc(r.ticker)} is at ~$${r.last_close}. If you'd rather not sell everything at this price, sell ` +
         "current vests right away (for overpayment) and hold the existing " + fmt.num(r.shares_held, 0) +
         " shares, provided your cushion covers 6 months without them.");
     }
@@ -41,7 +41,7 @@ async function renderRsu(el) {
   })();
 
   el.innerHTML = `
-    <h2>RSU — ${r.ticker}</h2>
+    <h2>RSU — ${esc(r.ticker)}</h2>
     <div class="grid cols-4">
       <div class="card kpi"><div class="label">Shares held</div>
         <div class="value">${fmt.num(r.shares_held, 0)}</div>
@@ -65,11 +65,11 @@ async function renderRsu(el) {
       <div style="overflow-x:auto"><table class="mt"><thead><tr><th>Month</th><th style="text-align:right">Shares</th><th>From</th><th style="text-align:right">Cash-vest</th><th style="text-align:right">≈ net at $${r.last_close}</th></tr></thead>
         <tbody>${(r.vest_schedule || []).map((m) => `<tr>
           <td>${m.month}</td><td style="text-align:right"><b>${fmt.num(m.shares, 0)}</b></td>
-          <td class="muted" style="font-size:.85em">${Object.entries(m.parts || {}).map(([k, v]) => `${k} ${fmt.num(v, 0)}`).join(" · ")}</td>
+          <td class="muted" style="font-size:.85em">${Object.entries(m.parts || {}).map(([k, v]) => `${esc(k)} ${fmt.num(v, 0)}`).join(" · ")}</td>
           <td style="text-align:right" class="muted">${m.cash_usd ? fmt.usd(m.cash_usd) : "—"}</td>
           <td style="text-align:right">${r.last_close && r.usdpln ? fmt.pln(m.shares * r.last_close * r.usdpln * (r.net_factor || 0.81) + (m.cash_usd || 0) * r.usdpln * (r.cash_vest_net_factor || 0.55)) : "—"}</td>
         </tr>`).join("")}</tbody></table></div>
-      <div class="muted mt" style="font-size:.85em">Sources: ${(r.vest_sources || []).map((s) => `<b>${s.label}</b> ${fmt.num(s.per_vest, 1)}/vest (${s.first_vest || "?"} → ${s.last_vest || "?"})`).join(" · ")}.
+      <div class="muted mt" style="font-size:.85em">Sources: ${(r.vest_sources || []).map((s) => `<b>${esc(s.label)}</b> ${fmt.num(s.per_vest, 1)}/vest (${s.first_vest || "?"} → ${s.last_vest || "?"})`).join(" · ")}.
         Net = shares × (1 − ${r.tax_pct}% tax at sale) + cash-vest × ${Math.round((r.cash_vest_net_factor || 0.55) * 100)}% (payslip).</div>
     </div>
     <div class="card mt" style="border-left:4px solid var(--amber)">
@@ -90,7 +90,7 @@ async function renderRsu(el) {
       <div class="muted mt" style="font-size:.85em">Logging a sale reduces "shares held" and adds the tax. The USD rate defaults to the cache.</div>
       ${(r.sales || []).length ? `<table class="mt"><thead><tr><th>Date</th><th style="text-align:right">Shares</th><th style="text-align:right">Price</th><th style="text-align:right">Rate</th><th style="text-align:right">Gross</th><th>Note</th><th></th></tr></thead>
         <tbody>${r.sales.map((x) => `<tr><td>${x.date}</td><td style="text-align:right">${fmt.num(x.shares, 0)}</td><td style="text-align:right">$${fmt.num(x.price_usd, 2)}</td>
-          <td style="text-align:right" class="muted">${fmt.num(x.usdpln, 4)}</td><td style="text-align:right"><b>${fmt.pln(x.gross_pln)}</b></td><td class="muted" style="font-size:.85em">${x.note || ""}</td>
+          <td style="text-align:right" class="muted">${fmt.num(x.usdpln, 4)}</td><td style="text-align:right"><b>${fmt.pln(x.gross_pln)}</b></td><td class="muted" style="font-size:.85em">${esc(x.note || "")}</td>
           <td><button class="danger" data-sdel="${x.id}">✕</button></td></tr>`).join("")}</tbody></table>` : ""}
     </div>
     ${(r.shares_history || []).length ? `<div class="card mt">
@@ -113,17 +113,17 @@ async function renderRsu(el) {
       <div>${rec}</div>
     </div>
     ${deep.headline ? `<div class="card mt" style="border-left:4px solid var(--accent)">
-      <h3>🔬 Deep-dive analysis — ${deep.vest_month} vest
-        <span class="muted" style="font-weight:normal;font-size:.75em">(as of ${deep.as_of}, price $${deep.price})</span></h3>
-      <div><b>${deep.headline}</b></div>
+      <h3>🔬 Deep-dive analysis — ${esc(deep.vest_month)} vest
+        <span class="muted" style="font-weight:normal;font-size:.75em">(as of ${esc(deep.as_of)}, price $${esc(deep.price)})</span></h3>
+      <div><b>${esc(deep.headline)}</b></div>
       ${analysisStaleBanner(deep)}
       ${(deep.sections || []).map((s) => `<details class="mt" ${s === deep.sections[0] ? "open" : ""}>
-        <summary><b>${s.title}</b></summary>
+        <summary><b>${esc(s.title)}</b></summary>
         <div style="font-size:.95em;line-height:1.5;max-width:90ch">${paras(s.text)}</div>
       </details>`).join("")}
       <div class="muted mt" style="font-size:.8em">A research snapshot (earnings, guidance, analyst targets) —
         not computed automatically. To refresh: ask Claude to "refresh the vest analysis".
-        ${(deep.sources || []).length ? `Sources: ${deep.sources.map((u, i) => `<a href="${u}" target="_blank">[${i + 1}]</a>`).join(" ")}` : ""}</div>
+        ${(deep.sources || []).length ? `Sources: ${deep.sources.map((u, i) => `<a href="${esc(u)}" target="_blank">[${i + 1}]</a>`).join(" ")}` : ""}</div>
     </div>` : ""}
     ${bands && bands.horizons ? `<div class="card mt" style="border-left:4px solid var(--accent)">
       <h3>📏 Short horizon — range, not direction
@@ -196,7 +196,7 @@ async function renderRsu(el) {
 
 ` : ""}
     <div class="card mt">
-      <h3>New grant ${r.grant_month} (pricing: ${r.pricing_window} average)</h3>
+      <h3>New grant ${r.grant_month} (pricing: ${esc(r.pricing_window)} average)</h3>
       <div class="row">
         <span class="muted">Window average (${r.window_days_counted} sessions):</span>
         <b>${r.window_running_average ? fmt.usd(r.window_running_average) : "no data yet"}</b>
@@ -211,7 +211,7 @@ async function renderRsu(el) {
         <th style="text-align:right">Priced at</th><th style="text-align:right">Shares</th>
         <th style="text-align:right">Per quarter</th></tr></thead><tbody>
         ${r.extra_grants_computed.map((g) => `<tr>
-          <td>${g.label}${g.note ? `<br><span class="muted" style="font-size:.85em">${g.note}</span>` : ""}</td>
+          <td>${esc(g.label)}${g.note ? `<br><span class="muted" style="font-size:.85em">${esc(g.note)}</span>` : ""}</td>
           <td style="text-align:right">${fmt.usd(g.value_usd)}</td>
           <td style="text-align:right">${g.priced_at ? fmt.usd(g.priced_at) : "—"}
             <br><span class="muted" style="font-size:.8em">${g.priced_from}</span></td>
@@ -225,7 +225,7 @@ async function renderRsu(el) {
       <div class="row">
         <span class="muted">legacy grants:</span> <b>${r.legacy_shares_per_vest ?? 0}</b>
         <span class="muted">+ grant ${r.grant_month}:</span> <b>${r.shares_per_vest ?? 0}</b>
-        ${(r.extra_grants_computed || []).map((g) => `<span class="muted">+ ${g.label}:</span> <b>${g.shares_per_vest ?? 0}</b>`).join("")}
+        ${(r.extra_grants_computed || []).map((g) => `<span class="muted">+ ${esc(g.label)}:</span> <b>${g.shares_per_vest ?? 0}</b>`).join("")}
         <span class="muted">=</span>
         <b style="font-size:1.15em">${r.total_shares_per_vest ?? "—"} shares / quarter</b>
         <span class="muted">≈</span>
@@ -240,11 +240,11 @@ async function renderRsu(el) {
         <input type="number" id="rHeld" value="${r.shares_held}" title="shares held" style="width:110px">
         <input type="number" id="rNext" value="${r.shares_next_vest}" title="shares in the next vest" style="width:110px">
         <input data-num id="rGrant" value="${fmt.grouped(r.grant_value_usd)}" title="grant value USD">
-        <input id="rWindow" value="${r.pricing_window}" title="pricing window YYYY-MM" style="width:110px">
-        <input id="rFirst" value="${r.first_vest || ""}" placeholder="1st vest YYYY-MM" title="first vest of the new grant" style="width:130px">
-        <input id="rLegacyUntil" value="${r.legacy_until || ""}" placeholder="legacy grants until YYYY-MM" title="last vest month of the legacy grants (from the broker)" style="width:190px">
+        <input id="rWindow" value="${esc(r.pricing_window)}" title="pricing window YYYY-MM" style="width:110px">
+        <input id="rFirst" value="${esc(r.first_vest || "")}" placeholder="1st vest YYYY-MM" title="first vest of the new grant" style="width:130px">
+        <input id="rLegacyUntil" value="${esc(r.legacy_until || "")}" placeholder="legacy grants until YYYY-MM" title="last vest month of the legacy grants (from the broker)" style="width:190px">
         <input type="number" id="rConf" value="${r.confirmed_shares_per_vest || ""}" placeholder="broker: shares/vest" title="total shares per vest as the broker shows it (overrides the estimate until the month on the right)" style="width:150px">
-        <input id="rConfUntil" value="${r.confirmed_until || ""}" placeholder="confirmed until YYYY-MM" title="last vest month the broker's schedule covers" style="width:170px">
+        <input id="rConfUntil" value="${esc(r.confirmed_until || "")}" placeholder="confirmed until YYYY-MM" title="last vest month the broker's schedule covers" style="width:170px">
         <button class="primary" id="rSave">Save</button>
       </div>
       <div class="muted mt">held · next vest · grant value USD · pricing window.

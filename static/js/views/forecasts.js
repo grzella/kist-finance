@@ -77,7 +77,7 @@ async function renderForecasts(el) {
 
     ${ip ? `<div class="card mt" style="border-left:4px solid var(--accent)">
       <h3>📐 Investment policy: what to do with money that has no goal</h3>
-      <div class="muted" style="font-size:.88em;margin-bottom:8px">For money AFTER the cushion, the tax reserve and tax-advantaged account limits. Model portfolio ${ip.rows.map((r) => `${r.target}% ${r.label.replace(/^\S+\s/, "").split(":")[0].toLowerCase()}`).join(" / ")},
+      <div class="muted" style="font-size:.88em;margin-bottom:8px">For money AFTER the cushion, the tax reserve and tax-advantaged account limits. Model portfolio ${ip.rows.map((r) => `${r.target}% ${esc(r.label.replace(/^\S+\s/, "").split(":")[0].toLowerCase())}`).join(" / ")},
         expected return about ${fmt.pct(ip.blended_return_pct, 1)} a year. The "buy" column splits the next inflow so the buckets reach their weights: new money goes where the portfolio is short and nothing is sold.</div>
       <table><thead><tr><th>Bucket</th><th>Instrument</th><th style="text-align:right">Target</th><th style="text-align:right">Now</th><th style="text-align:right">Value</th><th>State</th><th style="text-align:right">Buy ${ip.deploy_month || ""}</th></tr></thead>
         <tbody>${ip.rows.map((r) => `<tr><td><b>${esc(r.label)}</b></td><td class="muted">${esc(r.instrument)}</td>
@@ -127,10 +127,10 @@ async function renderForecasts(el) {
       </div>
       <canvas id="fireChart" height="90" class="mt"></canvas>
       ${fire.cone && fire.cone.points && Object.keys(fire.cone.points).length ? `<div class="mt" style="font-size:.9em">
-        <b>Cone from real returns</b> <span class="muted">(block bootstrap of ${fire.cone.benchmark} monthly returns, ${fire.cone.months_of_data} months of data; nominal)</span>
+        <b>Cone from real returns</b> <span class="muted">(block bootstrap of ${esc(fire.cone.benchmark)} monthly returns, ${fire.cone.months_of_data} months of data; nominal)</span>
         <table class="mt"><thead><tr><th>Horizon</th><th class="neg">p10</th><th>p50</th><th class="pos">p90</th></tr></thead>
         <tbody>${Object.entries(fire.cone.points).map(([y, q]) => `<tr><td>${y} years</td><td class="neg">${fmt.pln(q.p10)}</td><td><b>${fmt.pln(q.p50)}</b></td><td class="pos">${fmt.pln(q.p90)}</td></tr>`).join("")}</tbody></table></div>`
-        : fire.cone && fire.cone.note ? `<div class="muted mt" style="font-size:.85em">Cone: ${fire.cone.note} (${fire.cone.benchmark}, ${fire.cone.months_of_data} months) — deepen the benchmark history in Market (10 years) and the cone appears.</div>` : ""}
+        : fire.cone && fire.cone.note ? `<div class="muted mt" style="font-size:.85em">Cone: ${fire.cone.note} (${esc(fire.cone.benchmark)}, ${fire.cone.months_of_data} months) — deepen the benchmark history in Market (10 years) and the cone appears.</div>` : ""}
       <div class="muted mt" style="font-size:.82em">Assumptions: ${fire.assumptions.base_return} · inflation ${fire.assumptions.inflation} · ${fire.assumptions.income_growth} · ${fire.assumptions.tax} · freed installment from ${fire.freed_from_month}.</div>
       <div class="mt"><b>Milestones (base scenario):</b>
         <table><tbody>
@@ -212,7 +212,7 @@ async function renderForecasts(el) {
           <td>${h.verdict === "ok" ? "🟢" : h.verdict === "too few windows" ? "⚪" : "🟡"} ${h.verdict}</td></tr>`).join("")}</tbody></table>
       <details class="mt"><summary class="muted">Per ticker (${calib.by_ticker.length} pairs)</summary>
         <div style="overflow-x:auto"><table class="mt" style="font-size:.88em"><thead><tr><th>Ticker</th><th>Horizon</th><th style="text-align:right">n (indep.)</th><th style="text-align:right">Coverage</th><th style="text-align:right">↓ / ↑</th><th style="text-align:right">Winkler</th><th style="text-align:right">self-cal.</th><th>Verdict</th></tr></thead>
-          <tbody>${calib.by_ticker.map((r) => `<tr><td><b>${r.ticker}</b></td><td>${r.horizon_days} d</td><td style="text-align:right">${r.n} <span class="muted">(${r.n_independent})</span></td>
+          <tbody>${calib.by_ticker.map((r) => `<tr><td><b>${esc(r.ticker)}</b></td><td>${r.horizon_days} d</td><td style="text-align:right">${r.n} <span class="muted">(${r.n_independent})</span></td>
             <td style="text-align:right" class="${r.verdict === "ok" ? "pos" : r.verdict === "too few windows" ? "muted" : "warn"}">${r.coverage_pct}%</td>
             <td style="text-align:right" class="muted">${r.below_pct}% / ${r.above_pct}%</td><td style="text-align:right">${r.winkler_pct}%</td>
             <td style="text-align:right" class="muted">${r.calibrated_n}${r.calibrated_coverage_pct != null ? ` (${r.calibrated_coverage_pct}%)` : ""}</td>
@@ -260,7 +260,7 @@ async function renderForecasts(el) {
       <canvas id="tjChart" height="80" class="mt"></canvas>
       <table class="mt" style="font-size:.9em"><thead><tr><th>Variant (median at the end)</th><th style="text-align:right">Net worth</th><th style="text-align:right">vs base</th></tr></thead>
         <tbody>${t.variants.map((v) => `<tr><td>${v.label}</td><td style="text-align:right"><b>${fmt.pln(v.p50_end)}</b></td><td style="text-align:right" class="${v.delta_vs_base < 0 ? "neg" : v.delta_vs_base > 0 ? "pos" : "muted"}">${v.delta_vs_base ? (v.delta_vs_base > 0 ? "+" : "") + fmt.pln(v.delta_vs_base) : "—"}</td></tr>`).join("")}</tbody></table>
-      <div class="muted mt" style="font-size:.8em">Benchmark ${t.assumptions.benchmark || "—"} (${t.assumptions.months_of_data} months of data) · invested ${fmt.pln(t.assumptions.invested)} · employer stock ${fmt.pln(t.assumptions.rsu)} · USD positions ${fmt.pln(t.assumptions.fx_usd)}${t.assumptions.real ? ` · real at ${t.assumptions.inflation_pct}% inflation` : ""}. The last run is stored in the scenarios table.</div>`;
+      <div class="muted mt" style="font-size:.8em">Benchmark ${esc(t.assumptions.benchmark || "—")} (${t.assumptions.months_of_data} months of data) · invested ${fmt.pln(t.assumptions.invested)} · employer stock ${fmt.pln(t.assumptions.rsu)} · USD positions ${fmt.pln(t.assumptions.fx_usd)}${t.assumptions.real ? ` · real at ${t.assumptions.inflation_pct}% inflation` : ""}. The last run is stored in the scenarios table.</div>`;
     if (tjChart) { try { tjChart.destroy(); } catch (e) { /* noop */ } }
     tjChart = new Chart(document.getElementById("tjChart"), {
       type: "line",

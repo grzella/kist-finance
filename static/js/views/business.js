@@ -22,7 +22,7 @@ async function renderBusiness(el) {
       <div class="row">
         <input type="date" id="bDate" value="${new Date().toISOString().slice(0, 10)}">
         <select id="bKind"><option value="cost">cost</option><option value="revenue">revenue</option></select>
-        <select id="bCat">${b.categories.map((c) => `<option>${c}</option>`).join("")}</select>
+        <select id="bCat">${b.categories.map((c) => `<option>${esc(c)}</option>`).join("")}</select>
         <input data-num id="bAmount" placeholder="net amount ${window.APP_CURRENCY || "PLN"}">
         <input id="bDesc" placeholder="description (e.g. Ad spend July, materials…)" style="flex:1">
         <button class="primary" id="bAdd">Add</button>
@@ -38,10 +38,10 @@ async function renderBusiness(el) {
       <h3>📣 Ads performance (weekly)</h3>
       <div class="row" style="gap:20px;flex-wrap:wrap">
         <span>Spend (recent weeks): <b>€${fmt.num(mkt.recent_spend_eur)}</b></span>
-        <span>Clicks: <b>${mkt.recent_clicks}</b></span>
+        <span>Clicks: <b>${esc(mkt.recent_clicks)}</b></span>
       </div>
       ${mkt.weeks.length ? `<div class="mt">
-        <b>Last week (${mkt.weeks[0].week}, spend €${mkt.weeks[0].spend_eur}):</b>
+        <b>Last week (${esc(mkt.weeks[0].week)}, spend €${esc(mkt.weeks[0].spend_eur)}):</b>
         <div class="muted">${esc(mkt.weeks[0].summary || "—")}</div>
         ${mkt.weeks[0].recommendation ? `<div class="mt">💡 <b>Recommendation of the week:</b> ${esc(mkt.weeks[0].recommendation)}</div>` : ""}
       </div>` : ""}
@@ -55,7 +55,7 @@ async function renderBusiness(el) {
       </details>` : ""}
       <details class="mt"><summary class="muted">previous weeks</summary>
         <table class="mt"><thead><tr><th>Week</th><th>Spend</th><th>Summary</th></tr></thead>
-        <tbody>${mkt.weeks.slice(1).map((w) => `<tr><td>${w.week}</td><td>€${w.spend_eur}</td>
+        <tbody>${mkt.weeks.slice(1).map((w) => `<tr><td>${esc(w.week)}</td><td>€${esc(w.spend_eur)}</td>
           <td class="muted" style="font-size:.85em">${esc((w.summary || "—").slice(0, 180))}…</td></tr>`).join("")}</tbody></table>
       </details>
     </div>` : `<div class="card mt muted">📣 Performance marketing: ${esc(mkt.error)}</div>`}
@@ -70,7 +70,7 @@ async function renderBusiness(el) {
       <th style="text-align:right">of which marketing</th><th style="text-align:right">Revenue</th>
       <th style="text-align:right">Result</th><th style="text-align:right">Cumulative</th><th>ROAS</th></tr></thead><tbody>` +
       [...b.months].reverse().map((m) => `<tr>
-        <td>${m.month}</td>
+        <td>${esc(m.month)}</td>
         <td style="text-align:right" class="neg">${fmt.pln(m.costs)}</td>
         <td style="text-align:right">${fmt.pln(m.marketing)}</td>
         <td style="text-align:right" class="pos">${fmt.pln(m.revenue)}</td>

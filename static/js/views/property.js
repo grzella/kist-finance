@@ -30,8 +30,8 @@ async function renderProperty(el) {
     <h2>🏡 Property purchase — analysis &amp; calculator</h2>
 
     ${hasAnalysis ? `<div class="card" style="border-left:4px solid var(--pos)">
-      <div style="font-size:1.05em"><b>${a.headline}</b></div>
-      <div class="muted mt" style="font-size:.85em">As of ${a.as_of}${a.budget_eur ? ` · budget €${fmt.grouped(a.budget_eur)}` : ""}
+      <div style="font-size:1.05em"><b>${esc(a.headline)}</b></div>
+      <div class="muted mt" style="font-size:.85em">As of ${esc(a.as_of)}${a.budget_eur ? ` · budget €${fmt.grouped(a.budget_eur)}` : ""}
         ${propertyGoal ? ` · goal progress: ${fmt.pln(propertyGoal.current_amount)} / ${fmt.pln(propertyGoal.target_amount)}` : ""}</div>
     </div>` : `<div class="card">
       <div class="muted">No saved location research yet — the calculator below works standalone.
@@ -50,24 +50,24 @@ async function renderProperty(el) {
     ${hasAnalysis && ranked.length ? `<div class="card mt">
       <h3>Location comparison — ranked by your criteria</h3>
       <div class="muted" style="margin-bottom:8px;font-size:.85em">Criteria weights:
-        ${a.criteria.map((c) => `${c.label} ×${c.weight}`).join(" · ")}. Scored 1–5 (● filled).</div>
+        ${a.criteria.map((c) => `${esc(c.label)} ×${esc(c.weight)}`).join(" · ")}. Scored 1–5 (● filled).</div>
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Location</th><th style="text-align:center">Score</th>
-          ${a.criteria.map((c) => `<th style="text-align:center">${c.label}</th>`).join("")}
+          ${a.criteria.map((c) => `<th style="text-align:center">${esc(c.label)}</th>`).join("")}
           <th style="text-align:right">€/m²</th></tr></thead>
         <tbody>${ranked.map((l, i) => `<tr>
-          <td><b>${i === 0 ? "🏆 " : ""}${l.name}</b><div class="muted" style="font-size:.8em">${l.region || ""}</div></td>
+          <td><b>${i === 0 ? "🏆 " : ""}${esc(l.name)}</b><div class="muted" style="font-size:.8em">${esc(l.region || "")}</div></td>
           <td style="text-align:center"><b class="${l.total >= 85 ? "pos" : l.total >= 70 ? "" : "muted"}">${l.total}</b></td>
           ${a.criteria.map((c) => `<td style="text-align:center" class="${scoreColor(l.scores[c.key])}">${dots(l.scores[c.key])}</td>`).join("")}
-          <td style="text-align:right;white-space:nowrap">${l.price_m2 || "—"}</td>
+          <td style="text-align:right;white-space:nowrap">${esc(l.price_m2 || "—")}</td>
         </tr>`).join("")}</tbody>
       </table></div>
     </div>` : ""}
 
     ${hasAnalysis && a.recommendation ? `<div class="card mt" style="border-left:4px solid var(--warn)">
-      <h3>✅ Recommendation: ${a.recommendation.pick}</h3>
-      <ul style="padding-left:18px">${(a.recommendation.why || []).map((w) => `<li class="mt">${w}</li>`).join("")}</ul>
-      ${a.recommendation.runner_up ? `<div class="mt muted"><b>Runner-up:</b> ${a.recommendation.runner_up}</div>` : ""}
+      <h3>✅ Recommendation: ${esc(a.recommendation.pick)}</h3>
+      <ul style="padding-left:18px">${(a.recommendation.why || []).map((w) => `<li class="mt">${esc(w)}</li>`).join("")}</ul>
+      ${a.recommendation.runner_up ? `<div class="mt muted"><b>Runner-up:</b> ${esc(a.recommendation.runner_up)}</div>` : ""}
     </div>` : ""}`;
 
   // ---- purchase calculator (generic buy-to-own / buy-to-let) ----

@@ -188,7 +188,7 @@ async function renderMarket(el) {
          <td><button class="danger" data-rm="${t}">✕</button></td></tr>`
       : `<tr data-t="${t}" style="cursor:pointer">
         <td><b><span class="hint" title="${esc(tickerDesc(a.ticker) || a.ticker)}">${t}</span></b>${tickerShort(a.ticker) ? `<div class="muted" style="font-size:.72em;line-height:1.2">${esc(tickerShort(a.ticker))}</div>` : ""}</td>
-        <td>${fmt.num(a.last_close)} ${a.currency}</td>
+        <td>${fmt.num(a.last_close)} ${esc(a.currency)}</td>
         <td class="${a.change_1d_pct >= 0 ? "pos" : "neg"}">${fmt.pct(a.change_1d_pct)}</td>
         <td class="${a.change_30d_pct >= 0 ? "pos" : "neg"}">${fmt.pct(a.change_30d_pct)}</td>
         <td>${a.sma50 == null ? `<span class="muted hint" title="fewer than 50 sessions in cache — click the row: the chart fetches deeper history from Yahoo and this fills in">—</span>` : `<span class="badge ${a.last_close > a.sma50 ? "up" : "down"}">${a.last_close > a.sma50 ? "above" : "below"} ${fmt.num(a.sma50, 0)}</span>`}</td>

@@ -11,11 +11,11 @@ async function renderCashflow(el) {
   el.innerHTML = `
     <h2>💧 Liquidity timeline — cash-flow over time</h2>
     <div class="muted" style="margin-bottom:12px">Monthly savings (base) + <b>net</b> vests from the grant schedule (× 1 − ${a.tax_pct}%) + net cash-vest + bonus.
-      ${debt ? `Surplus above the buffer overpays <b>${d.sweep_target_name}</b> until payoff — then the liquid balance grows toward the goal.` : `Loan overpayments from surplus are off, so the whole surplus stays in cash and the liquid balance grows.`}
+      ${debt ? `Surplus above the buffer overpays <b>${esc(d.sweep_target_name)}</b> until payoff — then the liquid balance grows toward the goal.` : `Loan overpayments from surplus are off, so the whole surplus stays in cash and the liquid balance grows.`}
       The tax reserve on sold shares is tracked separately — it is not your liquidity.</div>
 
     <div class="grid cols-4">
-      <div class="card kpi"><div class="label">${debt ? d.sweep_target_name + " paid off" : "Loan overpayments"}</div>
+      <div class="card kpi"><div class="label">${debt ? esc(d.sweep_target_name) + " paid off" : "Loan overpayments"}</div>
         <div class="value ${debt ? "pos" : ""}">${debt ? (d.target_paid_month || "beyond horizon") : "off"}</div>
         <div class="sub">${debt ? `start ${fmt.pln(d.target_start)} · after payoff surplus +${fmt.pln(d.target_freed_monthly)}/mo` : "the surplus stays in cash"}</div></div>
       <div class="card kpi"><div class="label">Liquid balance in 12 mo</div>
@@ -35,7 +35,7 @@ async function renderCashflow(el) {
         <label class="muted">Monthly savings (base) ${d.surplus_source === "dashboard" ? `<span class="badge pos" title="income minus fixed costs, as on the Dashboard">auto from dashboard</span>` : `<span class="badge" title="entered manually; clear to compute from the dashboard">manual</span>`}<br><input data-num id="cfSurplus" value="${d.surplus_source === "manual" ? fmt.grouped(a.cf_monthly_surplus) : ""}" placeholder="auto: ${fmt.grouped(a.cf_monthly_surplus)}" style="width:140px"></label>
         <label class="muted">Safety buffer<br><input data-num id="cfBuffer" value="${fmt.grouped(a.cf_safety_buffer)}" style="width:140px"></label>
         <label class="muted">Starting liquid balance ${d.liquid_start_source === "wealth" ? `<span class="badge pos" title="sum of cash from Wealth">auto from wealth</span>` : `<span class="badge" title="entered manually; clear to compute from wealth">manual</span>`}<br><input data-num id="cfStart" value="${a.cf_liquid_start ? fmt.grouped(a.cf_liquid_start) : ""}" placeholder="auto: ${fmt.grouped(d.liquid_start_auto || 0)}" style="width:140px"></label>
-        <label class="muted" title="Name (or part of it) of the loan to overpay with surplus above the buffer; &quot;debt&quot; = the most expensive one; &quot;none&quot; = don't overpay">Overpay this loan with surplus<br><input id="cfSweep" value="${a.cf_sweep_target || ""}" placeholder="loan / debt / none" style="width:140px"></label>
+        <label class="muted" title="Name (or part of it) of the loan to overpay with surplus above the buffer; &quot;debt&quot; = the most expensive one; &quot;none&quot; = don't overpay">Overpay this loan with surplus<br><input id="cfSweep" value="${esc(a.cf_sweep_target || "")}" placeholder="loan / debt / none" style="width:140px"></label>
         <label class="muted">Net bonus (configured month)<br><input data-num id="cfBonus" value="${fmt.grouped(a.annual_bonus_net)}" style="width:140px"></label>
         <button class="primary" id="cfSave" style="align-self:flex-end">Save and recompute</button>
       </div>
@@ -51,7 +51,7 @@ async function renderCashflow(el) {
       <h3>Month by month</h3>
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Month</th><th style="text-align:right">Inflows (net)</th>
-          ${debt ? `<th style="text-align:right">Overpayment ${d.sweep_target_name}</th>` : ""}<th style="text-align:right">Liquid balance</th>
+          ${debt ? `<th style="text-align:right">Overpayment ${esc(d.sweep_target_name)}</th>` : ""}<th style="text-align:right">Liquid balance</th>
           <th style="text-align:right">Tax reserve</th>${debt ? '<th style="text-align:right">Loan balance</th>' : ""}</tr></thead>
         <tbody>${rows.map((r) => `<tr class="${r.below_buffer ? "cf-warn" : ""}">
           <td>${r.month} ${r.is_vest ? '<span class="badge">vest</span>' : ""}${r.is_bonus ? '<span class="badge">bonus</span>' : ""}</td>

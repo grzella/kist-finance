@@ -318,6 +318,28 @@ def test_view_escaping_check_recognises_hardened():
     assert [i["status"] for i in items] == ["pass"] * 7, items
 
 
+def test_view_escaping_sweep_recognises_hardened():
+    """K-XSS-1 (sweep 2026-10-11): _check_view_escaping_sweep must not flag the
+    escaped views as fail (every untrusted field goes through esc())."""
+    import security_review as sr
+    items = sr._check_view_escaping_sweep()
+    fails = [i for i in items if i["status"] == "fail"]
+    assert not fails, f"K-XSS-1 sweep fails on escaped views: {fails}"
+    assert sum(1 for i in items if i["status"] == "pass") >= 9
+
+
+def test_view_escaping_sweep_flags_raw_sink(tmp_path, monkeypatch):
+    """Negative control: a raw untrusted sink (no esc) turns the panel red."""
+    import security_review as sr
+    views = tmp_path / "static" / "js" / "views"
+    views.mkdir(parents=True)
+    (views / "rsu.js").write_text("`<div><b>${deep.headline}</b></div>`", encoding="utf-8")
+    (tmp_path / "server").mkdir()
+    monkeypatch.setattr(sr, "__file__", str(tmp_path / "server" / "security_review.py"))
+    items = sr._check_view_escaping_sweep()
+    assert any(i["status"] == "fail" and "rsu.js" in i["title"] for i in items), items
+
+
 def test_view_escaping_check_flags_a_raw_sink(tmp_path):
     import security_review as sr
     views = tmp_path / "static" / "js" / "views"

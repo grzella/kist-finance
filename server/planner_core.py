@@ -180,6 +180,8 @@ _PROTECTED_SETTINGS = {
     "backup_dir", "backup_auto",          # → filesystem/backup (has /api/backup/config)
     "app_config",                         # → modules/wizard (has /api/app-config)
     "ai_mode",                            # → local vs cloud (has /api/llm/config)
+    "ai_eval_cmd",                        # → argv passed to subprocess.run in run_eval (command execution)
+    "rag_dirs",                           # → reads files from arbitrary paths into the RAG index (info-disclosure)
     "rag_dirty", "gh_activity_cache", "last_security_review",  # internal state
 }
 
