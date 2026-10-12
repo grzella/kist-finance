@@ -141,6 +141,16 @@ function esc(s) {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+// href-context guard: only http(s), a root-relative path, or an anchor pass through.
+// A javascript:/data:/other scheme (an LLM or external URL) → empty string. The result
+// still goes through esc() for the attribute quote; this is the second layer on the scheme.
+function safeUrl(u) {
+  const s = String(u == null ? "" : u).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s === "/" || /^\/[^/]/.test(s) || s.startsWith("#") || s.startsWith("./")) return s;
+  return "";
+}
+
 // ---------- collapsible explanations: short label, details on click ----------
 function help(html, label = "ℹ️ how to read this") {
   return `<details class="help"><summary>${label}</summary><div>${html}</div></details>`;

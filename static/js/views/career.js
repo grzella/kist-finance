@@ -73,7 +73,7 @@ async function renderCareer(el) {
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Program</th><th>Where</th><th style="text-align:right">Cost</th><th>Priority</th><th>Why / how to pitch it to your boss</th></tr></thead>
         <tbody>${a.trainings.items.map((t) => `<tr>
-          <td><b>${t.url ? `<a href="${esc(t.url)}" target="_blank">${esc(t.name)} ↗</a>` : esc(t.name)}</b></td>
+          <td><b>${t.url ? `<a href="${esc(safeUrl(t.url))}" target="_blank">${esc(t.name)} ↗</a>` : esc(t.name)}</b></td>
           <td class="muted" style="font-size:.88em">${esc(t.provider)}<br><span style="font-size:.92em">${esc(t.format)}</span></td>
           <td style="text-align:right;white-space:nowrap">${esc(t.cost)}</td>
           <td><span class="badge ${/wysoki/.test(t.priority) ? "pos" : ""}">${esc(t.priority)}</span></td>
@@ -88,7 +88,7 @@ async function renderCareer(el) {
       ${a.trainings.conferences ? `<h4 class="mt">🎤 Conferences — local</h4>
       <div class="muted" style="font-size:.85em;margin-bottom:6px">${esc(a.trainings.conferences_note)}</div>
       <table><tbody>${a.trainings.conferences.map((c) => `<tr>
-        <td><b>${c.url ? `<a href="${esc(c.url)}" target="_blank">${esc(c.name)} ↗</a>` : esc(c.name)}</b><div class="muted" style="font-size:.82em">${esc(c.when)}</div></td>
+        <td><b>${c.url ? `<a href="${esc(safeUrl(c.url))}" target="_blank">${esc(c.name)} ↗</a>` : esc(c.name)}</b><div class="muted" style="font-size:.82em">${esc(c.when)}</div></td>
         <td style="font-size:.88em">${esc(c.why)}</td>
       </tr>`).join("")}</tbody></table>` : ""}
     </div>` : ""}
@@ -116,7 +116,7 @@ async function renderCareer(el) {
     </div>
 
     <div class="card mt muted" style="font-size:.8em">Analysis from market research — a snapshot. To refresh: "refresh the career analysis".
-      Sources: ${a.sources.map((u, i) => `<a href="${esc(u)}" target="_blank">[${i + 1}]</a>`).join(" ")}</div>`;
+      Sources: ${a.sources.map((u, i) => `<a href="${esc(safeUrl(u))}" target="_blank">[${i + 1}]</a>`).join(" ")}</div>`;
 
   // ---- Evidence & rhythm: measuring growth as a leader (in place, no page jump)
   const plan90 = (a.market_2026 && a.market_2026.plan_90d) || a.plan_90d || [];
@@ -165,7 +165,7 @@ async function renderCareer(el) {
       </div>
       ${em.log.length ? `<table class="mt" style="font-size:.88em"><tbody>${em.log.slice(0, 30).map((r) => `<tr>
         <td style="white-space:nowrap" class="muted">${esc(r.date)}</td><td>${kindIcon[r.kind] || ""} <span class="badge">${esc(r.kind)}</span></td>
-        <td>${esc(r.text)}${r.metric ? ` <span class="muted">· ${esc(r.metric)}${r.value != null ? ` = <b>${fmt.num(r.value, 0)}</b>` : ""}</span>` : ""}${r.link ? ` <a href="${esc(r.link)}" target="_blank">↗</a>` : ""}</td>
+        <td>${esc(r.text)}${r.metric ? ` <span class="muted">· ${esc(r.metric)}${r.value != null ? ` = <b>${fmt.num(r.value, 0)}</b>` : ""}</span>` : ""}${r.link ? ` <a href="${esc(safeUrl(r.link))}" target="_blank">↗</a>` : ""}</td>
         <td><button class="danger" data-emdel="${r.id}" title="delete">✕</button></td></tr>`).join("")}</tbody></table>` : `<div class="muted mt" style="font-size:.85em">Empty. One entry a week is enough: a decision with its result, a talk, a merged PR, feedback from a VP.</div>`}`;
     const refresh = async () => paintEm(await api.get("/api/em").catch(() => null));
     document.getElementById("emWeekSave").addEventListener("click", async () => {

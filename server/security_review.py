@@ -761,7 +761,7 @@ def _check_view_escaping(repo):
                        "${p.text}", "${p.verdict}", "${t.why}", "${t.boss_pitch}",
                        "${c.why}", "${r.title}", "${a.philosophies.note}",
                        "<a href=\"${t.url}\"", "<a href=\"${c.url}\"", "<a href=\"${u}\""),
-         ("esc(a.headline)", "esc(p.text)", "esc(a.head_of_eng)", "esc(t.url)")),
+         ("esc(a.headline)", "esc(p.text)", "esc(a.head_of_eng)", "esc(safeUrl(t.url))")),
         # ads performance (Supabase + ads-analyst LLM output): weekly summary,
         # insights, hypotheses, plus free-text expense entries.
         ("business.js", ("${i.insight}", "${i.category}", "${h.title}",
@@ -855,6 +855,44 @@ def _check_view_escaping_sweep():
         if gone:
             f("warn", "warn", f"{fname}: sink disappeared (refactor?)",
               f"no esc({gone}) and field absent — check by hand after a refactor")
+    return out
+
+
+# K-XSS-1 / URL-scheme (2026-10-12): an LLM / external URL reaching an href must go through
+# safeUrl() (strips javascript:/data:/other schemes), not just esc() (which guards the attribute
+# quote, not the scheme). Views with such links: analysis sources (career/rsu) and PR URLs from
+# the GitHub API (commits). Positive assertion: the api.js helper plus safeUrl( in each view.
+_XSS_HREF_VIEWS = ("ailearn.js", "career.js", "commits.js", "italy.js", "rsu.js")
+
+
+def _check_view_href_safe():
+    """URL-scheme regression: an href holding an LLM/external URL is wrapped in safeUrl()."""
+    out = []
+    f = _finder(out, "xss-href", "XSS (URL scheme in href)")
+    base = Path(__file__).resolve().parent.parent / "static" / "js"
+    try:
+        if "function safeUrl" not in (base / "api.js").read_text(encoding="utf-8"):
+            f("high", "fail", "api.js: safeUrl() helper missing",
+              "an href holding an LLM/external URL has nothing to strip javascript:/data:",
+              "Add safeUrl() in api.js and wrap the links")
+    except Exception:
+        pass
+    for fname in _XSS_HREF_VIEWS:
+        p = base / "views" / fname
+        try:
+            src = p.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        if "safeUrl(" in src:
+            f("info", "pass", f"{fname}: href goes through safeUrl()",
+              "an LLM/external URL in an href has scheme validation")
+        elif 'href="${esc(' in src:
+            f("high", "fail", f"{fname}: href without safeUrl() (URL scheme)",
+              "esc() guards the attribute, not the scheme — javascript:/data: gets through",
+              'Wrap the URL in safeUrl(): `href="${esc(safeUrl(u))}"`')
+        else:
+            f("warn", "warn", f"{fname}: link not recognised (refactor?)",
+              'neither safeUrl( nor href="${esc( — check by hand')
     return out
 
 
@@ -1018,6 +1056,7 @@ def run(full=True):
         findings += _check_web_guard()
         findings += _check_view_escaping(repo)
         findings += _check_view_escaping_sweep()
+        findings += _check_view_href_safe()
         findings += _check_server_header()
         findings += _check_market_fetch()
         findings += _check_request_caps()

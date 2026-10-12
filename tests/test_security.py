@@ -340,6 +340,27 @@ def test_view_escaping_sweep_flags_raw_sink(tmp_path, monkeypatch):
     assert any(i["status"] == "fail" and "rsu.js" in i["title"] for i in items), items
 
 
+def test_view_href_safe_recognises_hardened():
+    """URL-scheme: an href holding an LLM/external URL goes through safeUrl() (no fail)."""
+    import security_review as sr
+    items = sr._check_view_href_safe()
+    assert not [i for i in items if i["status"] == "fail"], items
+    assert sum(1 for i in items if i["status"] == "pass") >= 3
+
+
+def test_view_href_safe_flags_raw_scheme(tmp_path, monkeypatch):
+    """Negative control: an href with esc() but no safeUrl() turns the panel red."""
+    import security_review as sr
+    js = tmp_path / "static" / "js"
+    (js / "views").mkdir(parents=True)
+    (js / "api.js").write_text("function safeUrl(u){return u}", encoding="utf-8")
+    (js / "views" / "career.js").write_text('`<a href="${esc(u)}">x</a>`', encoding="utf-8")
+    (tmp_path / "server").mkdir()
+    monkeypatch.setattr(sr, "__file__", str(tmp_path / "server" / "security_review.py"))
+    items = sr._check_view_href_safe()
+    assert any(i["status"] == "fail" and "career.js" in i["title"] for i in items), items
+
+
 def test_view_escaping_check_flags_a_raw_sink(tmp_path):
     import security_review as sr
     views = tmp_path / "static" / "js" / "views"

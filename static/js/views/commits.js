@@ -41,7 +41,7 @@ async function renderCommits(el) {
       ${gh.github && gh.github.pr_list && gh.github.pr_list.length ? `<details class="mt"><summary class="muted">🟣 Pull requests in the window (${gh.github.pr_list.length}) — purple triangles above the bars</summary>
         <table class="mt"><tbody>${gh.github.pr_list.slice(0, 30).map((p) => `<tr><td class="muted" style="width:100px">${esc(p.date)}</td>
           <td><span class="badge ${p.state === "merged" ? "pos" : p.state === "open" ? "" : "neg"}">${esc(p.state)}</span></td>
-          <td class="muted" style="font-size:.9em">${esc(p.repo)}</td><td><a href="${esc(p.url)}" target="_blank">${esc(p.title)}</a></td></tr>`).join("")}</tbody></table></details>` : ""}
+          <td class="muted" style="font-size:.9em">${esc(p.repo)}</td><td><a href="${esc(safeUrl(p.url))}" target="_blank">${esc(p.title)}</a></td></tr>`).join("")}</tbody></table></details>` : ""}
       <div class="muted mt" style="font-size:.82em">${gh.today > 0 ? "✅ You already committed today — the streak lives." : "⚠️ Still 0 commits today — a small commit will keep the streak alive."}
         Avg ${gh.avg_per_active} commits/active day. Even a tiny daily commit keeps the streak and the green square on GitHub.</div>
     </div>` : ""}
@@ -55,7 +55,7 @@ async function renderCommits(el) {
         ${(i === 0 || grp(reposSorted[i - 1]) !== grp(r)) ? `<div style="margin-top:${i === 0 ? 0 : 10}px"><span class="badge ${grp(r) === "done" ? "pos" : grp(r) === "now" ? "warn" : ""}">${GROUP_LABEL[grp(r)]}</span></div>` : ""}
         <div style="display:grid;grid-template-columns:minmax(260px,1.1fr) minmax(0,1.6fr);gap:14px;padding:12px 14px;border-radius:10px;background:var(--panel2);border:1px solid var(--hairline)">
           <div style="min-width:0">
-            <div><b><a href="${esc(r.url)}" target="_blank">${esc(r.name)} ↗</a></b></div>
+            <div><b><a href="${esc(safeUrl(r.url))}" target="_blank">${esc(r.name)} ↗</a></b></div>
             ${r.tag ? `<div class="muted" style="font-size:.85em;margin-top:2px">${esc(r.tag)}</div>` : ""}
             <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">
               <span class="badge ${/bardzo|very/.test(r.activity) ? "pos" : ""}" title="Activity">${esc(r.activity)}</span>

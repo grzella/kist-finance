@@ -123,7 +123,7 @@ async function renderRsu(el) {
       </details>`).join("")}
       <div class="muted mt" style="font-size:.8em">A research snapshot (earnings, guidance, analyst targets) —
         not computed automatically. To refresh: ask Claude to "refresh the vest analysis".
-        ${(deep.sources || []).length ? `Sources: ${deep.sources.map((u, i) => `<a href="${esc(u)}" target="_blank">[${i + 1}]</a>`).join(" ")}` : ""}</div>
+        ${(deep.sources || []).length ? `Sources: ${deep.sources.map((u, i) => `<a href="${esc(safeUrl(u))}" target="_blank">[${i + 1}]</a>`).join(" ")}` : ""}</div>
     </div>` : ""}
     ${bands && bands.horizons ? `<div class="card mt" style="border-left:4px solid var(--accent)">
       <h3>📏 Short horizon — range, not direction
