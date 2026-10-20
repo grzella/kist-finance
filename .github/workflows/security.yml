@@ -1,0 +1,66 @@
+name: security-review
+
+# Pentest-grade secret/leak scan + personal-data audit + static code analysis
+# + functional smoke tests. Runs on every push and PR (guards contributors)
+# and once a week on a schedule.
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # FULL history — the leak scan inspects EVERY commit, not just HEAD.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Seed a throwaway DB (for functional smoke tests)
+        env:
+          FINANCE_PROJECT_DIR: ${{ github.workspace }}
+        run: python seed.py --force
+
+      # The maintainer's identifiers are a secret, not tracked source: a tracked list
+      # would publish what it guards. Without the secret (forks) only generic patterns run.
+      - name: Personal-data markers from the repository secret
+        env:
+          MARKERS: ${{ secrets.KIST_PERSONAL_MARKERS }}
+        run: |
+          if [ -n "$MARKERS" ]; then
+            printf '%s\n' "$MARKERS" > "$RUNNER_TEMP/markers.tsv"
+            echo "KIST_PERSONAL_MARKERS_FILE=$RUNNER_TEMP/markers.tsv" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run security + functional suite (fails the build on any blocker)
+        env:
+          FINANCE_PROJECT_DIR: ${{ github.workspace }}
+        working-directory: server
+        run: python -m security_review --ci
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run pytest with coverage (fails under the floor)
+        run: python -m pytest -q --cov=server --cov-report=term-missing --cov-fail-under=60
+      - name: Security lint (bandit — fails on high severity + high confidence)
+        run: python -m bandit -r server -q --severity-level high --confidence-level high

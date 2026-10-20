@@ -1,0 +1,790 @@
+"""Unit tests for pure logic: RAG BM25, forecast models, security scan."""
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "server"))
+
+
+def test_commit_streak_grace_and_break():
+    """Regression: the streak must not reset just because there's no commit
+    today yet (grace until end of day). The old code started the loop at today
+    and returned 0 despite commits yesterday/the day before."""
+    import planner
+    from datetime import date
+    today = date(2026, 7, 20)
+    counts = {"2026-07-19": 57, "2026-07-18": 27}  # nothing today, but streak is alive
+    assert planner._commit_streak(counts, today) == 2
+    assert planner._commit_streak({**counts, "2026-07-20": 1}, today) == 3  # commit today → 3
+    assert planner._commit_streak({"2026-07-18": 5}, today) == 0  # empty yesterday+today breaks
+    assert planner._commit_streak({}, today) == 0  # no commits at all
+
+
+def test_rag_tokenizer_drops_stopwords_and_short():
+    import rag
+    toks = rag._tok("The mortgage on the house is 300000 EUR")
+    assert "300000" in toks and len(toks) >= 3
+    assert "the" not in toks and "on" not in toks  # stopwords/short removed
+    # light stemming: inflection doesn't block matches (goals→goal, houses→house)
+    assert rag._tok("goals")[0] == rag._tok("goal")[0]
+    assert rag._tok("mortgages")[0] == rag._tok("mortgage")[0]
+    assert rag._tok("houses")[0] == rag._tok("house")[0]
+
+
+def test_rag_bm25_ranks_relevant_first(client):
+    # client fixture ensures the seeded DB / env is set up
+    import rag
+    rag.reindex()
+    hits = rag.search("mortgage down payment property goal", k=5)
+    assert hits, "expected at least one hit"
+    # scores are sorted descending
+    scores = [h["score"] for h in hits]
+    assert scores == sorted(scores, reverse=True)
+    assert all(h["score"] > 0 for h in hits)
+
+
+def test_rag_empty_query_returns_nothing(client):
+    import rag
+    assert rag.search("   ") == []
+
+
+def test_forecast_bands_are_ordered():
+    import forecast_models as fm
+    # 80 sessions of gently trending noise → bands must satisfy p10 <= p50 <= p90
+    import math
+    closes = [100 * math.exp(0.0004 * i + 0.01 * math.sin(i)) for i in range(80)]
+    out = fm.short_term_bands(closes)
+    assert out and out["horizons"], "expected bands for a decent series"
+    for h in out["horizons"]:
+        assert h["p10"] <= h["p50"] <= h["p90"]
+    assert out["ewma_vol_annual_pct"] >= 0
+
+
+def test_forecast_goal_eta_band():
+    import forecast_models as fm
+    band = fm.goal_eta_band(remaining=120000, pace=5000)
+    assert band is not None  # ~24 months at 5k/mo, returned as a range
+
+
+def test_forecast_model_primitives():
+    import forecast_models as fm
+    closes = [100, 101, 100.5, 102, 101.5, 103, 102.5, 104]
+    lr = fm.log_returns(closes)
+    assert len(lr) == len(closes) - 1
+    vol = fm.ewma_vol_daily(lr)
+    assert vol is not None and vol >= 0
+    assert fm.ewma_vol_daily([]) is None
+    qs = fm.empirical_nday_quantiles(closes, n=2)
+    assert qs is None or (qs[0.10] <= qs[0.50] <= qs[0.90])
+    assert fm.conformal_quantiles([0.1, -0.2, 0.3], min_n=40) is None  # too few obs
+
+
+def test_backup_snapshot_is_consistent(client, tmp_path):
+    import data_backup as backup
+    backup.planner.set_settings({"backup_allow_plaintext": "true"})  # no BACKUP_KEY in test env
+    backup.set_destination(str(tmp_path))
+    r = backup.create_backup()
+    assert r["ok"] and r["size_kb"] > 0
+
+
+def test_backup_restore_reverts_changes(client, tmp_path):
+    import data_backup as backup
+    backup.planner.set_settings({"backup_allow_plaintext": "true"})  # no BACKUP_KEY in test env
+    backup.set_destination(str(tmp_path))
+    before = len(client.get("/api/goals").get_json())
+    snap = backup.create_backup()["file"]
+    gid = client.post("/api/goals", json={"name": "temp", "target_amount": 1}).get_json()["id"]
+    assert len(client.get("/api/goals").get_json()) == before + 1
+    res = backup.restore(snap)
+    assert res["ok"] and res["safety_copy"]
+    assert len(client.get("/api/goals").get_json()) == before  # reverted
+    # guard against path traversal
+    assert backup.restore("../../etc/passwd")["ok"] is False
+    assert backup.restore("/etc/passwd")["ok"] is False
+
+
+def test_rag_semantic_hybrid_finds_without_lexical_overlap(client, monkeypatch):
+    """With embeddings present, a query semantically close but sharing NO words
+    still surfaces the right chunk — what pure BM25 cannot do."""
+    import json
+    import uuid
+    import rag
+    import llm_local
+    import engine_bridge as eb
+
+    # toy embedder: "retirement" ~ "pension" (close), "car" far away
+    vocab = {"pension": [1.0, 0, 0], "retirement": [0.95, 0.1, 0],
+             "car": [0, 1.0, 0], "loan": [0, 0.95, 0.1]}
+
+    def fake_embed(text):
+        v = [0.0, 0.0, 0.0]
+        for w, vec in vocab.items():
+            if w in text.lower():
+                v = [a + b for a, b in zip(v, vec)]
+        return v if any(v) else [0.01, 0.01, 0.01]
+
+    monkeypatch.setattr(llm_local, "embed", fake_embed)
+    rag.ensure_tables()
+    eb._exec("delete from rag_chunks")
+    for src, txt in [("a", "my pension account balance"), ("b", "the car loan payment")]:
+        emb = json.dumps(rag._normalize(fake_embed(txt)))
+        eb._exec("insert into rag_chunks (id, source, ref, text, created_at, embedding) "
+                 "values (?,?,?,?,?,?)", (uuid.uuid4().hex, src, "", txt, "now", emb))
+
+    hits = rag.search("saving for retirement", k=2)  # no word overlap with "pension"
+    assert hits and hits[0]["text"] == "my pension account balance"
+
+
+def test_rag_reindex_embeds_new_data_and_degrades_without_server(client, monkeypatch):
+    """Embedding lifecycle: (1) reindex with a live server embeds EVERY chunk
+    (new data grows together with semantics, no manual step), (2) reindex with
+    the server down doesn't blow up — index rebuilt, embedded=0, engine degrades
+    to BM25, (3) server back + reindex recovers semantics fully. Guards the
+    'self-healing, gracefully degrading' contract."""
+    import rag
+    import llm_local
+
+    # (1) server alive → everything embedded, status = hybrid
+    monkeypatch.setattr(llm_local, "embed", lambda t: [0.1, 0.2, 0.3] if t else None)
+    n = rag.reindex()["chunks"]
+    st = rag.status()
+    assert n > 0 and st["embedded"] == st["chunks"] == n
+    assert "hybrid" in st["engine"]
+
+    # (2) server down and no old index to carry over → reindex passes, zero embeddings,
+    # engine = BM25 + hint (with an old index the embeddings would be kept, see the test below)
+    import engine_bridge as eb
+    eb._exec("delete from rag_chunks")
+    monkeypatch.setattr(llm_local, "embed", lambda t: None)
+    n2 = rag.reindex()["chunks"]
+    st2 = rag.status()
+    assert n2 == n and st2["embedded"] == 0
+    assert "BM25" in st2["engine"] and "hybrid" not in st2["engine"]
+    assert st2["hint"]  # UI explains how to enable semantics
+    assert rag.search("wealth goal loan", k=3)  # search still works (lexically)
+
+    # (3) server back → reindex recovers semantics in full
+    monkeypatch.setattr(llm_local, "embed", lambda t: [0.3, 0.2, 0.1] if t else None)
+    rag.reindex()
+    st3 = rag.status()
+    assert st3["embedded"] == st3["chunks"] and "hybrid" in st3["engine"]
+
+
+def test_rag_indexes_derived_sources(client):
+    import rag
+    rag.reindex()
+    import engine_bridge as eb
+    sources = {r["source"] for r in eb._rows("select source from rag_chunks")}
+    assert "reminder" in sources  # derived data now indexed, not just tables
+
+
+def test_llm_log_records_and_reads(client):
+    import llm_log
+    llm_log.record("test question?", {"mode": "local", "rag_used": True,
+                                       "local": {"ok": True, "text": "answer"}})
+    recent = llm_log.recent(5)
+    assert any(r["prompt"] == "test question?" for r in recent)
+    assert llm_log.stats()["total"] >= 1
+
+
+def test_llm_log_rating_feeds_lesson_stats(client):
+    import llm_log
+    lid = llm_log.record("q with a lesson", {"mode": "local", "local": {"ok": True, "text": "a"},
+                                             "sources": [{"source": "experience", "ref": "how to size a buffer"},
+                                                         {"source": "goal", "ref": "car"}]})
+    assert client.post(f"/api/llm/log/{lid}/rating", json={"rating": -1}).status_code == 200
+    assert client.post(f"/api/llm/log/{lid}/rating", json={"rating": 5}).status_code == 400
+    assert llm_log.lesson_stats()["how to size a buffer"] == {"used": 1, "up": 0, "down": 1}
+    assert next(r for r in llm_log.recent(5) if r["id"] == lid)["rating"] == -1
+
+
+def test_rag_context_keeps_one_lesson(client):
+    import experience, rag
+    for i in range(3):
+        experience.save(f"which savings goal is closest {i}", "Rank savings goals by percent done, not by amount left.")
+    rag.reindex()
+    _, used = rag.context_with_sources("which savings goal is closest to done")
+    assert sum(u["source"] == "experience" for u in used) == 1
+    for e in experience.listing():
+        if e["question"].startswith("which savings goal is closest"):
+            experience.delete(e["id"])
+
+
+def test_fire_tracking_uses_plan_frozen_in_snapshot(client):
+    import engine_bridge as eb
+    import planner_fire
+    eb._exec("delete from fire_snapshots")
+    for m, liquid, flow in (("2026-01", 100000, 5000), ("2026-02", 105000, None)):
+        eb._exec("insert into fire_snapshots (month, liquid, created_at, plan_flow) values (?,?,?,?)",
+                 (m, liquid, "2026-01-01", flow))
+    row = planner_fire.fire_tracking(contrib=9000, freed=0, base_annual=0)["rows"][0]
+    assert row["expected_growth"] == 5000   # the plan of January, not today's 9000
+    eb._exec("delete from fire_snapshots")
+
+
+def test_security_review_runs_and_reports(client):
+    import security_review as sr
+    rep = sr.run(full=False)  # static checks only (fast, no server needed)
+    assert set(("verdict", "score", "findings", "counts")) <= set(rep)
+    assert 0 <= rep["score"] <= 100
+    assert isinstance(rep["findings"], list) and rep["findings"]
+
+
+def test_fetch_yahoo_history_stores_rows(client, monkeypatch):
+    """Regression: the cache-write path once crashed with a NameError (eb
+    undefined) that the offline `return 0` fallback silently hid — so mock the
+    Yahoo response and make sure rows actually land in market_prices_cache."""
+    import io
+    import json as _json
+    import urllib.request
+    import market
+
+    payload = {"chart": {"result": [{
+        "timestamp": [1752624000, 1752710400],
+        "indicators": {"quote": [{"close": [101.5, None]}]},
+        "meta": {"currency": "USD"}}]}}
+
+    class FakeResp(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda *a, **kw: FakeResp(_json.dumps(payload).encode()))
+    assert market.fetch_yahoo_history("TESTX") == 1  # None close skipped
+    hist = market.prices("TESTX", days=10)
+    assert any(abs(h["close"] - 101.5) < 1e-9 for h in hist)
+
+
+def test_experience_distillation_roundtrip(client, monkeypatch):
+    """A distilled lesson is stored, indexed into RAG, retrieved as guidance on a
+    similar question, and prunable — self-evolution without retraining (book ch.8)."""
+    import experience, rag, llm_local
+    # gate: refusals / too-short replies are NOT stored (transferability caveat)
+    monkeypatch.setattr(llm_local, "chat", lambda *a, **k: "NONE")
+    assert experience.learn("q", "a") is None
+    assert experience.listing() == []
+    # a real transferable lesson is stored + marks the index stale
+    monkeypatch.setattr(llm_local, "chat", lambda *a, **k:
+                        "Compare the loan rate to the market return AFTER capital-gains tax, not gross.")
+    assert experience.learn("Overpay mortgage or invest?", "answer") is not None
+    assert len(experience.listing()) == 1
+    # RAG reindex surfaces it as an 'experience' chunk, retrievable by meaning-adjacent words
+    rag.reindex()
+    hits = rag.search("should I overpay the loan or invest in an ETF", k=6)
+    assert any(h["source"] == "experience" for h in hits)
+    # pruning removes it from the knowledge base
+    experience.delete(experience.listing()[0]["id"])
+    assert experience.listing() == []
+    rag.reindex()
+    assert not any(h["source"] == "experience" for h in rag.search("overpay loan invest", k=6))
+
+
+def test_usd_base_rate_respects_base_currency(client, monkeypatch):
+    """RSU/market values convert via the base currency: USD base → 1.0 (no FX pair
+    needed), otherwise the USD<base>=X rate from the cache."""
+    import market, planner
+    planner.set_settings({"base_currency": "USD"})
+    assert market._usd_base_rate()[0] == 1.0
+    planner.set_settings({"base_currency": "PLN"})
+    monkeypatch.setattr(market, "prices", lambda t, days=10:
+                        [{"date": "2026-07-01", "close": 3.9}] if t == "USDPLN=X" else [])
+    rate, d = market._usd_base_rate()
+    assert rate == 3.9 and d == "2026-07-01"
+    planner.set_settings({"base_currency": "PLN"})  # leave a known state
+
+
+def test_github_activity_unconfigured_returns_empty(client, monkeypatch):
+    """A fresh clone with no commit_repos and no gh must NOT scrape the home folder —
+    it returns configured:false with zeros so the UI shows setup steps, never someone
+    else's numbers."""
+    import planner
+    import planner_ops  # po podziale planner.py: wywołania wewnątrz modułu patchuje się w tym module
+    monkeypatch.setattr(planner_ops, "_github_contribution_calendar", lambda days=90: None)
+    ga = planner.github_activity(days=30)
+    assert ga["configured"] is False
+    assert ga["today"] == 0 and ga["repos"] == 0 and len(ga["series"]) == 30
+
+
+def test_analytics_rounds_displayed_price(client, monkeypatch):
+    """Displayed prices are rounded to 2dp at source (no raw Yahoo float like
+    333.739990234375 leaking into the UI)."""
+    import market
+    series = [{"date": f"2026-0{1 + i // 28}-{1 + i % 28:02d}", "close": 100.0 + i,
+               "currency": "USD"} for i in range(60)]
+    series[-1]["close"] = 333.739990234375
+    monkeypatch.setattr(market, "prices", lambda t, days=365: series)
+    a = market.analytics("TESTX")
+    assert a["last_close"] == 333.74
+    assert a["high_52w"] == round(a["high_52w"], 2)
+
+
+def test_barometer_index_trend_config_and_backcompat(client):
+    """The barometer is configurable (roles/geo), computes an index (base 100) +
+    3-month % + a direction reading, accepts both the legacy em/head shape and the
+    new per-role counts shape, and re-keys its series when roles are reconfigured."""
+    import planner, json
+    # default config (public: from career_role_a/b)
+    cfg = planner.barometer_config()
+    keys = [r["key"] for r in cfg["roles"]]
+    assert len(keys) == 2
+    # legacy shape (back-compat) + new counts shape (n8n collector)
+    planner.add_barometer_point({"month": "2026-04", "em_openings": 40, "head_openings": 10})
+    planner.add_barometer_point({"month": "2026-05", "em_openings": 44, "head_openings": 11})
+    planner.add_barometer_point({"month": "2026-06", "em_openings": 52, "head_openings": 9})
+    planner.add_barometer_point({"month": "2026-07",
+                                 "counts": {keys[0]: 60, keys[1]: 12},
+                                 "sources": "JSearch", "geo": "Remote", "as_of": "2026-07-19"})
+    b = planner.list_barometer()
+    # after the two-stream rework, series are keyed "role|stream"
+    # (points without a stream field fall into the default "trends")
+    assert b["streams"] == ["trends"]
+    s0 = b["series"][f"{keys[0]}|trends"]
+    assert s0["index"][0] == 100.0 and s0["index"][-1] == 150.0   # 40 -> 60 = 150
+    assert s0["q_pct"] == 50.0 and s0["reading"] == "growing"
+    assert b["points"][-1]["sources"] == "JSearch" and b["points"][-1]["counts"][keys[0]] == 60
+    # range average: only offers with a disclosed total count; a month without any = None
+    planner.add_offer({"company": "A", "total_monthly": 30000, "received_at": "2026-07-02"})
+    planner.add_offer({"company": "B", "total_monthly": 50000, "received_at": "2026-07-20"})
+    planner.add_offer({"company": "C", "total_monthly": 0, "received_at": "2026-07-21"})
+    b = planner.list_barometer()
+    i = b["months"].index("2026-07")
+    assert b["comp_avg"][i] == 40000 and b["comp_n"][i] == 2 and b["inbound"][i] == 3
+    assert all(a is None for a, n in zip(b["comp_avg"], b["comp_n"]) if n == 0)
+    # reconfigure roles -> series re-keys
+    planner.set_settings({"barometer_config": json.dumps(
+        {"geo": ["US"], "roles": [{"key": "pm", "label": "Product Manager", "query": "product manager"}]})})
+    b2 = planner.list_barometer()
+    assert list(b2["series"]) == ["pm|trends"] and b2["geo"] == ["US"]
+
+
+def test_view_js_global_helpers_are_defined():
+    """Guard the 'esc is not defined' class: a view calls a shared global helper
+    that isn't defined in api.js/app.js (it slipped in when esc() was added to one
+    repo's api.js but not the other's). Pure text check — no browser needed."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    defined = (root / "static/js/api.js").read_text() + (root / "static/js/app.js").read_text()
+    views = list((root / "static/js/views").glob("*.js"))
+    for name in ("esc", "fmt", "api", "demoOn", "parseNum"):
+        assert any(t in defined for t in (f"function {name}", f"const {name}", f"{name} =")), \
+            f"global helper `{name}` used by views is not defined in api.js/app.js"
+    # any view calling esc( must have esc defined (the exact regression)
+    if any("esc(" in v.read_text() for v in views):
+        assert "function esc" in defined, "views call esc() but api.js/app.js has no `function esc`"
+
+
+def test_scheduler_does_not_burn_period_on_failed_runner():
+    """Regression (the barometer silently lost July 2026): run_due did `if ok:`
+    while collectors return a dict — so {"ok": False, "error": ...} was truthy and
+    a monthly task recorded itself as done, losing the period until the next one."""
+    import schedules
+    assert schedules._succeeded({"ok": False, "error": "rate limited"}) is False
+    assert schedules._succeeded({"ok": False}) is False
+    assert schedules._succeeded({"ok": True, "added": []}) is True
+    assert schedules._succeeded({"added": ["2026-07"]}) is True  # no "ok" key = success
+    assert schedules._succeeded(True) is True
+    assert schedules._succeeded(False) is False
+    assert schedules._succeeded(None) is False
+
+
+def test_barometer_full_months_skips_current_and_covers_gaps():
+    """The collector must fill EVERY missing full month, not only the latest —
+    otherwise an app left unopened for months keeps those gaps forever. The current
+    month is always skipped (Trends would report a deflated average)."""
+    import barometer_collect as bc
+    from datetime import date
+
+    class _FakeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 8, 15)
+
+    orig = bc.date
+    bc.date = _FakeDate
+    try:
+        assert bc._last_full_month() == "2026-07"
+        months = bc._full_months_since("2026-01")
+        assert months == ["2026-01", "2026-02", "2026-03", "2026-04",
+                          "2026-05", "2026-06", "2026-07"]
+        assert "2026-08" not in months  # never the current month
+        assert bc._full_months_since("2025-11")[:3] == ["2025-11", "2025-12", "2026-01"]
+    finally:
+        bc.date = orig
+
+
+def test_barometer_collect_rewrites_whole_series_on_one_scale(client, monkeypatch):
+    """Trends scales each request to its own window, so a point from another request
+    (August 20x too low) must be overwritten by the value from the same request."""
+    import sys, types
+    import pandas as pd
+    import barometer_collect as bc
+    import planner
+    from datetime import date
+
+    class _FakeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 9, 24)
+
+    class _Fake:
+        def __init__(self, *a, **k): pass
+        def build_payload(self, q, **k): self.q = q
+        def interest_over_time(self):
+            idx = pd.date_range("2026-01-01", "2026-09-24", freq="D")
+            return pd.DataFrame({q: [50.0] * len(idx) for q in self.q}, index=idx)
+
+    monkeypatch.setitem(sys.modules, "pytrends.request", types.SimpleNamespace(TrendReq=_Fake))
+    monkeypatch.setattr(bc, "date", _FakeDate)
+    keys = [r["key"] for r in planner.barometer_config()["roles"]]
+    for p in planner.list_barometer()["points"]:
+        planner.delete_barometer_point(p["id"])
+    planner.add_barometer_point({"month": "2026-08", "counts": {k: 2.5 for k in keys}, "stream": "trends"})
+
+    out = bc.collect()
+    assert out["ok"], out
+    pts = [p for p in planner.list_barometer()["points"] if p["stream"] == "trends"]
+    assert sorted(p["month"] for p in pts) == [f"2026-{m:02d}" for m in range(1, 9)]  # one per month
+    assert all(v == 50.0 for p in pts for v in p["counts"].values())  # August overwritten
+
+
+def test_watchlist_counts_title_families_and_eu_locations(client):
+    """Watchlist: Senior/Staff EM lands in 'em', Director in 'head', a role key without
+    a family matches its query literally; Sales Engineering Manager and 'Remote - US'
+    are out; a board that does not answer goes to failed without spoiling the rest."""
+    import barometer_collect as bc
+    boards = {
+        ("greenhouse", "a"): [("Senior Engineering Manager, Platform", "Warsaw, Poland"),
+                              ("Engineering Manager II", "Remote - US"),
+                              ("Sales Engineering Manager", "London"),
+                              ("Director of Engineering", "Remote - EMEA"),
+                              ("Staff Engineering Manager", "Remote"),
+                              ("Engineering Manager, ML", "San Francisco (or Remote U.S.)"),
+                              ("Engineering Manager, Agents", "Remote (North America)"),
+                              ("Senior Analytical Engineering Manager", "Warsaw"),
+                              ("Engineering Manager - AppSec | EMEA | (Remote, Spain)", "Spain (Remote)"),
+                              ("Engineering Manager - AppSec | EMEA | (Remote, Ireland)", "Ireland (Remote)"),
+                              ("Staff Product Manager", "Berlin")],
+        ("ashby", "b"): None,
+        ("lever", "c"): [("Head of Engineering", "Berlin, Germany"), ("Engineering Manager", "Bengaluru, India")],
+    }
+    roles = [{"key": "em"}, {"key": "head"}, {"key": "pm", "query": "product manager"}]
+    counts, hits, failed = bc.count_watchlist(list(boards), roles, fetch=lambda a, s: boards[(a, s)])
+    assert counts == {"em": 3, "head": 2, "pm": 1} and failed == ["ashby:b"]
+    assert any(h.startswith("a: Senior Engineering Manager") for h in hits)
+    import planner
+    assert "greenhouse:gitlab" in planner.barometer_config()["watchlist"]
+
+
+def test_watchlist_family_follows_role_query():
+    """Generic a/b roles get a title family from what their query names, not a literal match."""
+    import barometer_collect as bc
+    fam = lambda q: bc._family_for({"key": "a", "query": q})
+    assert fam("Senior PM").search("Senior Product Manager, Growth")
+    assert fam("Head of Product").search("Director of Product")
+    assert not fam("Head of Product").search("Head of Engineering")
+    assert fam("Engineering Manager / Head").search("Staff Engineering Manager")
+    assert fam("Senior / Staff Engineer").search("Staff Software Engineer")
+    assert not fam("Senior / Staff Engineer").search("Senior Engineering Manager")
+    assert fam("Data Scientist").search("Senior Data Scientist")  # literal fallback
+
+
+def test_hiringlab_monthly_mean_and_series(client, monkeypatch):
+    """Hiring Lab: monthly mean of 'total postings' for Software Development (other
+    sectors and 'new postings' skipped); it_eu|hiringlab and it_broad|hiringlab series
+    live outside the configured roles; a country lacking a sector averages the ones it
+    has; re-running does not duplicate rows."""
+    import barometer_collect as bc, planner
+    import engine_bridge as eb
+    csv = ("date,jobcountry,indeed_job_postings_index,variable,display_name\n"
+           "2026-01-01,DE,40,total postings,Software Development\n"
+           "2026-01-02,DE,60,total postings,Software Development\n"
+           "2026-01-02,DE,99,new postings,Software Development\n"
+           "2026-01-02,DE,99,total postings,Accounting\n"
+           "2026-02-01,DE,80,total postings,Software Development\n"
+           "2026-01-01,DE,20,total postings,Data & Analytics\n"
+           "2026-01-01,DE,30,total postings,IT Systems & Solutions\n"
+           "2026-01-01,DE,100,total postings,\"IT Infrastructure, Operations & Support\"\n")
+    assert bc.hiringlab_monthly(csv, {"2026-01", "2026-02"}) == {"2026-01": 50.0, "2026-02": 80.0}
+    monkeypatch.setattr(bc, "HIRINGLAB_COUNTRIES", ["DE"])
+    out = bc.collect_hiringlab(force=True, fetch=lambda c: csv)
+    assert "2026-01" in out["added"]
+    b = planner.list_barometer()
+    s = b["series"]["it_eu|hiringlab"]
+    assert s["index"][b["months"].index("2026-02")] == 160.0
+    assert all(p["stream"] != "hiringlab" for p in b["points"])
+    assert b["series"]["it_broad|hiringlab"]["counts"][b["months"].index("2026-01")] == 50.0  # (50+20+30+100)/4
+    monkeypatch.setattr(bc, "HIRINGLAB_COUNTRIES", ["DE", "FR"])
+    bc.collect_hiringlab(force=True, fetch=lambda c: csv if c == "DE" else csv.replace("Data & Analytics", "X"))
+    b = planner.list_barometer()
+    assert b["series"]["it_broad|hiringlab"]["counts"][b["months"].index("2026-01")] == 55.0  # (50 + 60)/2
+    bc.collect_hiringlab(force=True, fetch=lambda c: csv)
+    assert eb._rows("select count(*) n from market_barometer where stream='hiringlab' and month='2026-01'")[0]["n"] == 1
+
+
+def test_plboards_dedupe_cities_and_base_currency_pay(client):
+    """Just Join IT / Rocket Jobs: candidates by sitemap slug, the same role in two cities counts
+    once, Sales EM is skipped, VP lands in the Head family, the range comes only from the main
+    offer (not similar offers) in the base currency, hourly x168."""
+    import json
+    import barometer_collect as bc, planner
+    planner.set_settings({"base_currency": "PLN", "barometer_config": json.dumps({"roles": [
+        {"key": "a", "label": "Engineering Manager", "query": "engineering manager"},
+        {"key": "b", "label": "Head of Engineering", "query": "head of engineering"}]})})
+
+    def page(title, company, pay=None, unit="month"):
+        ld = {"@type": "JobPosting", "title": title, "hiringOrganization": {"name": company},
+              "jobLocation": {"address": {"addressCountry": "PL", "addressLocality": "Warsaw"}}}
+        main = [{"currency": "PLN", "from": pay and pay[0], "fromPln": None, "to": pay and pay[1], "toPln": None, "unit": unit},
+                {"currency": "EUR", "from": pay and pay[0] / 4, "fromPln": None, "to": pay and pay[1] / 4, "toPln": None, "unit": unit}]
+        similar = [{"currency": "PLN", "from": 1, "fromPerUnit": 1, "to": 999999, "unit": "month"}]
+        flight = "".join(json.dumps({"employmentTypes": a}, separators=(",", ":")) for a in (main, similar)).replace('"', '\\"')
+        return f'<script type="application/ld+json">{json.dumps(ld)}</script><script>self.__next_f.push([1,"{flight}"])</script>'
+
+    site = "https://justjoin.it/job-offer/"
+    pages = {
+        site + "acme-engineering-manager-warszawa-pm": page("Engineering Manager", "Acme", (20000, 30000)),
+        site + "acme-engineering-manager-krakow-pm": page("Engineering Manager", "Acme", (20000, 30000)),
+        site + "beta-vp-of-engineering-gdansk-pm": page("VP of Engineering", "Beta", (150, 200), unit="hour"),
+        site + "gamma-sales-engineering-manager-warszawa-other": page("Sales Engineering Manager", "Gamma"),
+        site + "delta-engineering-manager-warszawa-net": page("Engineering Manager", "Delta"),
+        site + "omega-java-developer-warszawa-java": "must not be fetched",
+    }
+    fetched = []
+
+    def get(url):
+        fetched.append(url)
+        if url.endswith("active-jobs.xml"):
+            return "<loc>https://justjoin.it/sitemaps/part0.xml</loc>"
+        if url.endswith("part0.xml"):
+            return "".join(f"<loc>{u}</loc>" for u in pages)
+        return pages[url]
+
+    out = bc.collect_plboards(force=True, get=get, pause=0)
+    assert out["ok"] and out["added"]["jjit"] == {"a": 2, "b": 1}
+    assert not any("omega" in u or "gamma" in u for u in fetched)
+    p = next(p for p in planner.list_barometer()["points"] if p["stream"] == "jjit")
+    assert p["pay"] == {"a": 30000, "b": 33600} and "ranges in 2 of 3" in p["sources"]
+    assert "Acme: Engineering Manager (Warsaw) · 20,000–30,000 PLN/mo" in p["note"]
+    planner.set_settings({"base_currency": "EUR"})
+    assert bc.offer_details(pages[site + "acme-engineering-manager-warszawa-pm"], "EUR")["pay"] == (5000, 7500)
+    planner.set_settings({"base_currency": "PLN", "barometer_config": ""})
+
+
+def test_market_composite_chain_links_new_source():
+    """Job market = sum of services; a new service (JJIT in October) grows the total, but the
+    index only moves by the change on services seen before. Range: mean of the services' medians."""
+    import planner_career as pc
+    pts = [{"month": "2026-09", "stream": "watchlist", "counts": {"a": 40}, "pay": {}},
+           {"month": "2026-10", "stream": "watchlist", "counts": {"a": 44}, "pay": {}},
+           {"month": "2026-10", "stream": "jjit", "counts": {"a": 20}, "pay": {"a": 4100}},
+           {"month": "2026-10", "stream": "trends", "counts": {"a": 99}, "pay": {}}]
+    months = ["2026-08", "2026-09", "2026-10"]
+    m = pc.market_composite(pts, ["a"], months, {"watchlist", "jjit"})["a"]
+    assert m["index"] == [None, 100.0, 110.0] and m["counts"] == [None, 40, 64]
+    assert m["parts"][2] == {"watchlist": 44, "jjit": 20}
+    # October without the watchlist: only first-time services, nothing to compare, so no index point
+    m = pc.market_composite(pts[:1] + pts[2:], ["a"], months, {"watchlist", "jjit"})["a"]
+    assert m["index"] == [None, 100.0, None] and m["counts"][2] == 20 and m["reading"] is None
+    lv = [{"month": "2026-10", "role": "a", "median": 60000}]
+    pay = pc.market_pay(pts, lv, ["a"], months, {"jjit", "levels"})["a"]
+    assert pay["values"][2] == 4550 and pay["parts"][2] == {"jjit": 4100, "levels": 5000}
+
+
+def test_levels_import_parses_summary_and_stays_off_index(client):
+    """levels.fyi by hand: median, percentiles and the levels table from a paste, raw text in
+    raw/, re-importing the same sample replaces it; off the barometer index; other currency = 400."""
+    import os
+    from pathlib import Path
+    import barometer_collect as bc, planner
+    # made-up sample in the levels.fyi .md layout; no real figures
+    planner.set_settings({"base_currency": "EUR", "barometer_config": ""})
+    text = ("# Levels.fyi – Example Role Salary in Exampleland\n"
+            "**URL:** https://www.levels.fyi/t/example-role/locations/exampleland  \n"
+            "**Scope:** Example Role roles in Exampleland  \n"
+            "- Median Total Compensation: EUR 81,234  \n- 25th / 75th Percentile: EUR 70,111 / EUR 95,555  \n"
+            "- 90th Percentile: EUR 120,987  \n- Sample Size: 17 salary submissions  \n- Last Updated: March 3, 2025\n"
+            "### Levels Breakdown\n| Level | Median Total Compensation |\n| --- | --- |\n| L4 | EUR 99,876 |\n")
+    d = bc.parse_levels(text, "EUR")
+    assert (d["median"], d["p25"], d["p75"], d["p90"], d["n"]) == (81234, 70111, 95555, 120987, 17)
+    assert d["levels"] == {"L4": 99876} and d["as_of"] == "2025-03-03"
+    role = planner.barometer_config()["roles"][1]["key"]
+    bc.import_levels(text, "Example", role=role)
+    bc.import_levels(text, "Example", role=role)
+    b = planner.list_barometer()
+    assert [(l["label"], l["median"], l["role"]) for l in b["levels"]] == [("Example", 81234, role)]
+    assert b["market_pay"][role]["parts"][b["comp_months"].index("2025-03")]["levels"] == 6770
+    assert all(p["stream"] != "levels" for p in b["points"]) and "levels" not in b["streams"]
+    assert (Path(os.environ["FINANCE_PROJECT_DIR"]) / "raw/levels-fyi/2025-03-03-example.md").read_text() == text
+    r = client.post("/api/market-barometer/levels", json={"text": "Median: USD 1"})
+    assert r.status_code == 400 and "EUR" in r.get_json()["error"]
+    planner.set_settings({"base_currency": "PLN"})
+
+
+def test_package_by_month_steps_with_raise_and_new_grants(client, monkeypatch):
+    """Package per month: salary from salary_history from its 'from', grants from first_vest."""
+    import json, market, planner, planner_career as pc
+    planner.set_settings({"tax_salary_gross_annual": 120000, "annual_bonus_net": 0,
+                          "salary_history": json.dumps([{"from": "2026-01", "annual": 96000},
+                                                        {"from": "2026-09", "annual": 120000}])})
+    monkeypatch.setattr(market, "get_rsu", lambda: {
+        "last_close": 100, "usdpln": 4, "vests_per_year": 4, "legacy_shares_per_vest": 10,
+        "vest_sources": [{"label": "legacy grants", "first_vest": "2026-11", "last_vest": "2030-08", "per_vest": 10},
+                         {"label": "grant", "first_vest": "2026-11", "last_vest": "2030-08", "per_vest": 5,
+                          "cash_per_vest_usd": 1000}]})
+    aug, sep, nov = pc._package_by_month(["2026-08", "2026-09", "2026-11"])
+    assert aug == round((96000 + 10 * 100 * 4 * 4) / 12)
+    assert sep == round((120000 + 10 * 100 * 4 * 4) / 12)           # raise
+    assert nov == round((120000 + (15 * 100 + 1000) * 4 * 4) / 12)  # new grant + cash-vest
+
+
+def test_vest_schedule_confirmed_total_from_broker(client):
+    """The broker's total overrides the pricing-window estimate until confirmed_until, then drops out."""
+    import datetime, market
+    hist = [{"date": "2026-08-15", "close": 100.0}]
+    g = {"vest_months": [2, 5, 8, 11], "vests_per_year": 4, "vesting_years": 4, "legacy_shares_per_vest": 10,
+         "legacy_until": "2027-05", "grant_value_usd": 1600, "pricing_window": "2026-08", "first_vest": "2026-11",
+         "confirmed_shares_per_vest": 13, "confirmed_until": "2027-05", "_today": datetime.date(2026, 10, 2)}
+    m = {r["month"]: r["shares"] for r in market.vest_schedule(g, hist)["months"]}
+    assert m["2026-11"] == m["2027-05"] == 13
+    assert m["2027-08"] == 1  # legacy grants and the correction expired, the 1600/100/16 grant remains
+
+
+def test_invest_plan_buys_where_below_weight(client, monkeypatch):
+    """The buy list splits the inflow across buckets below weight; the overweight one gets 0; sum = inflow."""
+    import planner
+    monkeypatch.setattr(planner, "wealth_summary", lambda: {"items": [
+        {"name": "Broker: Core all-world ETF", "group": "invest", "latest_value": 1000},
+        {"name": "Broker: NASDAQ 100 ETF", "group": "invest", "latest_value": 9000},
+        {"name": "Employer stock (RSU)", "group": "invest", "latest_value": 5000}]})
+    monkeypatch.setattr(planner, "cashflow", lambda **kw: {"rows": [
+        {"month": "2026-10", "inflow": 1000, "is_vest": False}, {"month": "2026-11", "inflow": 9000, "is_vest": True}]})
+    out = planner.invest_plan()
+    by = {r["key"]: r for r in out["rows"]}
+    assert out["total"] == 10000 and out["deploy"] == 10000 and out["deploy_month"] == "2026-11"
+    assert by["satellite"]["buy"] == 0 and by["satellite"]["flag"] == "overweight"
+    assert sum(r["buy"] for r in out["rows"]) == 10000
+    assert by["core"]["buy"] > by["bonds"]["buy"] > by["sandbox"]["buy"] > 0
+
+
+def test_monthly_surplus_follows_dashboard_unless_set(client):
+    """Empty cf_monthly_surplus = income − fixed costs (as on the Dashboard); a manual value wins."""
+    import planner
+    planner.set_settings({"cf_monthly_surplus": "", "monthly_savings": ""})
+    planner.add_expense_item({"name": "Test rent", "payer": "me", "amount": 400})
+    planner.add_wealth_item({"name": "Test salary", "kind": "income", "value": 1000})
+    base = planner.monthly_surplus()
+    assert base is not None
+    planner.add_wealth_item({"name": "Test side income", "kind": "income", "value": 1000})
+    assert planner.monthly_surplus() == round(base + 1000, 2)
+    planner.set_settings({"cf_monthly_surplus": 777})
+    assert planner.monthly_surplus() == 777
+
+
+def test_wealth_trend_and_overview_skip_income(client):
+    """Earnings (kind income) aren't wealth: kept out of the trend and the overview groups."""
+    import planner
+    before = planner.wealth_summary()["trend"]
+    base = before[-1]["total"] if before else 0
+    planner.add_wealth_item({"name": "Test earnings", "kind": "income", "value": 99999})
+    planner.add_wealth_item({"name": "Test cash", "kind": "cushion", "value": 1000})
+    assert planner.wealth_summary()["trend"][-1]["total"] == round(base + 1000, 2)
+    o = planner.wealth_overview()
+    assert sum(o["series"][g][-1] for g in o["series"]) == round(base + 1000)
+
+
+def test_tax_reserve_set_aside_frees_cash(client, monkeypatch):
+    """A 'Tax reserve…' item covers the reserve, so cash on the account isn't charged for it."""
+    import planner, planner_wealth as pw
+    real = pw.wealth_summary
+    monkeypatch.setattr(planner, "wealth_summary", lambda: {**real(), "tax_reserve": 5000.0})
+    monkeypatch.setattr(pw, "wealth_summary", planner.wealth_summary)
+    assert planner.wealth_overview()["tax_uncovered"] == 5000
+    planner.add_wealth_item({"name": "Tax reserve: bonds", "kind": "savings", "value": 4950})
+    o = planner.wealth_overview()
+    assert o["tax_set_aside"] == 4950 and o["tax_uncovered"] == 0  # 50 < one lot of 100
+    # the cushion is charged only for the uncovered 50, not the whole 5000
+    assert planner.liquid_cushion()["cash"] == planner.liquid_cushion({**real(), "tax_reserve": 0})["cash"] - 50
+
+
+def test_ai_improve_status_lists_steps(client):
+    import ai_improve
+    r = client.get("/api/ai/improve").get_json()
+    assert r["todo"] == sum(1 for s in r["steps"] if s["state"] == "todo")
+    assert r["errors"] == sum(1 for s in r["steps"] if s["state"] == "error")
+    order = {"error": 0, "todo": 1, "auto": 2, "ok": 3}
+    assert [order[s["state"]] for s in r["steps"]] == sorted(order[s["state"]] for s in r["steps"])   # most urgent first
+    areas = {s["area"] for s in r["steps"]}
+    assert {"rag", "ratings", "lessons", "eval", "recs", "data"} <= areas
+    assert ai_improve.eval_history() == []   # the test DB has no eval folder
+
+
+def test_ai_eval_runs_only_with_a_reason(client, monkeypatch):
+    import ai_improve
+    monkeypatch.setattr(ai_improve, "eval_cmd", lambda: None)
+    assert ai_improve.run_eval() is True            # no command = nothing to do, not a failure
+    due, why = ai_improve.eval_due("some-model")
+    assert due and why                              # with no results the eval has a reason
+
+
+def test_whole_sentences_drops_cut_tail_but_keeps_abbreviations():
+    import experience
+    cut = "Count goals by percent done. Watch cash burn (np. marketing bez popytu) and set a hard limit to"
+    assert experience.whole_sentences(cut) == "Count goals by percent done."
+    full = "Keep it short. Check the currency, e.g. EUR vs PLN."
+    assert experience.whole_sentences(full) == full
+
+
+def test_rag_reindex_reuses_embeddings_and_clears_dirty(client, monkeypatch):
+    import llm_local, planner, rag
+    import engine_bridge as eb
+    monkeypatch.setattr(llm_local, "embed", lambda text: [1.0, 0.0])
+    rag.reindex()
+    monkeypatch.setattr(llm_local, "embed", lambda text: [0.0, 1.0] if text == "probe" else None)
+    planner.set_settings({"rag_dirty": "1"})
+    r = rag.reindex()                      # no embedder for chunks: everything must come from the old index
+    assert r["reused"] == r["chunks"] > 0 and r["embedded"] == r["chunks"]
+    assert planner.get_setting("rag_dirty") in ("", None)
+    assert eb._rows("select count(*) c from rag_chunks where embedding is null")[0]["c"] == 0
+
+
+def test_barometer_boards_snapshot_is_idempotent(client):
+    import barometer_collect as bc
+    import planner
+    calls = []
+    fake = lambda q, region: calls.append((q, region)) or 42
+    r = bc.collect_boards(force=True, fetch=fake)
+    assert r["ok"] and r["counts"] and all(v == 42 for v in r["counts"].values())
+    assert calls and calls[0][1] == "pl"
+    assert bc.collect_boards(fetch=fake)["skipped"]                 # second time in a month: no-op
+    pts = [p for p in planner.list_barometer()["points"] if p["stream"] == "boards"]
+    assert len(pts) == 1
+    for p in pts:
+        planner.delete_barometer_point(p["id"])
+
+
+def test_restart_endpoint_spawns_run_sh(client, monkeypatch):
+    import subprocess
+    import threading
+    calls = []
+    monkeypatch.setattr(subprocess, "Popen", lambda args, **kw: calls.append((args, kw)) or None)
+    monkeypatch.setattr(threading, "Timer", lambda *a, **kw: type("T", (), {"start": lambda self: None})())
+    assert client.post("/api/restart").get_json() == {"ok": True}
+    assert calls and calls[0][0][1].endswith("/run.sh") and calls[0][1]["start_new_session"]
+
+
+def test_learn_from_this_counts_as_thumbs_up(client, monkeypatch):
+    import experience, llm_log
+    monkeypatch.setattr(experience, "distill", lambda q, a: "Rank goals by percent done.")
+    lid = llm_log.record("which goal is closest?", {"mode": "local", "local": {"ok": True, "text": "a"}})
+    assert client.post("/api/experience", json={"question": "which goal is closest?", "answer": "a", "log_id": lid}).get_json()["ok"]
+    assert next(r for r in llm_log.recent(10) if r["id"] == lid)["rating"] == 1
+    for e in experience.listing():
+        if e["question"] == "which goal is closest?":
+            experience.delete(e["id"])
+
+
+def test_unsourced_numbers_flags_only_numbers_missing_from_evidence():
+    import db_tools
+    got = db_tools.unsourced_numbers("1 280,00 and 5,6% over 3 goals, about 1,3 m in 2026",
+                                     "balance 1280.0; rate 5.60; year 2026")
+    assert got == ["1,3"]

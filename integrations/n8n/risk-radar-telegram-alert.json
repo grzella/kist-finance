@@ -1,0 +1,45 @@
+{
+  "name": "Kist — risk-radar hot alert (Telegram)",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"triggerAtHour": 9, "triggerAtMinute": 20}]}},
+      "name": "Every morning 9:20",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Market risk radar — the SAME thresholds as server/risk_radar.py (single source of truth).\n// Reads the CLOUD (Supabase market_prices), which the nightly n8n sync keeps fresh —\n// so it works INDEPENDENTLY of whether the local Kist app is running.\n// Requires n8n environment variables: SUPABASE_URL, SUPABASE_ANON_KEY.\nconst BASE = ($env.SUPABASE_URL || '').replace(/\\/$/, '');\nconst KEY = $env.SUPABASE_ANON_KEY;\nif (!BASE || !KEY) { throw new Error('Set SUPABASE_URL and SUPABASE_ANON_KEY in the n8n environment variables.'); }\n\nasync function last2(ticker) {\n  const url = `${BASE}/rest/v1/market_prices?select=date,close&ticker=eq.${encodeURIComponent(ticker)}&order=date.desc&limit=2`;\n  const rows = await this.helpers.httpRequest({ url, headers: { apikey: KEY, Authorization: `Bearer ${KEY}` }, json: true });\n  const level = rows[0] ? rows[0].close : null;\n  const prev = rows[1] ? rows[1].close : null;\n  const chg = (level != null && prev) ? +(((level - prev) / prev) * 100).toFixed(2) : null;\n  return { level, chg, asof: rows[0] ? rows[0].date : null };\n}\n\nconst vix = await last2.call(this, '^VIX');\nconst gold = await last2.call(this, 'GC=F');\nconst oil = await last2.call(this, 'CL=F');\nconst usd = await last2.call(this, 'EURUSD=X');\n\n// scores 0=calm, 1=elevated, 2=hot (identical to risk_radar.py)\nlet sVix = vix.level == null ? null : (vix.level < 18 ? 0 : vix.level <= 25 ? 1 : 2);\nif (sVix != null && (vix.chg ?? 0) > 10) sVix = Math.min(2, sVix + 1);\nconst sGold = gold.chg == null ? null : (gold.chg > 2.5 ? 2 : gold.chg > 1.0 ? 1 : 0);\nconst sOil = oil.chg == null ? null : (Math.abs(oil.chg) > 6 ? 2 : Math.abs(oil.chg) > 3 ? 1 : 0);\nconst sUsd = usd.chg == null ? null : (usd.chg < -1.2 ? 2 : usd.chg < -0.5 ? 1 : 0);\n\nconst parts = [\n  { label: 'VIX', s: sVix, v: vix.level, chg: vix.chg },\n  { label: 'Gold', s: sGold, v: gold.level, chg: gold.chg },\n  { label: 'WTI oil', s: sOil, v: oil.level, chg: oil.chg },\n  { label: 'USD (EURUSD)', s: sUsd, v: usd.level, chg: usd.chg },\n];\nconst missing = parts.filter((p) => p.s == null).map((p) => p.label);\nconst score = parts.reduce((a, p) => a + (p.s || 0), 0);\nconst state = score <= 1 ? '🟢 calm' : score <= 3 ? '🟡 elevated' : '🔴 hot';\nconst asof = [vix.asof, gold.asof, oil.asof, usd.asof].filter(Boolean).sort().pop();\nconst detail = parts.map((p) => `${p.label} ${p.v ?? '—'} (${p.chg ?? '—'}%/d, score ${p.s ?? '—'})`).join('; ');\n\n// Alert only when 'hot' (score >= 4/8). Silence = calm/elevated.\nreturn [{ json: { score, max: 8, state, hot: score >= 4, asof, detail, missing } }];"
+      },
+      "name": "Compute radar from Supabase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {"conditions": {"conditions": [{"leftValue": "={{ $json.hot }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true", "singleValue": true}}]}},
+      "name": "Hot? (score ≥ 4/8)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🔴 Kist — risk radar: {{ $json.state }} ({{ $json.score }}/8) on data as of {{ $json.asof }}.\nComponents: {{ $json.detail }}.\nA signal to look, not to act. The long-term plan does not change."
+      },
+      "name": "Telegram alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [660, 0],
+      "credentials": {"telegramApi": {"name": "Telegram Bot"}}
+    }
+  ],
+  "connections": {
+    "Every morning 9:20": {"main": [[{"node": "Compute radar from Supabase", "type": "main", "index": 0}]]},
+    "Compute radar from Supabase": {"main": [[{"node": "Hot? (score ≥ 4/8)", "type": "main", "index": 0}]]},
+    "Hot? (score ≥ 4/8)": {"main": [[{"node": "Telegram alert", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"}
+}

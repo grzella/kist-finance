@@ -1,0 +1,39 @@
+{
+  "name": "Kist — market barometer collector (JSearch / Google for Jobs)",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "months", "triggerAtDayOfMonth": 1, "triggerAtHour": 6}]}},
+      "name": "Monthly (1st, 06:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reads the app's barometer config (roles + geography), counts postings per\n// role via JSearch (aggregates Google for Jobs: LinkedIn/Indeed/Glassdoor/...),\n// then POSTs one generalized barometer point to the app.\n//\n// IMPORTANT — this is a RELATIVE INDEX, not a true total. JSearch has no clean\n// 'total openings' field, so we use a FIXED METHOD (same query, same page depth)\n// every month; the app turns that into an index (base 100), which is comparable\n// month-to-month even though the raw number is a proxy. Keep the method fixed.\n//\n// Requires: RAPIDAPI_JSEARCH_KEY (rapidapi.com → JSearch). Set KIST_URL to your\n// app (default http://127.0.0.1:8321). n8n must be able to reach it.\nconst KIST = $env.KIST_URL || 'http://127.0.0.1:8321';\nconst KEY = $env.RAPIDAPI_JSEARCH_KEY;\nconst PAGES = 3; // fixed depth — DO NOT change between months (breaks comparability)\n\nconst cfg = await this.helpers.httpRequest({ url: `${KIST}/api/market-barometer`, json: true });\nconst roles = cfg.roles || [];\nconst geo = (cfg.geo || []).join(', ') || 'Remote';\n\nconst counts = {};\nfor (const r of roles) {\n  const q = `${r.query || r.label} in ${geo}`;\n  let n = 0;\n  for (let p = 1; p <= PAGES; p++) {\n    const resp = await this.helpers.httpRequest({\n      url: 'https://jsearch.p.rapidapi.com/search',\n      qs: { query: q, page: String(p), num_pages: '1' },\n      headers: { 'X-RapidAPI-Key': KEY, 'X-RapidAPI-Host': 'jsearch.p.rapidapi.com' },\n      json: true,\n    });\n    n += (resp.data || []).length;\n  }\n  counts[r.key] = n;\n}\n\nconst month = new Date().toISOString().slice(0, 7);\nreturn [{ json: {\n  month, counts,\n  sources: `JSearch/Google-for-Jobs (${PAGES} pages)`,\n  geo, as_of: new Date().toISOString().slice(0, 10),\n} }];"
+      },
+      "name": "Count postings (JSearch)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.KIST_URL || 'http://127.0.0.1:8321' }}/api/market-barometer",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "POST to Kist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    }
+  ],
+  "connections": {
+    "Monthly (1st, 06:00)": {"main": [[{"node": "Count postings (JSearch)", "type": "main", "index": 0}]]},
+    "Count postings (JSearch)": {"main": [[{"node": "POST to Kist", "type": "main", "index": 0}]]}
+  }
+}

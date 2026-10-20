@@ -1,0 +1,324 @@
+"""Endpoint / integration tests against a seeded throwaway DB."""
+import sqlite3
+from pathlib import Path
+
+
+def test_health(client):
+    r = client.get("/api/health")
+    assert r.status_code == 200
+    assert "summary" in r.get_json()
+
+
+def test_dashboard_summary(client):
+    d = client.get("/api/dashboard/summary").get_json()
+    assert "net_worth" in d and "cash_total" in d
+
+
+def test_goals_crud(client):
+    before = len(client.get("/api/goals").get_json())
+    gid = client.post("/api/goals", json={"name": "Test goal", "target_amount": 12345}).get_json()["id"]
+    goals = client.get("/api/goals").get_json()
+    assert len(goals) == before + 1
+    assert any(g["id"] == gid and g["name"] == "Test goal" for g in goals)
+    assert client.delete(f"/api/goals/{gid}").status_code == 200
+    assert len(client.get("/api/goals").get_json()) == before
+
+
+def test_business_endpoint(client):
+    # regression: /api/business exists after the firma->business rename
+    d = client.get("/api/business").get_json()
+    assert "months" in d and "categories" in d
+
+
+def test_analysis_property_route(client):
+    # regression: /api/analysis/property replaces /api/analysis/property_location
+    r = client.get("/api/analysis/property")
+    assert r.status_code == 200  # empty {} is fine; must not 404
+
+
+def test_fire_projection_uses_property_key(client):
+    d = client.get("/api/fire-projection").get_json()
+    assert "property" in d          # the new key
+    assert ("it" + "aly") not in d  # the old key is gone (split literal: history-rewrite-proof)
+
+
+def test_cashflow_uses_loan_keys(client):
+    d = client.get("/api/cashflow").get_json()
+    assert "loan_paid_month" in d   # renamed from 'loan_paid_month'
+
+
+def test_llm_config_defaults_local(client):
+    d = client.get("/api/llm/config").get_json()
+    assert d["ai_mode"] == "local"
+    assert "local" in d and "cloud" in d
+
+
+def test_llm_config_toggle(client):
+    assert client.post("/api/llm/config", json={"ai_mode": "both"}).get_json()["ai_mode"] == "both"
+    # invalid values fall back to local
+    assert client.post("/api/llm/config", json={"ai_mode": "bogus"}).get_json()["ai_mode"] == "local"
+
+
+def test_llm_ask_shape(client):
+    d = client.post("/api/llm/ask", json={"prompt": "hello"}).get_json()
+    assert "local" in d and "rag_used" in d and "mode" in d
+    assert set(("ok", "text", "label")) <= set(d["local"].keys())
+
+
+def test_rag_reindex_and_status(client):
+    n = client.post("/api/rag/reindex").get_json()["chunks"]
+    assert n > 0
+    assert client.get("/api/rag/status").get_json()["chunks"] == n
+
+
+def test_all_get_endpoints_no_server_error(client):
+    # exercise every parameter-free GET route; none may 500 (offline is fine)
+    import app as flask_app
+    rules = [r for r in flask_app.app.url_map.iter_rules()
+             if "GET" in r.methods and "<" not in r.rule and not r.rule.startswith("/static")]
+    assert len(rules) > 10
+    for r in rules:
+        assert client.get(r.rule).status_code != 500, r.rule
+
+
+def test_mortgage_overpayment_endpoint(client):
+    r = client.post("/api/forecast/mortgage", json={
+        "balance": 300000, "monthly_payment": 3500, "months_left": 240, "overpayment": 50000})
+    assert r.status_code == 200
+    assert isinstance(r.get_json(), dict)
+
+
+def test_app_config_accepts_dict_and_list_modules(client):
+    # the wizard sends {id: bool}; API consumers naturally send a list of ids —
+    # both must work (regression: the list shape used to 500)
+    r1 = client.post("/api/app-config", json={"modules": {"debts": True, "taxes": False}})
+    assert r1.status_code == 200 and r1.get_json()["modules"]["taxes"] is False
+    r2 = client.post("/api/app-config", json={"modules": ["debts", "markets"], "wizard_completed": True})
+    assert r2.status_code == 200
+    d = r2.get_json()
+    assert d["modules"]["debts"] is True and d["modules"]["taxes"] is False
+    assert d["wizard_completed"] is True
+    # restore defaults so other tests see all views
+    client.post("/api/app-config", json={"modules": {m["id"]: True for m in d["registry"]}})
+
+
+def test_wizard_module_toggle_gates_views(client):
+    """The wizard's core promise: disabled modules disappear from the UI. Enabling a
+    module surfaces its view(s) in enabled_views; disabling it hides them; core views
+    are always present regardless."""
+    d = client.post("/api/app-config", json={
+        "modules": ["markets"], "wizard_completed": True}).get_json()
+    assert d["wizard_completed"] is True
+    assert {"market", "currency"} <= set(d["enabled_views"])   # markets → both its views
+    assert "rsu" not in d["enabled_views"]                      # disabled module hidden
+    assert "dashboard" in d["enabled_views"]                    # core always on
+    d2 = client.post("/api/app-config", json={"modules": ["rsu"]}).get_json()
+    assert "rsu" in d2["enabled_views"] and "market" not in d2["enabled_views"]
+    # restore defaults so other tests see all views
+    client.post("/api/app-config", json={"modules": {m["id"]: True for m in d["registry"]}})
+
+
+def test_wealth_item_crud(client):
+    iid = client.post("/api/wealth/items",
+                      json={"name": "Test asset", "kind": "investment", "value": 1000}).get_json()["id"]
+    client.post(f"/api/wealth/items/{iid}/values", json={"date": "2026-01-01", "value": 1100})
+    hist = client.get(f"/api/wealth/items/{iid}/history").get_json()
+    assert isinstance(hist, (list, dict))
+    assert client.delete(f"/api/wealth/items/{iid}").status_code == 200
+
+
+def test_backup_roundtrip(client, tmp_path):
+    import data_backup as backup
+    backup.planner.set_settings({"backup_allow_plaintext": "true"})  # no BACKUP_KEY in test env
+    st = client.get("/api/backup/status").get_json()
+    assert "destinations" in st
+    client.post("/api/backup/config", json={"dir": str(tmp_path)})
+    r = client.post("/api/backup/run").get_json()
+    assert r["ok"] is True
+    snap = Path(r["dir"]) / r["file"]
+    assert snap.exists()
+    # the snapshot is a valid SQLite database with our seeded data
+    con = sqlite3.connect(str(snap))
+    assert con.execute("select count(*) from goals").fetchone()[0] >= 1
+    con.close()
+
+
+def test_recommendation_ai_endpoint(client):
+    # works with AI offline too: returns either a stored opinion or a clear error
+    r = client.post("/api/recommendation/ai")
+    assert r.status_code == 200
+    d = r.get_json()
+    assert ("text" in d) or ("error" in d)
+    assert client.get("/api/recommendation/ai").status_code == 200
+
+
+# ---------- schedules ----------
+
+def test_schedules_get_and_set_roundtrip(client):
+    d = client.get("/api/schedules").get_json()
+    assert d["tasks"] and all(k in d["tasks"][0] for k in ("id", "freq", "day", "hour"))
+    tid = d["tasks"][0]["id"]
+    r = client.post(f"/api/schedules/{tid}", json={"freq": "weekly", "day": 4, "hour": 18}).get_json()
+    assert r["ok"] and r["freq"] == "weekly" and r["day"] == 4 and r["hour"] == 18
+    d2 = client.get("/api/schedules").get_json()
+    t = next(t for t in d2["tasks"] if t["id"] == tid)
+    assert (t["freq"], t["day"], t["hour"]) == ("weekly", 4, 18)
+    assert client.post(f"/api/schedules/{tid}", json={"freq": "hourly"}).get_json()["ok"] is False
+    assert client.post("/api/schedules/nope", json={"freq": "daily"}).get_json()["ok"] is False
+    client.post(f"/api/schedules/{tid}", json={"freq": "daily", "day": 0, "hour": 10})
+
+
+def test_schedules_is_due_logic():
+    from datetime import datetime
+    import schedules as sc
+    mon10 = datetime(2026, 7, 13, 10, 0)   # Monday
+    assert sc._is_due({"freq": "daily", "day": 0, "hour": 9}, None, mon10) is True
+    assert sc._is_due({"freq": "daily", "day": 0, "hour": 11}, None, mon10) is False
+    assert sc._is_due({"freq": "daily", "day": 0, "hour": 9}, "2026-07-13", mon10) is False
+    assert sc._is_due({"freq": "weekly", "day": 0, "hour": 9}, None, mon10) is True
+    assert sc._is_due({"freq": "weekly", "day": 2, "hour": 9}, None, mon10) is False
+    assert sc._is_due({"freq": "weekly", "day": 0, "hour": 9}, "2026-W29", mon10) is False
+    assert sc._is_due({"freq": "monthly", "day": 13, "hour": 9}, None, mon10) is True
+    assert sc._is_due({"freq": "monthly", "day": 20, "hour": 9}, None, mon10) is False
+
+
+def test_schedules_run_due_records_period(client, monkeypatch):
+    import schedules as sc
+    import planner
+    # this test WANTS run_due to actually run — lift the conftest kill switch
+    monkeypatch.delenv("KIST_NO_SCHEDULED_TASKS", raising=False)
+    ran = {"n": 0}
+    task = dict(next(t for t in sc.REGISTRY if t["kind"] == "app"))
+    task["runner"] = lambda: ran.__setitem__("n", ran["n"] + 1) or True
+    # REGISTRY narrowed to this one task. Previously the test stubbed only the
+    # first task's runner while run_due still executed ALL the others — including
+    # the real collectors (Google Trends, JSearch). That meant live network calls
+    # during tests and barometer points written into the throwaway DB.
+    monkeypatch.setattr(sc, "REGISTRY", [task])
+    planner.set_settings({f"sched_last.{task['id']}": ""})
+    from datetime import datetime
+    out = sc.run_due(datetime(2026, 7, 13, 23, 0))
+    assert task["id"] in out and ran["n"] == 1
+    out2 = sc.run_due(datetime(2026, 7, 13, 23, 30))
+    assert task["id"] not in out2 and ran["n"] == 1   # once per period
+
+
+def test_watchlist_without_supabase_is_graceful(client):
+    # a fresh user with no Supabase must get a friendly error, not a 500
+    r = client.post("/api/watchlist/NVDA")
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d.get("ok") is False and "Supabase" in (d.get("error") or "")
+
+
+def test_data_wipe_requires_confirm_and_resets(client):
+    assert client.post("/api/data/wipe", json={}).status_code == 400
+    r = client.post("/api/data/wipe", json={"confirm": True}).get_json()
+    assert r["ok"] is True
+    cfg = client.get("/api/app-config").get_json()
+    assert cfg["has_data"] is False and cfg["wizard_completed"] is False
+
+
+def test_stress_test_endpoint(client):
+    d = client.get("/api/stress-test").get_json()
+    assert len(d["scenarios"]) == 3
+    assert "policy" in d and "verdict" in d["policy"]
+
+
+def test_web_guard_blocks_rebinding_and_csrf(client):
+    """The loopback/CSRF guard: a forged Host and a cross-origin write are refused,
+    but a same-origin write is not (no auth by design, so this is the defense)."""
+    assert client.get("/api/health", headers={"Host": "attacker.example"}).status_code == 403
+    assert client.put("/api/settings", headers={"Origin": "http://evil.example"},
+                      json={"x": 1}).status_code == 403
+    # loopback Origin passes the guard (may 200 or other, but never the 403 block)
+    ok = client.put("/api/settings", headers={"Origin": "http://127.0.0.1:8321"}, json={})
+    assert ok.status_code != 403
+    # and a normal request (test client Host=localhost, no Origin) is fine
+    assert client.get("/api/health").status_code == 200
+
+
+def test_settings_endpoint_blocks_protected_keys(client):
+    """Mass-assignment guard: the public PUT /api/settings must silently drop
+    security-sensitive keys (they have dedicated endpoints), so a same-origin write
+    can't repoint the commit tracker or flip the AI to cloud via the generic writer."""
+    import planner
+    before = planner.get_setting("commit_repos")
+    r = client.put("/api/settings", headers={"Origin": "http://127.0.0.1:8321"}, json={
+        "commit_repos": "/etc", "ai_mode": "both", "monthly_savings": 4321,
+        "ai_eval_cmd": '["/bin/sh", "-c", "touch /tmp/pwn"]', "rag_dirs": '["/etc"]'}).get_json()
+    for k in ("commit_repos", "ai_mode", "ai_eval_cmd", "rag_dirs"):
+        assert k in r["rejected"]
+    assert planner.get_setting("commit_repos") == before          # protected: unchanged
+    assert planner.get_setting("ai_mode") != "both" or planner.get_setting("ai_mode") is None
+    # an argv for subprocess.run must NOT pass through the generic writer (RCE)
+    assert planner.get_setting("ai_eval_cmd") is None
+    assert planner.get_setting("rag_dirs") is None
+    assert planner.get_setting("monthly_savings") == "4321"        # normal key: written
+
+
+
+def test_schedules_run_due_records_error_and_clears_on_success(client, monkeypatch):
+    """A failed task leaves a trace (sched_err.<id> -> last_error in /api/schedules
+    and a warn in /api/health); success clears it."""
+    import schedules as sc
+    import planner
+    monkeypatch.delenv("KIST_NO_SCHEDULED_TASKS", raising=False)
+    task = dict(next(t for t in sc.REGISTRY if t.get("kind", "app") == "app"))
+    state = {"ok": False}
+    task["runner"] = lambda: ({"ok": True, "added": ["2026-08"]} if state["ok"]
+                              else {"ok": False, "error": "pytrends not installed"})
+    monkeypatch.setattr(sc, "REGISTRY", [task])
+    planner.set_settings({f"sched_last.{task['id']}": "", f"sched_err.{task['id']}": ""})
+    from datetime import datetime
+    assert sc.run_due(datetime(2026, 9, 4, 23, 0)) == []
+    t = next(x for x in client.get("/api/schedules").get_json()["tasks"] if x["id"] == task["id"])
+    assert t["last_error"] and "pytrends" in t["last_error"]["error"]
+    assert not t["last_run"]
+    monkeypatch.setenv("KIST_NO_SCHEDULED_TASKS", "1")
+    h = client.get("/api/health").get_json()
+    assert any(x["status"] == "warn" and task["label"] in x["name"] for x in h["tasks"])
+    monkeypatch.delenv("KIST_NO_SCHEDULED_TASKS", raising=False)
+    state["ok"] = True
+    assert sc.run_due(datetime(2026, 9, 4, 23, 5)) == []  # failed 5 min ago: no retry yet
+    assert sc.run_due(datetime(2026, 9, 5, 11, 0)) == [task["id"]]
+    t = next(x for x in client.get("/api/schedules").get_json()["tasks"] if x["id"] == task["id"])
+    assert t["last_error"] is None and t["last_run"]  # period recorded (daily/weekly/monthly key depending on the task)
+
+
+def test_health_reports_code_stale_flag(client, monkeypatch):
+    import app as flask_app
+    # snapshot "now" so files edited while the suite runs do not flip the flag
+    monkeypatch.setattr(flask_app, "_CODE_MTIME_AT_START", flask_app._code_mtime())
+    h = client.get("/api/health").get_json()
+    assert h["code_stale"] is False
+    monkeypatch.setattr(flask_app, "_CODE_MTIME_AT_START", 0)
+    assert client.get("/api/health").get_json()["code_stale"] is True
+    assert h["summary"]["total"] == len(h["tasks"])
+
+
+def test_offer_put_appends_notes_and_rejects_bad_input(client):
+    oid = client.post("/api/offers", json={"company": "T", "total_monthly": 0, "notes": "R1"}).get_json()["id"]
+    try:
+        assert client.put(f"/api/offers/{oid}", json={"status": "interviews", "notes_append": "R2"}).status_code == 200
+        o = next(o for o in client.get("/api/offers").get_json()["offers"] if o["id"] == oid)
+        assert o["notes"] == "R1\n\nR2" and o["status"] == "interviews"
+        assert client.put("/api/offers/no-such-id", json={"status": "new"}).status_code == 404
+        assert client.put(f"/api/offers/{oid}", json={"note_append": "typo"}).status_code == 400
+        # text in a REAL column used to break GET /api/offers
+        assert client.put(f"/api/offers/{oid}", json={"total_monthly": "50 000"}).status_code == 200
+        o = next(o for o in client.get("/api/offers").get_json()["offers"] if o["id"] == oid)
+        assert o["total_monthly"] == 50000
+    finally:
+        client.delete(f"/api/offers/{oid}")
+
+
+def test_allocation_counts_cushion_kind_as_cash(client):
+    """A cushion item without cash/account in its name (e.g. treasury bonds) dropped out of liquid assets."""
+    cash = lambda: next(r["value"] for r in client.get("/api/allocation").get_json()["rows"] if r["key"] == "cash")
+    before = cash()
+    iid = client.post("/api/wealth/items", json={
+        "name": "Treasury bonds (test)", "kind": "cushion", "currency": "PLN", "value": 12345}).get_json()["id"]
+    after = cash()
+    client.delete(f"/api/wealth/items/{iid}")
+    assert after - before == 12345

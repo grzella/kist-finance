@@ -1,0 +1,291 @@
+"""User-configurable schedules for the app's recurring tasks.
+
+The app is a local web server with no daemon, so 'app'-kind tasks run on the
+next app open **after** their scheduled moment (checked from /api/health via
+run_due()): each task remembers the last period it ran in (day / ISO week /
+month) and fires once per period, at or after the chosen day+hour.
+
+Kinds:
+  app      — executed by this module (backup snapshot, wealth snapshot,
+             forecast self-learning cycle, RAG reindex).
+  external — shown read-only (e.g. an n8n cloud workflow); edit at the source.
+
+Config lives in app_settings: `schedules` = {task_id: {freq, day, hour}} and
+`sched_last.<id>` = period key of the last run.
+"""
+import json
+import os
+import threading
+from datetime import datetime, timedelta
+
+import planner
+
+
+def _run_backup():
+    import data_backup
+    if not planner.get_setting("backup_auto"):
+        return True  # master switch in Control Center is off: nothing to do is not a failure
+    return data_backup.create_backup().get("ok", False)
+
+
+def _run_wealth_snapshot():
+    planner.ensure_monthly_snapshot()
+    return True
+
+
+def _run_wealth_points():
+    import metrics
+    metrics.record_point()
+    metrics.record_month()
+    return True
+
+
+def _run_forecast_cycle():
+    import market
+    market.record_and_score_forecasts()
+    return True
+
+
+def _run_rag_reindex():
+    import rag
+    return rag.reindex()["chunks"] >= 0
+
+
+def _run_risk_radar():
+    import risk_radar
+    return risk_radar.snapshot()
+
+
+# id → definition. freq: daily|weekly|monthly. day: 0-6 Mon-Sun (weekly) or
+# 1-28 (monthly). hour: 0-23 local.
+REGISTRY = [
+    {"id": "backup_snapshot", "label": "Database backup (encrypted snapshot)",
+     "kind": "app", "runner": _run_backup,
+     "note": "runs only when a backup folder is set in Control Center",
+     "default": {"freq": "daily", "day": 0, "hour": 10}},
+    {"id": "wealth_snapshot", "label": "Wealth snapshot (net-worth history point)",
+     "kind": "app", "runner": _run_wealth_snapshot,
+     "note": "one point per month feeds the wealth chart",
+     "default": {"freq": "monthly", "day": 1, "hour": 9}},
+    {"id": "wealth_points", "label": "Wealth point + ratios (weekly)",
+     "kind": "app", "runner": _run_wealth_points,
+     "note": "a dense net-worth trajectory (one point per week) and this month's ratio series",
+     "default": {"freq": "weekly", "day": 0, "hour": 9}},
+    {"id": "forecast_cycle", "label": "Forecast self-learning cycle",
+     "kind": "app", "runner": _run_forecast_cycle,
+     "note": "settles matured forecasts and records today's bands",
+     "default": {"freq": "daily", "day": 0, "hour": 8}},
+    {"id": "risk_radar", "label": "Risk radar (daily reading)",
+     "kind": "app", "runner": _run_risk_radar,
+     "note": "VIX+gold+oil+USD → composite with a local-AI one-liner",
+     "default": {"freq": "daily", "day": 0, "hour": 9}},
+    {"id": "brief_daily", "label": "Market brief — daily (AI per Control mode)",
+     "kind": "app", "runner": lambda: __import__("market").generate_brief("daily"),
+     "note": "each morning: fresh cached quotes + radar → a one-day brief",
+     "default": {"freq": "daily", "day": 0, "hour": 8}},
+    {"id": "brief_weekly", "label": "Market brief — weekly (AI per Control mode)",
+     "kind": "app", "runner": lambda: __import__("market").generate_brief("weekly"),
+     "note": "Monday morning: the week in one brief",
+     "default": {"freq": "weekly", "day": 0, "hour": 8}},
+    {"id": "rag_reindex", "label": "AI memory refresh (RAG reindex)",
+     "kind": "app", "runner": _run_rag_reindex,
+     "note": "keeps AI answers grounded in your latest data",
+     "default": {"freq": "weekly", "day": 0, "hour": 7}},
+    {"id": "barometer_collect", "label": "Barometer: demand (Google Trends, monthly)",
+     "kind": "app", "runner": lambda: __import__("barometer_collect").collect(),
+     "note": "appends the last full month: demand for your roles from Google Trends (keyless)",
+     "default": {"freq": "monthly", "day": 2, "hour": 8}},
+    {"id": "barometer_openings", "label": "Barometer: real openings (JSearch, monthly)",
+     "kind": "app", "runner": lambda: __import__("barometer_collect").collect_openings(),
+     "note": "appends real posting counts from job boards — needs a RAPIDAPI_JSEARCH_KEY",
+     "default": {"freq": "monthly", "day": 2, "hour": 9}},
+    {"id": "barometer_hiringlab", "label": "Barometer: IT postings in Europe (Indeed Hiring Lab, monthly)",
+     "kind": "app", "runner": lambda: __import__("barometer_collect").collect_hiringlab(),
+     "note": "history of Software Development postings in GB/DE/FR since 2020 (keyless CSV); backdrop for the watchlist",
+     "default": {"freq": "monthly", "day": 2, "hour": 10}},
+    {"id": "barometer_watchlist", "label": "Barometer: open roles at watchlist companies (monthly)",
+     "kind": "app", "runner": lambda: __import__("barometer_collect").collect_watchlist(),
+     "note": "counts your roles in Europe on public Greenhouse/Lever/Ashby boards (keyless)",
+     "default": {"freq": "monthly", "day": 28, "hour": 9}},
+    {"id": "ai_eval", "label": "AI quality eval (when there is a reason)",
+     "kind": "app", "runner": lambda: __import__("ai_improve").run_eval(),
+     "note": "daily check; the eval runs only after a model change, after 30 days or when the question set changed, and only while the local model is online",
+     "default": {"freq": "daily", "day": 0, "hour": 7}},
+    {"id": "barometer_boards", "label": "Barometer: postings on IT job boards (No Fluff Jobs, monthly)",
+     "kind": "app", "runner": lambda: __import__("barometer_collect").collect_boards(),
+     "note": "postings per role on No Fluff Jobs (keyless); Just Join IT and Rocket Jobs have their own task, pracuj/theprotocol block bots, LinkedIn cannot be counted",
+     "default": {"freq": "monthly", "day": 28, "hour": 11}},
+    {"id": "barometer_plboards", "label": "Barometer: offers with salary ranges (Just Join IT, Rocket Jobs, monthly)",
+     "kind": "app", "runner": lambda: __import__("barometer_collect").collect_plboards(),
+     "note": "active-offer sitemaps (the APIs are disallowed in robots.txt), then the matching offer pages every 2 s; a few minutes",
+     "default": {"freq": "monthly", "day": 28, "hour": 12}},
+    {"id": "rates_refresh", "label": "NBP reference rate + WIBOR 3M (monthly, PLN base only)",
+     "kind": "app", "runner": lambda: __import__("market").refresh_market_rates(),
+     "note": "feeds the post-fixed-rate installment projection and the refinancing recommendation; sources: static.nbp.pl, stooq",
+     "default": {"freq": "monthly", "day": 3, "hour": 9}},
+]
+
+EXTERNAL = [
+    {"id": "n8n_market_sync", "label": "Market quotes sync (n8n → Supabase)",
+     "kind": "external", "freq_text": "daily 23:15",
+     "note": "edit in your n8n workflow — the app only reads the results"},
+]
+
+
+def _cfgs():
+    return planner.get_json_setting("schedules", {})
+
+
+def get_schedules():
+    cfgs = _cfgs()
+    out = []
+    for t in REGISTRY:
+        cfg = {**t["default"], **cfgs.get(t["id"], {})}
+        out.append({"id": t["id"], "label": t["label"], "kind": t["kind"],
+                    "note": t["note"], **cfg,
+                    "last_run": planner.get_setting(f"sched_last.{t['id']}") or None,
+                    "last_error": _last_error(t["id"])})
+    return {"tasks": out, "external": EXTERNAL}
+
+
+def _last_error(task_id):
+    """Last FAILED attempt of a task: {"at": "...", "error": "..."} or None.
+    Written by run_due on failure, cleared on success."""
+    raw = planner.get_setting(f"sched_err.{task_id}")
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return {"at": "?", "error": raw[:160]}
+
+
+def failed_tasks():
+    """Tasks with a recorded error — surfaced in Control Center / health so a
+    failure is visible instead of a silent 'retry next period'."""
+    out = []
+    for t in REGISTRY:
+        if t.get("kind", "app") != "app":
+            continue
+        err = _last_error(t["id"])
+        if err:
+            out.append({"id": t["id"], "label": t["label"], **err})
+    return out
+
+
+def set_schedule(task_id, data):
+    if not any(t["id"] == task_id for t in REGISTRY):
+        return {"ok": False, "error": "unknown task"}
+    freq = data.get("freq")
+    if freq not in ("daily", "weekly", "monthly"):
+        return {"ok": False, "error": "freq must be daily|weekly|monthly"}
+    day = int(data.get("day", 0))
+    hour = int(data.get("hour", 9))
+    if not (0 <= hour <= 23):
+        return {"ok": False, "error": "hour out of range"}
+    if freq == "weekly" and not (0 <= day <= 6):
+        return {"ok": False, "error": "weekday must be 0-6"}
+    if freq == "monthly" and not (1 <= day <= 28):
+        return {"ok": False, "error": "day of month must be 1-28"}
+    cfgs = _cfgs()
+    cfgs[task_id] = {"freq": freq, "day": day, "hour": hour}
+    planner.set_settings({"schedules": json.dumps(cfgs)})
+    return {"ok": True, **cfgs[task_id]}
+
+
+def _period_key(cfg, now):
+    if cfg["freq"] == "daily":
+        return now.strftime("%Y-%m-%d")
+    if cfg["freq"] == "weekly":
+        return now.strftime("%G-W%V")
+    return now.strftime("%Y-%m")
+
+
+def _is_due(cfg, last_period, now):
+    """Due = we're at/past the scheduled moment of the current period and the
+    task hasn't run in this period yet."""
+    if _period_key(cfg, now) == last_period:
+        return False
+    if cfg["freq"] == "daily":
+        return now.hour >= cfg["hour"]
+    if cfg["freq"] == "weekly":
+        wd = now.weekday()
+        return wd > cfg["day"] or (wd == cfg["day"] and now.hour >= cfg["hour"])
+    d = now.day
+    return d > cfg["day"] or (d == cfg["day"] and now.hour >= cfg["hour"])
+
+
+def _succeeded(result):
+    """Did the runner actually succeed?
+
+    This used to be a bare `if result:`, which treated ANY non-empty dict as
+    success — so `{"ok": False, "error": "..."}` recorded the task as done and a
+    monthly job silently lost the whole period. Collectors return a dict with an
+    "ok" key; honour it.
+    """
+    if isinstance(result, dict):
+        return bool(result.get("ok", True))
+    return bool(result)
+
+
+RETRY_AFTER = timedelta(hours=1)
+_run_lock = threading.Lock()
+
+
+def run_due_async():
+    """run_due() in a background thread, one at a time, so /api/health answers at once
+    instead of waiting for collectors (network, local AI) to finish or time out."""
+    if not _run_lock.acquire(blocking=False):
+        return False
+
+    def _go():
+        try:
+            run_due()
+        except Exception:
+            pass
+        finally:
+            _run_lock.release()
+    threading.Thread(target=_go, daemon=True).start()
+    return True
+
+
+def run_due(now=None):
+    """Run every due 'app' task once. Called from /api/health (best-effort).
+
+    Disabled in tests via KIST_NO_SCHEDULED_TASKS=1 — otherwise /api/health hits
+    Google Trends live and appends barometer points to the throwaway test DB,
+    making unrelated tests depend on network state.
+    """
+    if os.environ.get("KIST_NO_SCHEDULED_TASKS") == "1":
+        return []
+    now = now or datetime.now()
+    cfgs = _cfgs()
+    ran = []
+    for t in REGISTRY:
+        cfg = {**t["default"], **cfgs.get(t["id"], {})}
+        key = f"sched_last.{t['id']}"
+        if not _is_due(cfg, planner.get_setting(key), now):
+            continue
+        # a failed task is not retried on every app open: an offline collector would
+        # otherwise re-run (and time out) on each /api/health call
+        err = _last_error(t["id"])
+        try:
+            if err and now - datetime.strptime(err["at"], "%Y-%m-%d %H:%M") < RETRY_AFTER:
+                continue
+        except (KeyError, TypeError, ValueError):
+            pass
+        try:
+            result = t["runner"]()
+        except Exception as e:
+            result = {"ok": False, "error": f"{type(e).__name__}: {str(e)[:140]}"}
+        # Success -> record the period and clear the error. Failure -> do NOT
+        # record the period (the next app open retries), but DO record the error —
+        # visible in Control Center, Data and next to the barometer.
+        if _succeeded(result):
+            planner.set_settings({key: _period_key(cfg, now), f"sched_err.{t['id']}": ""})
+            ran.append(t["id"])
+        else:
+            err = (result.get("error") if isinstance(result, dict) else None) or "runner reported failure"
+            planner.set_settings({f"sched_err.{t['id']}": json.dumps(
+                {"at": now.strftime("%Y-%m-%d %H:%M"), "error": str(err)[:200]})})
+    return ran

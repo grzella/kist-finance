@@ -1,0 +1,330 @@
+// ---------- STATIC DEMO (GitHub Pages) — GETs come from baked JSON snapshots,
+// writes are a friendly no-op. Set by demo/build_demo.py; never true in the real app.
+function demoStatic() { return !!window.KIST_STATIC_DEMO; }
+function demoSnapshotPath(p) {
+  return "demo-data/" + p.replace(/^\//, "").replace(/[^A-Za-z0-9._-]/g, "_") + ".json";
+}
+let _demoToastAt = 0;
+function demoToast(text) {
+  if (Date.now() - _demoToastAt < 4000) return;
+  _demoToastAt = Date.now();
+  let t = document.getElementById("demoToast");
+  if (!t) {
+    t = document.createElement("div");
+    t.id = "demoToast";
+    t.style.cssText = "position:fixed;bottom:16px;left:50%;transform:translateX(-50%);" +
+      "background:#2c3040;color:#eee;padding:8px 14px;border-radius:8px;z-index:9999;" +
+      "font-size:.9em;box-shadow:0 2px 12px rgba(0,0,0,.4)";
+    document.body.appendChild(t);
+  }
+  t.textContent = text || "🔒 Read-only demo — changes aren't saved. Clone the repo to use it for real.";
+  t.style.display = "block";
+  clearTimeout(t._hid);
+  t._hid = setTimeout(() => { t.style.display = "none"; }, 3500);
+}
+
+// Busy bar (2 px at the top) — shows the app is working instead of a dead button.
+let _inflight = 0;
+function _busy(delta) {
+  _inflight = Math.max(0, _inflight + delta);
+  document.documentElement.classList.toggle("busy", _inflight > 0);
+}
+const api = {
+  async get(path) {
+    _busy(1);
+    try {
+      let r = await fetch(demoStatic() ? demoSnapshotPath(path) : path);
+      if (!r.ok && demoStatic() && path.includes("?")) {
+        // Static demo bakes one snapshot per endpoint; a parametrised variant (scenario
+        // controls, ranges) may be missing — fall back to the base snapshot and say so.
+        const base = path.split("?")[0];
+        const rb = await fetch(demoSnapshotPath(base));
+        if (rb.ok) { demoToast("🔒 Read-only demo — this scenario variant isn't baked, showing the default one."); return await rb.json(); }
+      }
+      if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+      return await r.json();
+    } finally { _busy(-1); }
+  },
+  async send(method, path, body) {
+    _busy(1);
+    try { return await this._send(method, path, body); } finally { _busy(-1); }
+  },
+  async _send(method, path, body) {
+    if (demoStatic()) {
+      // compute-only POSTs (e.g. overpayment simulations) have baked responses
+      const key = ("post_" + path + "__" + JSON.stringify(body === undefined ? "" : body))
+        .replace(/^\//, "").replace(/[^A-Za-z0-9._-]/g, "_") + ".json";
+      const r = await fetch("demo-data/" + key).catch(() => null);
+      if (r && r.ok) return r.json();
+      demoToast();
+      return { ok: false, demo: true, error: "Read-only demo — changes aren't saved." };
+    }
+    const r = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+    return r.json();
+  },
+  post(p, b) { return this.send("POST", p, b); },
+  put(p, b) { return this.send("PUT", p, b); },
+  del(p) { return this.send("DELETE", p); },
+};
+
+const fmt = {
+  usd: (v) => v == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v),
+  num: (v, d = 2) => v == null ? "—" : Number(v).toLocaleString("pl-PL", { maximumFractionDigits: d }),
+  pct: (v, d = 1) => v == null ? "—" : `${Number(v).toFixed(d)}%`,
+};
+
+// Grouped money inputs: <input data-num> shows "1 234 567.89", parseNum reads it.
+fmt.grouped = (v) => {
+  if (v == null || v === "" || isNaN(Number(v))) return "";
+  const [int, dec] = Number(v).toFixed(2).replace(/\.00$/, "").split(".");
+  const g = int.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return dec ? `${g}.${dec}` : g;
+};
+function parseNum(elOrStr) {
+  const s = typeof elOrStr === "string" ? elOrStr : elOrStr.value;
+  const v = parseFloat(String(s).replace(/[\s  ]/g, "").replace(",", "."));
+  return isNaN(v) ? NaN : v;
+}
+document.addEventListener("blur", (e) => {
+  const el = e.target;
+  if (el.matches && el.matches("input[data-num]")) {
+    const v = parseNum(el);
+    el.value = isNaN(v) ? "" : fmt.grouped(v);
+  }
+}, true);
+
+// "analysis may be stale" banner: the snapshot has as_of, and source data changed later.
+function analysisStaleBanner(a) {
+  if (!a || !a.stale) return "";
+  return `<div class="mt" style="padding:8px 12px;border-radius:8px;background:rgba(242,199,79,.12);font-size:.88em">
+    ⚠️ This analysis is from <b>${esc(a.stale.as_of)}</b>, and the data (RSU, loans, wealth, expenses) changed on <b>${a.stale.data_changed_at}</b> —
+    the numbers may be out of date. Ask for a refresh.</div>`;
+}
+
+// HTML-escape any value before it goes into innerHTML. Use for free-text and
+// especially anything from an external source (e.g. market data synced from
+// Supabase) so a crafted string can't inject markup. Numbers/computed values
+// don't need it. (The CSP already blocks script execution as a second layer.)
+// A long analysis paragraph (LLMs write walls of text) → short 2-sentence paragraphs and "- " lists.
+// The author may split with a blank line; then we split only there.
+function paras(text, maxChars = 320) {
+  const t = String(text || "").trim();
+  if (!t) return "";
+  const blocks = t.includes("\n\n") ? t.split(/\n{2,}/) : [t];
+  const out = [];
+  blocks.forEach((b) => {
+    const lines = b.split("\n");
+    if (lines.length > 1 && lines.every((l) => /^\s*[-•]\s/.test(l))) {
+      out.push(`<ul style="margin:0 0 .6em;padding-left:18px">${lines.map((l) => `<li>${esc(l.replace(/^\s*[-•]\s/, ""))}</li>`).join("")}</ul>`);
+      return;
+    }
+    if (b.length <= maxChars) { out.push(`<p style="margin:0 0 .6em">${esc(b)}</p>`); return; }
+    const sents = b.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [b];
+    let cur = "";
+    sents.forEach((sn) => {
+      if (cur && (cur.length + sn.length > maxChars || (cur.match(/[.!?]/g) || []).length >= 2)) { out.push(`<p style="margin:0 0 .6em">${esc(cur.trim())}</p>`); cur = ""; }
+      cur += sn;
+    });
+    if (cur.trim()) out.push(`<p style="margin:0 0 .6em">${esc(cur.trim())}</p>`);
+  });
+  return out.join("");
+}
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// href-context guard: only http(s), a root-relative path, or an anchor pass through.
+// A javascript:/data:/other scheme (an LLM or external URL) → empty string. The result
+// still goes through esc() for the attribute quote; this is the second layer on the scheme.
+function safeUrl(u) {
+  const s = String(u == null ? "" : u).trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s === "/" || /^\/[^/]/.test(s) || s.startsWith("#") || s.startsWith("./")) return s;
+  return "";
+}
+
+// ---------- collapsible explanations: short label, details on click ----------
+function help(html, label = "ℹ️ how to read this") {
+  return `<details class="help"><summary>${label}</summary><div>${html}</div></details>`;
+}
+
+// ---------- optional research as JSON: copy the AI prompt, paste the answer, save it into /api/settings[key] ----------
+function aiJsonBox(key, prompt) {
+  return `<details class="mt"><summary><b>➕ Fill it now</b> (paste JSON from any AI assistant)</summary>
+    <div class="muted mt" style="font-size:.85em">1) Click <b>Copy AI prompt</b> and paste it into any assistant (ChatGPT, Claude, the local model…). 2) Paste the JSON it returns below. 3) Save.</div>
+    <div class="row mt" style="gap:8px">
+      <button data-copyprompt="${esc(prompt)}">📋 Copy AI prompt</button>
+      <span class="muted" data-copied style="font-size:.8em"></span>
+    </div>
+    <textarea data-paste rows="5" class="mt" style="width:100%" placeholder='{"headline": "...", ...}'></textarea>
+    <button class="primary mt" data-savejson="${key}">Save</button>
+  </details>`;
+}
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest && e.target.closest("[data-copyprompt],[data-savejson]");
+  if (!b) return;
+  const box = b.closest("details");
+  if (b.dataset.copyprompt) {
+    await navigator.clipboard.writeText(b.dataset.copyprompt);
+    box.querySelector("[data-copied]").textContent = "copied ✓";
+    return;
+  }
+  const raw = box.querySelector("[data-paste]").value.trim();
+  try { JSON.parse(raw); } catch (err) { alert("That is not valid JSON: " + err.message); return; }
+  await api.put("/api/settings", { [b.dataset.savejson]: raw });
+  route();
+});
+
+// Control Center sub-navigation, shared by #control, #reminders and #data.
+function ctrlTabs(active) {
+  return `<div class="row" style="gap:8px;margin-bottom:12px">${[["control", "🛠️ Automation &amp; health"], ["reminders", "🔔 Reminders"], ["data", "📊 Data in the app"], ["ai", "🎓 AI improvement"]]
+    .map(([v, label]) => `<a href="#${v}" class="pill${v === active ? " active" : ""}">${label}</a>`).join("")}</div>`;
+}
+
+// ---------- inline editing (instead of prompt()): Enter saves, Esc cancels ----------
+function inlineEdit(anchor, { value = "", placeholder = "", onSave }) {
+  if (!anchor || anchor.querySelector(".inline-edit")) return;
+  const prev = anchor.innerHTML;
+  const wrap = document.createElement("span");
+  wrap.className = "inline-edit";
+  wrap.innerHTML = `<input type="text" inputmode="decimal" aria-label="new value"
+      value="${esc(value === "" || value == null ? "" : fmt.grouped(value))}" placeholder="${esc(placeholder)}">
+    <button class="primary" data-ok title="Save (Enter)">OK</button><button data-cancel title="Cancel (Esc)">✕</button>`;
+  anchor.innerHTML = "";
+  anchor.appendChild(wrap);
+  const input = wrap.querySelector("input");
+  const cancel = () => { anchor.innerHTML = prev; };
+  const save = async () => {
+    const v = parseNum(input.value);
+    if (isNaN(v)) { input.classList.add("invalid"); input.focus(); return; }
+    wrap.querySelectorAll("input,button").forEach((x) => { x.disabled = true; });
+    try { await onSave(v); } catch (e) { cancel(); alert("Not saved: " + e.message); }
+  };
+  wrap.querySelector("[data-ok]").addEventListener("click", save);
+  wrap.querySelector("[data-cancel]").addEventListener("click", cancel);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); save(); } else if (e.key === "Escape") cancel();
+  });
+  input.focus();
+  input.select();
+}
+
+// ---------- THEME: dark by default, light on toggle (localStorage "theme", ?theme=light for screenshots) ----------
+function themeGet() {
+  const q = /[?&#]theme=(light|dark)\b/.exec(location.search + location.hash);
+  if (q) return q[1];
+  try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") return t; } catch (e) { /* noop */ }
+  return "dark";
+}
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  if (typeof applyChartTheme === "function") applyChartTheme(t);
+}
+function themeSet(t) {
+  try { localStorage.setItem("theme", t); } catch (e) { /* noop */ }
+  applyTheme(t);
+  if (typeof route === "function") route();   // charts must be redrawn in the new colours
+}
+
+// ---------- DEMO MODE — masks amounts with a 0-1 pattern (for screenshots) ----------
+function demoOn() {
+  if (/[?&#](demo|test)\b/.test(location.search + location.hash)) return true;
+  return localStorage.getItem("demoMode") === "1";
+}
+function toggleDemo(on) {
+  localStorage.setItem("demoMode", on ? "1" : "0");
+  location.reload();
+}
+
+function _mask01(digits) {  // "01010" in groups of 3, one char per digit
+  const d = Math.max(1, digits);
+  return "01".repeat(d).slice(0, d).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+function _maskInt(v) { return _mask01(String(Math.floor(Math.abs(Number(v) || 0))).length); }
+function _maskDec(n) { return n > 0 ? "01".repeat(Math.ceil(n / 2)).slice(0, n) : ""; }
+(function wrapDemo() {
+  const o = { usd: fmt.usd, num: fmt.num, pct: fmt.pct, grouped: fmt.grouped };
+  const _CURSYM = { PLN: ["", " zł"], EUR: ["€", ""], USD: ["$", ""], GBP: ["£", ""], CHF: ["", " CHF"] };
+  fmt.money = (v) => {
+    if (v == null) return "—";
+    const [pre, suf] = _CURSYM[window.APP_CURRENCY || "PLN"] || _CURSYM.PLN;
+    const body = demoOn() ? _maskInt(v) : fmt.grouped(Math.round(v));
+    return pre + body + suf;
+  };
+  fmt.pln = fmt.money;  // legacy alias — every view formats through the configured currency
+  fmt.usd = (v) => v == null ? "—" : (demoOn() ? "$" + _maskInt(v) + "." + _maskDec(2) : o.usd(v));
+  fmt.num = (v, d = 2) => v == null ? "—" : (demoOn() ? _maskInt(v) + (d > 0 ? "," + _maskDec(d) : "") : o.num(v, d));
+  fmt.pct = (v, d = 1) => v == null ? "—" : (demoOn() ? _maskInt(v) + (d > 0 ? "," + _maskDec(d) : "") + "%" : o.pct(v, d));
+  fmt.grouped = (v) => (v == null || v === "" || isNaN(Number(v))) ? "" : (demoOn() ? _maskInt(v) : o.grouped(v));
+})();
+
+// <canvas> cannot resolve CSS variables (a "var(--pos)" fill silently paints black), so
+// applyChartTheme() copies the current theme's values from :root in app.css into
+// TOKENS/CHART_COLORS (const object/array — mutating the contents is fine).
+const TOKENS = {};
+const CHART_COLORS = [];
+// Charts in the same "voice" as the rest of the UI: thin grids, no axis borders, 2px lines,
+// no points, point-style legend. Set once, globally — views need not repeat it.
+if (window.Chart) {
+  Chart.defaults.font.family = '"Inter", "SF Pro Text", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+  Chart.defaults.font.size = 11.5;
+  Chart.defaults.elements.line.borderWidth = 2;
+  Chart.defaults.elements.line.tension = 0.3;
+  Chart.defaults.elements.point.radius = 0;
+  Chart.defaults.elements.point.hitRadius = 8;
+  Chart.defaults.elements.bar.borderRadius = 4;
+  // Legend: fixed marker size (boxHeight), otherwise the font-sized circle overlapped the
+  // text; lines get a stroke with the same dash as on the chart, everything else a solid
+  // marker (hollow circles from backgroundColor "transparent" were unreadable).
+  const legendLabels = Chart.defaults.plugins.legend.labels;
+  const baseLabels = legendLabels.generateLabels;
+  Object.assign(legendLabels, {
+    usePointStyle: true, boxWidth: 8, boxHeight: 8, pointStyleWidth: 20, padding: 18,
+    font: { size: 12 },
+    generateLabels: (chart) => baseLabels(chart).map((l) => {
+      const ds = chart.data.datasets[l.datasetIndex] || {};
+      const isLine = (ds.type || chart.config.type) === "line";
+      const solid = (c) => typeof c === "string" && c !== "transparent" && !/,\s*0\)$/.test(c);
+      const color = isLine ? (solid(l.strokeStyle) ? l.strokeStyle : l.fillStyle)
+                           : (solid(l.fillStyle) ? l.fillStyle : l.strokeStyle);
+      return isLine
+        ? { ...l, pointStyle: "line", strokeStyle: color, fillStyle: color, lineWidth: 2.5 }
+        : { ...l, pointStyle: "rectRounded", fillStyle: color, strokeStyle: color, lineWidth: 0, lineDash: [] };
+    }),
+  });
+  Chart.defaults.plugins.legend.align = "start";
+  // doughnut/pie have their own legend generator: width 20 turned circles into ovals there
+  ["doughnut", "pie", "polarArea"].forEach((t) => Object.assign(Chart.overrides[t].plugins.legend.labels, { pointStyleWidth: 8 }));
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.cornerRadius = 8;
+  Chart.defaults.plugins.tooltip.padding = 10;
+  Chart.defaults.scale.grid.drawBorder = false;
+  Chart.defaults.scale.border = { display: false };
+  Chart.defaults.scale.ticks.padding = 6;
+}
+
+function applyChartTheme(t) {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name) => css.getPropertyValue("--" + name).trim();
+  const dark = t !== "light", ink = dark ? "255,255,255" : "15,23,42";  // hairline tints, no CSS var
+  ["pos", "neg", "warn", "accent", "violet", "amber", "muted", "text"].forEach((k) => { TOKENS[k] = v(k); });
+  TOKENS.empty = `rgba(${ink},0.08)`;
+  CHART_COLORS.splice(0, CHART_COLORS.length, ...["accent", "pos", "warn", "neg", "violet", "teal", "orange", "muted"].map(v));
+  if (!window.Chart) return;
+  Chart.defaults.color = TOKENS.muted;
+  Chart.defaults.plugins.legend.labels.color = TOKENS.text;  // muted was too faint on dark
+  Chart.defaults.borderColor = `rgba(${ink},${dark ? 0.06 : 0.08})`;
+  Chart.defaults.scale.grid.color = `rgba(${ink},${dark ? 0.05 : 0.07})`;
+  Chart.defaults.plugins.tooltip.backgroundColor = v(dark ? "panel2" : "panel");
+  Chart.defaults.plugins.tooltip.titleColor = Chart.defaults.plugins.tooltip.bodyColor = TOKENS.text;
+  Chart.defaults.plugins.tooltip.borderColor = `rgba(${ink},${dark ? 0.08 : 0.12})`;
+}
+applyTheme(themeGet());

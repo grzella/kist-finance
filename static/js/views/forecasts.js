@@ -1,0 +1,336 @@
+async function renderForecasts(el) {
+  el.innerHTML = '<div class="empty">Computing scenarios…</div>';
+  const [debtsData, rsu, cfg, sum, fire, stress, calib, traj0, ip] = await Promise.all([
+    api.get("/api/debts"), api.get("/api/rsu"),
+    api.get("/api/settings"), api.get("/api/dashboard/summary"),
+    api.get("/api/fire-projection").catch(() => null),
+    api.get("/api/stress-test").catch(() => null),
+    api.get("/api/forecast/calibration").catch(() => null),
+    api.get("/api/trajectory").catch(() => null),
+    api.get("/api/invest-plan").catch(() => null)]);
+
+  const loan = debtsData.debts.find((d) => d.balance > 0);
+  const secondLoan = debtsData.debts.filter((d) => d.balance > 0)[1];
+  const vestPln = rsu.next_vest_value_pln || 0;
+
+  async function overpay(debt, amount) {
+    if (!debt || amount >= debt.balance) return null;
+    return api.post("/api/forecast/mortgage", {
+      balance: debt.balance,
+      monthly_payment: debt.minimum_payment,
+      months_left: debt.months_left || debt.schedule.months,
+      overpayment: amount,
+    });
+  }
+
+  const bonus = +cfg.annual_bonus_net || 20000;
+  const [bonusLoan, vestLoan, bothLoan] = await Promise.all([
+    overpay(loan, bonus), overpay(loan, vestPln), overpay(loan, bonus + vestPln)]);
+
+  const refiSavYr = secondLoan ? secondLoan.balance * 1.0 / 100 : 0;  // example: −1.0 pp
+  const loanFreed = loan ? loan.monthly_cost_total : 0;
+
+  const scenarioCard = (title, rows, note) => `
+    <div class="card">
+      <h3>${title}</h3>
+      <table>${rows.map(([k, v, cls]) => `<tr><td>${k}</td><td class="${cls || ""}"><b>${v}</b></td></tr>`).join("")}</table>
+      ${note ? `<div class="muted mt">${note}</div>` : ""}
+    </div>`;
+
+  const ym = (m) => {
+    const mm = Math.round(m);
+    const y = Math.floor(mm / 12), rest = mm % 12;
+    return y ? `${y} ${y === 1 ? "yr" : "yrs"}${rest ? ` ${rest} mo` : ""}` : `${rest} mo`;
+  };
+  const op = (r) => r ? [
+    ["Left to pay off", `${ym(r.months_left_after)} (instead of ${ym(r.months_left_now)})`, "pos"],
+    ["Interest saved", fmt.pln(r.interest_saved), "pos"],
+    ["Shortened by", ym(r.months_saved)],
+  ] : [["—", "the overpayment covers the whole balance — loan paid off 🎉", "pos"]];
+
+  // Scenarios that need a loan fold into "Completed" once nothing is left to overpay.
+  const loanCards = [
+    scenarioCard(`Annual bonus (~${fmt.pln(bonus)}) → loan overpayment`, op(bonusLoan),
+      loan ? `Loan balance: ${fmt.pln(loan.balance)} · installment ${fmt.pln(loan.minimum_payment)}` : ""),
+    scenarioCard(`Next vest of ${rsu.shares_next_vest} shares (≈${fmt.pln(vestPln)}) → loan overpayment`, op(vestLoan),
+      "Sell at vest — capital gains tax only on the gain after vest (≈0 when selling right away)"),
+    scenarioCard("Vest + bonus combined (≈" + fmt.pln(bonus + vestPln) + ") → loan", op(bothLoan),
+      bothLoan ? "" : "This combination covers the whole balance — loan paid off 🎉"),
+    scenarioCard(`Refinance/renegotiation scenario${secondLoan ? " for " + esc(secondLoan.name) : ""}: rate −1.0 pp`, [
+      ["Savings per year (example)", fmt.pln(refiSavYr), "pos"],
+      ["Over ~18 months", fmt.pln(refiSavYr * 1.5), "pos"],
+      ["Capital involved", "0"],
+    ], "Playbook: collect real competing offers → ask your bank's retention team to match"),
+    scenarioCard(loan ? "After the loan is paid off — what gets freed" : "✅ Loan paid off — what got freed", [
+      ["Installment + insurance", fmt.pln(loanFreed) + "/mo", "pos"],
+      ["Property unencumbered", "yes — profile ready for a property mortgage"],
+    ], "From this moment all surpluses build the goal contribution"),
+  ];
+  const openCards = loan ? loanCards : [];
+  const doneCards = loan ? [] : loanCards;
+
+  el.innerHTML = `
+    <h2>Forecasts — your scenarios</h2>
+    <div class="muted" style="margin-bottom:12px">Computed on live data: loan balances,
+      the RSU stock price, savings pace. Amounts come from your settings (e.g. annual_bonus_net).</div>
+    ${openCards.length ? `<div class="grid cols-2">${openCards.join("")}</div>` : '<div class="muted">No open scenarios: no loan left to overpay. The completed ones are folded at the bottom.</div>'}
+
+    ${ip ? `<div class="card mt" style="border-left:4px solid var(--accent)">
+      <h3>📐 Investment policy: what to do with money that has no goal</h3>
+      <div class="muted" style="font-size:.88em;margin-bottom:8px">For money AFTER the cushion, the tax reserve and tax-advantaged account limits. Model portfolio ${ip.rows.map((r) => `${r.target}% ${esc(r.label.replace(/^\S+\s/, "").split(":")[0].toLowerCase())}`).join(" / ")},
+        expected return about ${fmt.pct(ip.blended_return_pct, 1)} a year. The "buy" column splits the next inflow so the buckets reach their weights: new money goes where the portfolio is short and nothing is sold.</div>
+      <table><thead><tr><th>Bucket</th><th>Instrument</th><th style="text-align:right">Target</th><th style="text-align:right">Now</th><th style="text-align:right">Value</th><th>State</th><th style="text-align:right">Buy ${ip.deploy_month || ""}</th></tr></thead>
+        <tbody>${ip.rows.map((r) => `<tr><td><b>${esc(r.label)}</b></td><td class="muted">${esc(r.instrument)}</td>
+          <td style="text-align:right">${r.target}%</td><td style="text-align:right">${r.pct}%</td><td style="text-align:right">${fmt.pln(r.value)}</td>
+          <td class="${r.flag === "ok" ? "pos" : "warn"}">${r.flag}</td><td style="text-align:right" class="${r.buy ? "pos" : "muted"}"><b>${r.buy ? fmt.pln(r.buy) : "—"}</b></td></tr>`).join("")}
+        <tr><td colspan="4"><b>Total</b></td><td style="text-align:right"><b>${fmt.pln(ip.total)}</b></td><td></td><td style="text-align:right"><b>${fmt.pln(ip.deploy)}</b></td></tr></tbody></table>
+      <div class="muted mt" style="font-size:.85em">To deploy in ${ip.deploy_month || "the next vest month"}: vest + cash-vest net and the surpluses until then (${fmt.pln(ip.surplus_until_vest)}). The tax reserve on shares is already taken out.</div>
+      <div class="grid cols-2 mt">
+        <div>
+          <b>Rules (5):</b>
+          <ol style="margin:6px 0 0 18px;font-size:.9em;line-height:1.5">
+            <li>Sell vested shares on vest day and invest the money the same week. Do not wait for a "better price".</li>
+            <li>Every month the surplus follows the same table (standing orders at the broker).</li>
+            <li>Top up the bucket below its weight. Sell only when the drift passes 5 pp (the 5/25 rule), at most once a year, because selling is a tax event.</li>
+            <li>Satellites and sandbox together stay under 15%. If your pay and equity already come from one sector, that sector is your biggest bet already.</li>
+            <li>Bonds are ballast: 15% softens drawdowns and gives cash to buy equity after a crash. More than that loses to inflation after tax.</li>
+          </ol>
+        </div>
+        <div>
+          <b>What it adds up to (the whole inflow of ${fmt.pln(ip.contrib_monthly)}/mo invested):</b>
+          <table class="mt" style="font-size:.9em"><thead><tr><th>In</th><th style="text-align:right">Contributed</th><th style="text-align:right" class="neg">4%</th><th style="text-align:right">${fmt.pct(ip.blended_return_pct, 1)}</th><th style="text-align:right" class="pos">9%</th></tr></thead>
+            <tbody>${ip.projection.map((p) => `<tr><td>${p.years} yrs</td><td style="text-align:right" class="muted">${fmt.pln(p.contributed)}</td><td style="text-align:right">${fmt.pln(p.cautious)}</td><td style="text-align:right"><b>${fmt.pln(p.base)}</b></td><td style="text-align:right">${fmt.pln(p.optimistic)}</td></tr>`).join("")}</tbody></table>
+          <div class="muted mt" style="font-size:.82em">Nominal, before capital gains tax; assumes grants keep renewing as they have so far. The gap between "contributed" and the result is the market's work.</div>
+        </div>
+      </div>
+      ${ip.themes && ip.themes.rows ? `<div class="mt" style="border-top:1px solid var(--line);padding-top:10px">
+        <b>🧭 Themes variant: ${fmt.pln(ip.themes.quarterly)} a quarter</b>${ip.themes.source ? ` <span class="muted" style="font-size:.85em">(source: ${esc(ip.themes.source)})</span>` : ""}
+        <div style="overflow-x:auto"><table class="mt" style="font-size:.88em"><thead><tr><th>Theme</th><th style="text-align:right">Per quarter</th><th>Instruments (price · 1 yr)</th><th>Thesis</th><th>Risk</th></tr></thead>
+          <tbody>${ip.themes.rows.map((t) => `<tr><td><b>${esc(t.theme)}</b></td><td style="text-align:right"><b>${fmt.pln(t.amount)}</b></td>
+            <td>${(t.items || []).map((i) => `<div><b>${esc(i.ticker || "")}</b> ${esc(i.name || "")} <span class="muted">${fmt.pln(i.amount)}</span>${i.last != null ? ` <span class="muted">· ${i.last} ${esc(i.ccy || "")}</span>` : ""}${i.chg_1y_pct != null ? ` <span class="${i.chg_1y_pct >= 0 ? "pos" : "neg"}">${i.chg_1y_pct >= 0 ? "+" : ""}${i.chg_1y_pct}%</span>` : ""}</div>`).join("")}</td>
+            <td class="muted">${esc(t.thesis || "")}</td><td class="muted">${esc(t.risk || "")}</td></tr>`).join("")}</tbody></table></div>
+        <div class="muted mt" style="font-size:.82em">The "buy" column above splits the real inflow by the model weights; this table splits the model quarterly amount. Prices come from the Market cache (tickers on the watch list); 1 yr = change since the oldest cached quote.</div>
+      </div>` : ""}
+      ${help(`The table reads Wealth (brokerage positions, employer stock excluded) and Cash-flow (the next vest). Change the weights with the <code>invest_model</code> setting (JSON, e.g. {"core":50,"bonds":10,"themes":30,"satellite":5,"sandbox":5}) and the themes plan with <code>invest_themes</code> ({"quarterly": 25000, "rows": [{"theme": "...", "bucket": "themes", "amount": 10000, "thesis": "...", "risk": "...", "items": [{"ticker": "XYZ", "name": "...", "amount": 5000}]}]}). A Wealth position whose name contains a theme ticker lands in the Themes bucket. Pace tracking is below, in "Progress vs plan".`, "how it works")}
+    </div>` : ""}
+
+    ${fire ? `<div class="card mt" style="border-left:4px solid var(--pos)">
+      <h3>🏁 Path to work-optional (${fmt.pln(fire.target)} liquid portfolio)</h3>
+      <div class="muted" style="font-size:.88em;margin-bottom:8px">
+        Liquid portfolio today ${fmt.pln(fire.start)} → target ${fmt.pln(fire.target)}. Contribution: ${fire.assumptions.contrib_note}.
+        Three return scenarios + the target line. When a line crosses the target = you are work-optional.</div>
+      <div class="grid cols-4">
+        <div class="card kpi"><div class="label">Cautious (4%)</div><div class="value">${(fire.crossover["cautious (4%)"] || "—").slice(0, 7)}</div></div>
+        <div class="card kpi"><div class="label">Base (6.5%)</div><div class="value pos">${(fire.crossover["base (6.5%)"] || "—").slice(0, 7)}</div></div>
+        <div class="card kpi"><div class="label">Optimistic (9%)</div><div class="value">${(fire.crossover["optimistic (9%)"] || "—").slice(0, 7)}</div></div>
+        <div class="card kpi"><div class="label">Real (after ${fire.inflation_pct}% inflation)</div><div class="value">${(fire.real_crossover || "—").slice(0, 7)}</div><div class="sub">purchasing power · after ${fire.tax_pct}% tax: <b>${(fire.net_crossover || "—").slice(0, 7)}</b></div></div>
+      </div>
+      <canvas id="fireChart" height="90" class="mt"></canvas>
+      ${fire.cone && fire.cone.points && Object.keys(fire.cone.points).length ? `<div class="mt" style="font-size:.9em">
+        <b>Cone from real returns</b> <span class="muted">(block bootstrap of ${esc(fire.cone.benchmark)} monthly returns, ${fire.cone.months_of_data} months of data; nominal)</span>
+        <table class="mt"><thead><tr><th>Horizon</th><th class="neg">p10</th><th>p50</th><th class="pos">p90</th></tr></thead>
+        <tbody>${Object.entries(fire.cone.points).map(([y, q]) => `<tr><td>${y} years</td><td class="neg">${fmt.pln(q.p10)}</td><td><b>${fmt.pln(q.p50)}</b></td><td class="pos">${fmt.pln(q.p90)}</td></tr>`).join("")}</tbody></table></div>`
+        : fire.cone && fire.cone.note ? `<div class="muted mt" style="font-size:.85em">Cone: ${fire.cone.note} (${esc(fire.cone.benchmark)}, ${fire.cone.months_of_data} months) — deepen the benchmark history in Market (10 years) and the cone appears.</div>` : ""}
+      <div class="muted mt" style="font-size:.82em">Assumptions: ${fire.assumptions.base_return} · inflation ${fire.assumptions.inflation} · ${fire.assumptions.income_growth} · ${fire.assumptions.tax} · freed installment from ${fire.freed_from_month}.</div>
+      <div class="mt"><b>Milestones (base scenario):</b>
+        <table><tbody>
+          ${Object.entries(fire.milestones).map(([k, when]) => `<tr><td>${fmt.pln(Number(k))}${Number(k) === fire.target ? " — work-optional 🏁" : ""}</td><td${Number(k) === fire.target ? ' class="pos"' : ""}><b>${when}</b></td></tr>`).join("") || `<tr><td class="muted">No milestone within the horizon</td></tr>`}
+        </tbody></table></div>
+      ${help(`This replaces Monte Carlo with readable lines. Hover over the chart to see the value in a given month. "Real" uses the after-inflation return (~3.5% real): the date is in today's purchasing power.`, "how to read the chart")}
+    </div>
+
+    <div class="grid cols-2 mt">
+      ${fire.property ? `<div class="card" style="border-left:4px solid var(--amber)">
+        <h3>Goal contribution (house)</h3>
+        <table>
+          <tr><td>Down-payment target (50%)</td><td><b>${fmt.pln(fire.property.target)}</b></td></tr>
+          <tr><td>Saved so far</td><td>${fmt.pln(fire.property.start)}</td></tr>
+          <tr><td>Down payment ready${fire.property.delay_months ? " (starts after loan payoff)" : ""}</td><td class="pos"><b>${fire.property.crossover || "—"}</b></td></tr>
+        </table>
+        <canvas id="propertyChart" height="70" class="mt"></canvas>
+        <div class="muted mt" style="font-size:.82em">${fire.property.note}</div>
+      </div>` : ""}
+
+
+      ${fire.tracking ? `<div class="card" style="border-left:4px solid var(--accent)">
+        <h3>📡 Progress vs plan (learning every month)</h3>
+        ${fire.tracking.status === "ok" ? `
+          <div style="font-size:1.05em"><b class="${fire.tracking.cum_delta >= 0 ? "pos" : "neg"}">${fire.tracking.verdict}</b>
+            — total ${fire.tracking.cum_delta >= 0 ? "+" : ""}${fmt.pln(fire.tracking.cum_delta)} vs plan</div>
+          <div class="muted" style="font-size:.85em;margin:6px 0">Liquid portfolio: ${fmt.pln(fire.tracking.latest_liquid)} · tracking for ${fire.tracking.months_tracked} mo</div>
+          <table><thead><tr><th>Mo</th><th style="text-align:right">Actual growth</th><th style="text-align:right">Plan</th><th style="text-align:right">Δ</th></tr></thead>
+          <tbody>${fire.tracking.rows.map((r) => `<tr><td>${r.month}</td>
+            <td style="text-align:right">${fmt.pln(r.actual_growth)}</td>
+            <td style="text-align:right" class="muted">${fmt.pln(r.expected_growth)}</td>
+            <td style="text-align:right" class="${r.delta >= 0 ? "pos" : "neg"}">${r.delta >= 0 ? "+" : ""}${fmt.pln(r.delta)}</td></tr>`).join("")}</tbody></table>`
+        : `<div class="muted">${fire.tracking.status === "collecting data" ? `Collecting data — first snapshot ${fire.tracking.first || "today"}. In a month the first comparison of the actual pace vs the plan will appear.` : "No data."}</div>
+          <div class="muted mt" style="font-size:.85em">Every month the liquid portfolio balance is recorded and compared with the expected pace (6.5% + contributions). You will see whether you are ahead of or behind the plan.</div>`}
+      </div>` : ""}
+    </div>` : ""}
+
+    ${stress ? `<div class="card mt" style="border-left:4px solid #ff8c66">
+      <h3>🧯 Stress test — financial fire drill</h3>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">Deterministic what-ifs computed from your data (no simulation, no AI).</div>
+      <div class="grid cols-3">
+        ${stress.scenarios.map((sc) => `<div class="card" style="margin:0">
+          <div class="row" style="justify-content:space-between"><b>${sc.icon} ${sc.title}</b><b class="neg">${sc.impact}</b></div>
+          <div class="muted mt" style="font-size:.85em">${sc.detail}</div>
+        </div>`).join("")}
+      </div>
+      ${stress.policy ? `<div class="mt" style="padding:8px 12px;background:var(--inset);border-radius:6px;font-size:.9em">
+        <b>🛡️ Withdrawal policy (Guyton-Klinger guardrails):</b> ${stress.policy.verdict}
+        ${stress.policy.current_pct != null ? `<div class="muted mt" style="font-size:.9em">Start rate ${stress.policy.initial_pct}% · guardrails ${stress.policy.lower_pct}–${stress.policy.upper_pct}% · portfolio ${fmt.pln(stress.policy.portfolio)} · essential spend ${fmt.pln(stress.policy.annual_spend)}/yr${stress.policy.portfolio_needed ? ` · calm-start portfolio ${fmt.pln(stress.policy.portfolio_needed)}` : ""}</div>` : ""}
+      </div>` : ""}
+    </div>` : ""}
+
+    ${traj0 ? `<div class="card mt" style="border-left:4px solid var(--violet)">
+      <h3>🌫️ Net-worth trajectory — ${traj0.months}-month cone with scenarios</h3>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">The invested part (ETF + employer stock + retirement) grows with a ${traj0.assumptions.drift_annual_pct}%/yr drift
+        + ${traj0.assumptions.method}; the rest accrues the surplus and net vest cash (${fmt.pln(traj0.assumptions.flow_monthly)}/mo), the bonus lands in month ${traj0.assumptions.bonus_month}.
+        Stock/USD shocks are one-off today; they show the size of the effect, not a forecast of the move.</div>
+      <div class="row" style="gap:12px;flex-wrap:wrap;align-items:center;font-size:.9em">
+        <label>Horizon <select id="tjM"><option value="12">12 mo</option><option value="24" selected>24 mo</option><option value="36">36 mo</option></select></label>
+        <label><input type="checkbox" id="tjB" checked> annual bonus</label>
+        <label>Employer stock <select id="tjT"><option value="-30">−30%</option><option value="0" selected>unchanged</option><option value="30">+30%</option></select></label>
+        <label>USD <select id="tjU"><option value="-10">−10%</option><option value="0" selected>unchanged</option><option value="10">+10%</option></select></label>
+        <label><input type="checkbox" id="tjR"> real (after inflation)</label>
+      </div>
+      <div id="tjBody"></div>
+    </div>` : ""}
+
+    ${calib && calib.by_horizon && calib.by_horizon.length ? `<div class="card mt" style="border-left:4px solid var(--accent)">
+      <h3>🎯 Forecast calibration — per ticker × horizon <span class="muted" style="font-weight:normal;font-size:.75em">(${calib.total_scored} settled · volatility regime: ${calib.regime.label})</span></h3>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">The p10–p90 band should cover ~80%. "Too narrow" = volatility underestimated (the miss direction tells which way),
+        "too wide" = a uselessly cautious band. Winkler = band width + a penalty per miss, as % of price — lower is better. New bands use a rolling window of 120 own settlements
+        per horizon and a VIX regime multiplier; the "self-cal." column shows how the already-calibrated ones score.
+        "indep." = non-overlapping windows: daily 21-day forecasts share most of their days, so only these count as separate outcomes,
+        and "too few windows" means the gap from 80% is still within noise (don't re-tune on it).</div>
+      <table><thead><tr><th>Horizon</th><th style="text-align:right">n (indep.)</th><th style="text-align:right">Coverage</th><th style="text-align:right">↓ / ↑</th><th style="text-align:right">Winkler</th><th>Verdict</th></tr></thead>
+        <tbody>${calib.by_horizon.map((h) => `<tr><td><b>${h.horizon_days} days</b></td><td style="text-align:right">${h.n} <span class="muted">(${h.n_independent})</span></td>
+          <td style="text-align:right" class="${h.verdict === "ok" ? "pos" : h.verdict === "too few windows" ? "muted" : "warn"}"><b>${h.coverage_pct}%</b></td>
+          <td style="text-align:right" class="muted">${h.below_pct}% / ${h.above_pct}%</td><td style="text-align:right">${h.winkler_pct}%</td>
+          <td>${h.verdict === "ok" ? "🟢" : h.verdict === "too few windows" ? "⚪" : "🟡"} ${h.verdict}</td></tr>`).join("")}</tbody></table>
+      <details class="mt"><summary class="muted">Per ticker (${calib.by_ticker.length} pairs)</summary>
+        <div style="overflow-x:auto"><table class="mt" style="font-size:.88em"><thead><tr><th>Ticker</th><th>Horizon</th><th style="text-align:right">n (indep.)</th><th style="text-align:right">Coverage</th><th style="text-align:right">↓ / ↑</th><th style="text-align:right">Winkler</th><th style="text-align:right">self-cal.</th><th>Verdict</th></tr></thead>
+          <tbody>${calib.by_ticker.map((r) => `<tr><td><b>${esc(r.ticker)}</b></td><td>${r.horizon_days} d</td><td style="text-align:right">${r.n} <span class="muted">(${r.n_independent})</span></td>
+            <td style="text-align:right" class="${r.verdict === "ok" ? "pos" : r.verdict === "too few windows" ? "muted" : "warn"}">${r.coverage_pct}%</td>
+            <td style="text-align:right" class="muted">${r.below_pct}% / ${r.above_pct}%</td><td style="text-align:right">${r.winkler_pct}%</td>
+            <td style="text-align:right" class="muted">${r.calibrated_n}${r.calibrated_coverage_pct != null ? ` (${r.calibrated_coverage_pct}%)` : ""}</td>
+            <td>${r.verdict}</td></tr>`).join("")}</tbody></table></div></details>
+    </div>` : ""}
+
+    <div class="card mt">
+      <h3>Overpayment calculator — any variant</h3>
+      <div class="row">
+        <select id="mDebt">${debtsData.debts.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join("")}</select>
+        <input data-num id="mOver" placeholder="overpayment amount">
+        <button class="primary" id="mRun">Compute</button>
+      </div>
+      <div id="mOut" class="mt"></div>
+    </div>
+
+    ${doneCards.length ? `<details class="mt">
+      <summary class="pill">✅ Completed (${doneCards.length})</summary>
+      <div class="muted mt" style="font-size:.88em">Scenarios that already happened: kept for the record, no decision needed.</div>
+      <div class="grid cols-2 mt">${doneCards.join("")}</div>
+    </details>` : ""}`;
+
+  document.getElementById("mRun").addEventListener("click", async () => {
+    const debt = debtsData.debts.find((d) => d.id === document.getElementById("mDebt").value);
+    const amount = parseNum(document.getElementById("mOver"));
+    if (!debt || isNaN(amount)) { alert("Enter an amount"); return; }
+    const r = await overpay(debt, amount);
+    document.getElementById("mOut").innerHTML = r
+      ? `<table>${op(r).map(([k, v, c]) => `<tr><td>${k}</td><td class="${c || ""}"><b>${v}</b></td></tr>`).join("")}</table>`
+      : '<span class="pos"><b>The overpayment covers the whole balance — loan paid off 🎉</b></span>';
+  });
+
+  // trajectory: repaint IN PLACE (no page jump) when a scenario changes
+  let tjChart = null;
+  const paintTraj = (t) => {
+    const body = document.getElementById("tjBody");
+    if (!body || !t) return;
+    const end = t.p50[t.p50.length - 1];
+    body.innerHTML = `
+      <div class="grid cols-3 mt">
+        <div class="card kpi" style="margin:0"><div class="label">Today</div><div class="value" style="font-size:24px">${fmt.pln(t.start)}</div></div>
+        <div class="card kpi" style="margin:0"><div class="label">Median in ${t.months} mo</div><div class="value pos" style="font-size:24px">${fmt.pln(end)}</div><div class="sub">${end >= t.start ? "+" : ""}${fmt.pln(end - t.start)}</div></div>
+        <div class="card kpi" style="margin:0"><div class="label">p10–p90 band</div><div class="value" style="font-size:20px"><span class="neg">${fmt.pln(t.p10[t.p10.length - 1])}</span> – <span class="pos">${fmt.pln(t.p90[t.p90.length - 1])}</span></div></div>
+      </div>
+      <canvas id="tjChart" height="80" class="mt"></canvas>
+      <table class="mt" style="font-size:.9em"><thead><tr><th>Variant (median at the end)</th><th style="text-align:right">Net worth</th><th style="text-align:right">vs base</th></tr></thead>
+        <tbody>${t.variants.map((v) => `<tr><td>${v.label}</td><td style="text-align:right"><b>${fmt.pln(v.p50_end)}</b></td><td style="text-align:right" class="${v.delta_vs_base < 0 ? "neg" : v.delta_vs_base > 0 ? "pos" : "muted"}">${v.delta_vs_base ? (v.delta_vs_base > 0 ? "+" : "") + fmt.pln(v.delta_vs_base) : "—"}</td></tr>`).join("")}</tbody></table>
+      <div class="muted mt" style="font-size:.8em">Benchmark ${esc(t.assumptions.benchmark || "—")} (${t.assumptions.months_of_data} months of data) · invested ${fmt.pln(t.assumptions.invested)} · employer stock ${fmt.pln(t.assumptions.rsu)} · USD positions ${fmt.pln(t.assumptions.fx_usd)}${t.assumptions.real ? ` · real at ${t.assumptions.inflation_pct}% inflation` : ""}. The last run is stored in the scenarios table.</div>`;
+    if (tjChart) { try { tjChart.destroy(); } catch (e) { /* noop */ } }
+    tjChart = new Chart(document.getElementById("tjChart"), {
+      type: "line",
+      data: { labels: t.labels, datasets: [
+        { label: "p10", data: t.p10, borderColor: TOKENS.neg, backgroundColor: "transparent", borderWidth: 1, tension: 0.2 },
+        { label: "p90", data: t.p90, borderColor: TOKENS.pos, backgroundColor: "rgba(110,168,254,0.12)", fill: "-1", borderWidth: 1, tension: 0.2 },
+        { label: "median", data: t.p50, borderColor: TOKENS.accent, backgroundColor: "transparent", borderWidth: 3, tension: 0.2 },
+      ] },
+      options: { interaction: { mode: "index", intersect: false },
+        plugins: { tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt.pln(c.parsed.y)}` } } },
+        scales: { y: { ticks: { callback: (v) => (v / 1000000).toFixed(2) + " M" } } } },
+    });
+    trackChart(tjChart);
+  };
+  if (traj0) {
+    paintTraj(traj0);
+    const refetch = async () => {
+      const q = `months=${document.getElementById("tjM").value}&bonus=${document.getElementById("tjB").checked ? 1 : 0}`
+        + `&team=${document.getElementById("tjT").value}&usd=${document.getElementById("tjU").value}&real=${document.getElementById("tjR").checked ? 1 : 0}`;
+      paintTraj(await api.get("/api/trajectory?" + q).catch(() => null));
+    };
+    ["tjM", "tjB", "tjT", "tjU", "tjR"].forEach((id) => document.getElementById(id).addEventListener("change", refetch));
+  }
+
+  if (fire && document.getElementById("fireChart")) {
+    const names = Object.keys(fire.series);
+    const colors = { 0: CHART_COLORS[3], 1: CHART_COLORS[0], 2: CHART_COLORS[1] };
+    trackChart(new Chart(document.getElementById("fireChart"), {
+      type: "line",
+      data: {
+        labels: fire.labels,
+        datasets: [
+          ...names.map((n, i) => ({
+            label: n, data: fire.series[n], borderColor: colors[i],
+            backgroundColor: "transparent", borderWidth: i === 1 ? 3 : 2, tension: 0.2,
+          })),
+          { label: "target", data: fire.labels.map(() => fire.target),
+            borderColor: "#888", borderDash: [6, 4], borderWidth: 1 },
+        ],
+      },
+      options: {
+        interaction: { mode: "index", intersect: false },
+        plugins: { tooltip: { callbacks: {
+          title: (items) => items[0].label,
+          label: (ctx) => `${ctx.dataset.label}: ${fmt.pln(ctx.parsed.y)}`,
+        } } },
+        scales: { y: { ticks: { callback: (v) => (v / 1000000).toFixed(1) + "M" } } },
+      },
+    }));
+  }
+  if (fire && fire.property && document.getElementById("propertyChart")) {
+    const yrs = fire.property.series.map((_, i) => `${new Date().getFullYear() + i}`);
+    trackChart(new Chart(document.getElementById("propertyChart"), {
+      type: "line",
+      data: {
+        labels: yrs,
+        datasets: [
+          { label: "Saved so far", data: fire.property.series, borderColor: CHART_COLORS[4],
+            backgroundColor: "transparent", borderWidth: 3, pointRadius: 2, tension: 0.2 },
+          { label: "down-payment target", data: yrs.map(() => fire.property.target),
+            borderColor: "#888", borderDash: [6, 4], borderWidth: 1 },
+        ],
+      },
+      options: {
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { display: false }, tooltip: { callbacks: {
+          label: (ctx) => `${ctx.dataset.label}: ${fmt.pln(ctx.parsed.y)}`,
+        } } },
+        scales: { y: { ticks: { callback: (v) => (v / 1000) + "k" } } },
+      },
+    }));
+  }
+}

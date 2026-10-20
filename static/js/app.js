@@ -1,0 +1,212 @@
+const views = {
+  wizard: renderWizard,
+  dashboard: renderDashboard,
+  cashflow: renderCashflow,
+  control: renderControl,
+  ai: renderAi,
+  allocation: renderAllocation,
+  taxes: renderTaxes,
+  currency: renderCurrency,
+  reminders: renderReminders,
+  data: renderData,
+  recs: renderRecs,
+  wealth: renderWealth,
+  expenses: renderExpenses,
+  goals: renderGoals,
+  property: renderProperty,
+  career: renderCareer,
+  commits: renderCommits,
+  offers: renderOffers,
+  debts: renderDebts,
+  business: renderBusiness,
+  market: renderMarket,
+  forecasts: renderForecasts,
+  metrics: renderMetrics,
+  rsu: renderRsu,
+};
+
+let activeCharts = [];
+function destroyCharts() {
+  activeCharts.forEach((c) => c.destroy());
+  activeCharts = [];
+}
+function trackChart(c) {
+  activeCharts.push(c);
+  // DEMO MODE: mask value axes (not categories/dates) and disable tooltips
+  try {
+    if (typeof demoOn === "function" && demoOn() && c && c.config) {
+      // Mutate the RAW c.config.options — writing to the c.options resolver
+      // proxy recurses infinitely in Chart.js v4. c.update() then rebuilds
+      // the chart from the masked options.
+      const opts = c.config.options = c.config.options || {};
+      opts.plugins = opts.plugins || {};
+      opts.plugins.tooltip = { enabled: false };
+      if (c.data && c.data.datasets) {
+        c.data.datasets.forEach((ds) => {
+          if (typeof ds.label === "string") _DEMO_WORDS.forEach(([re, rep]) => { ds.label = ds.label.replace(re, rep); });
+        });
+      }
+      if (c.data && Array.isArray(c.data.labels)) {
+        c.data.labels = c.data.labels.map((l) =>
+          typeof l === "string" ? _DEMO_WORDS.reduce((s, [re, rep]) => s.replace(re, rep), l) : l);
+      }
+      // Mask value axes using the ACTUAL runtime scales (works even when the
+      // chart declares no options.scales — Chart.js creates them itself),
+      // writing the tick callback into the raw config per scale id.
+      opts.scales = opts.scales || {};
+      Object.keys(c.scales || {}).forEach((k) => {
+        const scale = c.scales[k];
+        if (scale && scale.axis !== "x") {
+          opts.scales[k] = opts.scales[k] || {};
+          opts.scales[k].ticks = opts.scales[k].ticks || {};
+          opts.scales[k].ticks.callback = () => "▪";
+        }
+      });
+      c.update();
+    }
+  } catch (e) { console.error("demo chart", e); }
+  return c;
+}
+
+// DEMO MODE: mask sensitive words (locations, surname) in the rendered DOM
+const _DEMO_WORDS = [
+  // Add your own sensitive words to mask in demo mode, e.g. [/CityName/g, "City-A"]
+];
+function maskSensitiveText(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach((n) => {
+    let t = n.nodeValue;
+    _DEMO_WORDS.forEach(([re, rep]) => { t = t.replace(re, rep); });
+    // mask financial figures in free text (number + unit), sparing dates/counters
+    t = t.replace(/(\d[\d   .,]*\d|\d)[   ]?(zł|zl|PLN|EUR|USD|\$|€|k|tys\.?|mln|mld|%|szt\.?)(?=$|\b|\/|\s|,|\.|\))/g,
+      (m, num, unit) => _mask01(num.replace(/[^\d]/g, "").length) + (/^[a-zA-Zł]/.test(unit) ? " " + unit : unit));
+    // mask amounts with the currency symbol BEFORE the number (e.g. $93.29, €120)
+    t = t.replace(/([$€])[   ]?(\d[\d   .,]*\d|\d)/g,
+      (m, sym, num) => sym + _mask01(num.replace(/[^\d]/g, "").length));
+    if (t !== n.nodeValue) n.nodeValue = t;
+  });
+}
+
+
+let _appCfg = null;
+async function appCfg() {
+  if (!_appCfg) {
+    _appCfg = await api.get("/api/app-config")
+      .catch(() => ({ wizard_completed: true, enabled_views: null }));
+    window.APP_CURRENCY = _appCfg.currency || "PLN";
+  }
+  return _appCfg;
+}
+function applyModules(cfg) {
+  if (!cfg.enabled_views) return;
+  document.querySelectorAll("#nav a").forEach((a) => {
+    a.style.display = cfg.enabled_views.includes(a.dataset.view) ? "" : "none";
+  });
+}
+
+async function route() {
+  let name = (location.hash || "#dashboard").slice(1);
+  const cfg = await appCfg();
+  applyModules(cfg);
+  if (!cfg.wizard_completed && name !== "wizard") {
+    location.hash = "#wizard";
+    return;
+  }
+  if (cfg.enabled_views && !cfg.enabled_views.includes(name)) name = "dashboard";
+  const fn = views[name] || views.dashboard;
+  document.querySelectorAll("#nav a").forEach((a) =>
+    a.classList.toggle("active", a.dataset.view === name));
+  destroyCharts();
+  const banner = document.getElementById("demoBanner");
+  if (banner) banner.style.display = demoOn() ? "block" : "none";
+  const el = document.getElementById("view");
+  // Re-render of the SAME view (a toggle, a status change) must not jump to the top:
+  // keep the old height while loading and restore the scroll position afterwards.
+  const sameView = window._lastView === name;
+  const keepY = window.scrollY;
+  if (sameView) el.style.minHeight = el.offsetHeight + "px";
+  el.innerHTML = `<div class="skeleton" aria-busy="true" aria-label="Loading…">
+    <div class="bar h"></div>
+    <div class="grid cols-4"><div class="bar kpi"></div><div class="bar kpi"></div><div class="bar kpi"></div><div class="bar kpi"></div></div>
+    <div class="bar"></div><div class="bar" style="width:72%"></div><div class="bar" style="width:55%"></div></div>`;
+  try {
+    await fn(el);
+    if (sameView) window.scrollTo(0, keepY);
+    el.style.minHeight = "";
+    window._lastView = name;
+    try {  // freshness stamp under every view title
+      const h2 = el.querySelector("h2");
+      if (h2 && !el.querySelector("[data-fresh]")) {
+        const t = new Date();
+        const st = document.createElement("div");
+        st.dataset.fresh = "1"; st.className = "muted";
+        st.style.cssText = "font-size:.78em;margin:-6px 0 10px";
+        st.textContent = "🕐 view computed " + t.toLocaleDateString("en-GB")
+          + " " + String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
+        st.title = "The moment this view was computed from the local DB. Dates on cards (e.g. \"as of…\") describe the age of data or research, not the view.";
+        h2.after(st);
+      }
+    } catch (e) { /* stamp is cosmetic */ }
+    if (demoOn()) { try { maskSensitiveText(el); } catch (e) { console.error("mask", e); } }
+  } catch (e) {
+    el.style.minHeight = "";
+    el.innerHTML = `<div class="card" style="border-left:3px solid var(--neg)">
+      <b>This view could not be loaded.</b> <span class="muted">${esc(e.message)}</span>
+      <div class="mt row"><button class="primary" id="retryView">Try again</button>
+        <span class="muted">If the server is not responding: start it again (run.sh) and refresh.</span></div></div>`;
+    const rb = el.querySelector("#retryView");
+    if (rb) rb.addEventListener("click", () => route());
+  }
+}
+
+// mobile hamburger — the nav collapses under 860px
+const _navToggle = document.getElementById("navToggle");
+if (_navToggle) {
+  _navToggle.addEventListener("click", () =>
+    document.getElementById("nav").classList.toggle("open"));
+  document.querySelectorAll("#nav a").forEach((a) => a.addEventListener("click", () =>
+    document.getElementById("nav").classList.remove("open")));
+}
+
+// theme toggle (🌗) — the icon shows where it switches TO
+const _themeToggle = document.getElementById("themeToggle");
+if (_themeToggle) {
+  const paint = () => {
+    const light = themeGet() === "light";
+    _themeToggle.textContent = light ? "🌙" : "☀️";
+    _themeToggle.title = light ? "Switch to dark theme" : "Switch to light theme";
+  };
+  paint();
+  _themeToggle.addEventListener("click", () => { themeSet(themeGet() === "light" ? "dark" : "light"); paint(); });
+}
+
+window.addEventListener("hashchange", route);
+route();
+
+// Scheduled tasks (radar, brief, backup, forecast cycle, barometer) run via
+// schedules.run_due() piggybacked on /api/health — one ping at app start. The
+// response also says whether the backend runs older code than the frontend.
+fetch("/api/health").then((r) => r.json()).then((h) => {
+  const b = document.getElementById("staleBanner");
+  if (b && h && h.code_stale) {
+    b.style.display = "block";
+    if (h.restart_cmd) document.getElementById("staleCmd").textContent = h.restart_cmd;
+    document.getElementById("staleRestart").addEventListener("click", async (e) => {
+      const btn = e.target, msg = document.getElementById("staleMsg");
+      btn.disabled = true; msg.textContent = "restarting…";
+      try { await api.post("/api/restart", {}); } catch (err) { /* the old instance dies mid-response, expected */ }
+      // wait for the new instance on the current code, then reload the page
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        try {
+          const fresh = await fetch("/api/health").then((r) => r.json());
+          if (fresh && !fresh.code_stale) { msg.textContent = "done, reloading"; location.reload(); return; }
+        } catch (err) { /* server not up yet */ }
+        msg.textContent = `restarting… ${i + 1} s`;
+      }
+      msg.textContent = "did not come back in 60 s: run the command in a terminal"; btn.disabled = false;
+    });
+  }
+}).catch(() => {});   // fire-and-forget, offline is fine

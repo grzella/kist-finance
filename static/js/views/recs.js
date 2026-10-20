@@ -1,0 +1,170 @@
+async function renderRecs(el) {
+  const [rec, xtb, acts, aiOp, review] = await Promise.all([
+    api.get("/api/recommendation"),
+    api.get("/api/recommendation/xtb"),
+    api.get("/api/actions"),
+    api.get("/api/recommendation/ai").catch(() => ({})),
+    api.get("/api/recommendation/review").catch(() => null)]);
+  const OUTCOMES = ["done", "rejected", "obsolete"];
+  const outcomeSel = (key, cur) => key ? `<select data-oc="${key}" style="font-size:.8em"><option value="">outcome…</option>${OUTCOMES.map((o) => `<option ${cur === o ? "selected" : ""}>${o}</option>`).join("")}</select>` : "";
+
+  const STATUS_LABELS = { backlog: "backlog", "w trakcie": "in progress", zrobione: "done", odrzucone: "rejected" };
+  const engineItems = [...rec.items, ...(xtb.items || []).map((i) => ({ ...i, area: "Portfolio: " + i.area }))];
+
+  const byStatus = { "w trakcie": [], backlog: [], zrobione: [], odrzucone: [] };
+  acts.actions.forEach((a) => (byStatus[a.status] || byStatus.backlog).push(a));
+
+  const actionCard = (a) => `
+    <div class="acard" data-act="${a.id}">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:6px">
+        <b style="font-size:.92em">${esc(a.title)}</b>
+        <button class="danger" data-adel="${a.id}" title="delete">✕</button>
+      </div>
+      <div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap">
+        ${a.area ? `<span class="badge">${esc(a.area)}</span>` : ""}
+        <select data-ast="${a.id}" style="font-size:.85em">
+          ${["backlog", "w trakcie", "zrobione", "odrzucone"].map((s) =>
+            `<option value="${s}" ${a.status === s ? "selected" : ""}>${STATUS_LABELS[s]}</option>`).join("")}
+        </select>
+      </div>
+      ${a.expected_impact ? `<div class="muted" style="margin-top:6px;font-size:.85em">Target: <b>${esc(a.expected_impact)}</b></div>` : ""}
+      ${a.detail ? `<details style="margin-top:4px"><summary class="muted" style="font-size:.85em">details / instructions</summary>
+        <pre style="white-space:pre-wrap;font-family:inherit;margin:6px 0 0;font-size:.85em">${esc(a.detail)}</pre></details>` : ""}
+      ${a.status === "zrobione" ? `<div style="margin-top:6px">
+        <div class="row" style="gap:4px">
+          <input data-num data-aimp="${a.id}" placeholder="actual PLN/yr" value="${fmt.grouped(a.actual_impact_pln)}" style="width:120px;font-size:.85em">
+          <button data-asave="${a.id}" style="font-size:.85em">Save</button>
+          ${a.done_at ? `<span class="muted" style="font-size:.8em">✓ ${a.done_at.slice(0, 10)}</span>` : ""}
+        </div>
+        <input data-anote="${a.id}" placeholder="what it delivered / takeaway" value="${esc(a.actual_note)}" style="width:100%;margin-top:4px;font-size:.85em">
+      </div>` : ""}
+    </div>`;
+
+  const column = (title, list) => list.length ? `
+    <div class="acol">
+      <h4 style="margin:0 0 8px">${title} <span class="muted">(${list.length})</span></h4>
+      ${list.map(actionCard).join("")}
+    </div>` : "";
+
+  el.innerHTML = `
+    <h2>Recommendations — action plan</h2>
+    <div class="card" style="padding:10px 16px">
+      <div class="row" style="gap:20px;flex-wrap:wrap">
+        <span>🔥 In progress: <b>${byStatus["w trakcie"].length}</b></span>
+        <span>📋 Backlog: <b>${byStatus.backlog.length}</b></span>
+        <span>✅ Done: <b>${acts.done_count}</b></span>
+        <span>💰 Measured impact: <b class="pos">${fmt.pln(acts.total_actual_impact)}/yr</b></span>
+      </div>
+    </div>
+
+        <div class="card mt">
+      <h3>Recommendation engine (live)</h3>
+      <div class="muted" style="margin-bottom:8px">Recomputed every time the tab is opened,
+        from current data (balances, rates, portfolio).</div>
+      <table>
+        <thead><tr><th style="width:140px">Category</th><th>Recommendation</th><th style="width:110px"></th></tr></thead>
+        <tbody>
+        ${engineItems.map((r, i) => `<tr>
+          <td><span class="badge">${r.area}</span>${r.since ? `<div class="muted" style="font-size:.75em;margin-top:3px">since ${r.since}</div>` : ""}</td>
+          <td style="font-size:.92em">${r.title
+            ? `<b>${esc(r.title)}</b><details><summary class="muted">details</summary><div class="mt" style="white-space:pre-line">${esc(r.text)}</div></details>`
+            : r.text.length > 160
+            ? `${esc(r.text.slice(0, 160))}… <details style="display:inline"><summary class="muted" style="display:inline">more</summary><div class="mt">${esc(r.text)}</div></details>`
+            : esc(r.text)}</td>
+          <td><button data-eadd="${i}">→ backlog</button><div class="mt">${outcomeSel(r.key, r.outcome)}</div></td>
+        </tr>`).join("")}
+        </tbody>
+      </table>
+      ${(rec.history || []).length ? `<details class="mt"><summary class="muted">✅ Resolved / gone (${rec.history.length})</summary>
+        <ul class="muted mt" style="padding-left:18px;font-size:.88em">${rec.history.map((h) => `<li><b>[${h.area}]</b> ${esc(h.text.slice(0, 140))}${h.text.length > 140 ? "…" : ""} <span style="opacity:.7">(${h.since} → ${h.resolved})</span> ${outcomeSel(h.key, h.outcome)}</li>`).join("")}</ul></details>` : ""}
+      ${review ? `<details class="mt"><summary class="muted">📋 Monthly recommendation review — execution ${review.execution_rate_pct != null ? review.execution_rate_pct + "%" : "—"} (${review.executed}/${review.total} done${review.pending.length ? `, <b class="warn">${review.pending.length} without an outcome</b>` : ""})</summary>
+        ${help(`A recommendation that disappeared is not yet a success: the outcome (done / rejected / obsolete) says whether the engine was worth following. Resolved ones without an outcome land in Reminders after 7 days.`, "what “disappeared” means")}
+        <table class="mt" style="font-size:.88em"><thead><tr><th>Month</th><th style="text-align:right">new</th><th style="text-align:right">resolved</th><th style="text-align:right">done</th><th style="text-align:right">rejected</th><th style="text-align:right">obsolete</th><th style="text-align:right">no outcome</th></tr></thead>
+          <tbody>${review.months.map((m) => `<tr><td><b>${m.month}</b></td><td style="text-align:right">${m.new}</td><td style="text-align:right">${m.resolved}</td><td style="text-align:right" class="pos">${m.executed}</td><td style="text-align:right">${m.rejected}</td><td style="text-align:right" class="muted">${m.stale}</td><td style="text-align:right" class="${m.no_outcome ? "warn" : "muted"}">${m.no_outcome}</td></tr>`).join("")}</tbody></table>
+      </details>` : ""}
+    </div>
+
+    <div class="card mt" style="border-left:4px solid #b78cff">
+      <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">🧠 AI review of the recommendations above</h3>
+        <button class="primary" id="aiOpBtn">Ask for an opinion</button>
+      </div>
+      <div class="muted" style="font-size:.85em;margin-top:6px">The list above comes from the <b>rule engine</b> (deterministic code, not AI). Here the AI reviews it critically against your own data: what it agrees with, what it would change, and which recommendation is missing. Which engine answers follows the Control Center AI mode (local, or local+Claude with a synthesized verdict).</div>
+      <div id="aiOpOut" class="mt">${aiOp && aiOp.text ? `
+        <div class="muted" style="font-size:.8em">${aiOp.at} · ${aiOp.by}${aiOp.rag_used ? " · grounded in your data" : ""}</div>
+        <div style="white-space:pre-wrap;font-size:.92em">${esc(aiOp.text)}</div>` : '<div class="muted" style="font-size:.85em">Not asked yet.</div>'}</div>
+    </div>
+
+
+    <div class="card mt">
+      <h3>Add an action manually</h3>
+      <div class="row">
+        <input id="aTitle" placeholder="action title" style="flex:1">
+        <input id="aArea" placeholder="area" style="width:130px">
+        <input id="aExp" placeholder="expected impact (e.g. 16k/yr)" style="width:200px">
+        <button class="primary" id="aAdd">Add</button>
+      </div>
+      <textarea id="aDetail" placeholder="details / instructions / e-mail body…" rows="3" class="mt" style="width:100%"></textarea>
+    </div>
+
+    <div class="acols mt">
+      ${column("🔥 In progress", byStatus["w trakcie"])}
+      ${column("📋 Backlog", byStatus.backlog)}
+      ${column("✅ Done — takeaways", byStatus.zrobione)}
+      ${byStatus.odrzucone.length ? column("🚫 Rejected", byStatus.odrzucone) : ""}
+    </div>`;
+
+  document.getElementById("aiOpBtn").addEventListener("click", async (e) => {
+    const btn = e.target; btn.disabled = true;
+    const out = document.getElementById("aiOpOut");
+    out.innerHTML = '<div class="muted">The AI is reviewing the recommendations against your data…</div>';
+    try {
+      const r = await api.post("/api/recommendation/ai", {});
+      out.innerHTML = r.text
+        ? `<div class="muted" style="font-size:.8em">${r.at} · ${r.by}${r.rag_used ? " · grounded in your data" : ""}</div>
+           <div style="white-space:pre-wrap;font-size:.92em">${esc(r.text)}</div>`
+        : `<div class="neg">${(r.error || "no answer").replace("Control → AI mode", '<a href="#control" style="color:inherit;text-decoration:underline">Control → AI mode</a>')}</div>`;
+    } catch (err) { out.innerHTML = `<div class="neg">Error: ${err.message}</div>`; }
+    finally { btn.disabled = false; }
+  });
+  el.querySelectorAll("[data-oc]").forEach((sel) => sel.addEventListener("change", async () => {
+    const r = await api.put("/api/recommendation/outcome", { key: sel.dataset.oc, outcome: sel.value }).catch(() => null);
+    sel.style.borderColor = r && !r.error ? TOKENS.pos : TOKENS.neg;   // in place, no view reload
+  }));
+  el.querySelectorAll("[data-eadd]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const r = engineItems[+b.dataset.eadd];
+      await api.post("/api/actions", { title: r.text.slice(0, 80), area: r.area, detail: r.text });
+      route();
+    }));
+  document.getElementById("aAdd").addEventListener("click", async () => {
+    const title = document.getElementById("aTitle").value.trim();
+    if (!title) { alert("Enter a title"); return; }
+    await api.post("/api/actions", {
+      title, area: document.getElementById("aArea").value,
+      expected_impact: document.getElementById("aExp").value,
+      detail: document.getElementById("aDetail").value,
+    });
+    route();
+  });
+  el.querySelectorAll("[data-ast]").forEach((sel) =>
+    sel.addEventListener("change", async () => {
+      await api.put("/api/actions/" + sel.dataset.ast, { status: sel.value });
+      route();
+    }));
+  el.querySelectorAll("[data-asave]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const id = b.dataset.asave;
+      await api.put("/api/actions/" + id, {
+        actual_impact_pln: parseNum(el.querySelector(`[data-aimp="${id}"]`)) || null,
+        actual_note: el.querySelector(`[data-anote="${id}"]`).value,
+      });
+      route();
+    }));
+  el.querySelectorAll("[data-adel]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Delete this action?")) return;
+      await api.del("/api/actions/" + b.dataset.adel);
+      route();
+    }));
+}

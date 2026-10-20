@@ -1,0 +1,51 @@
+# Builds the static, clickable demo (fake "Alex Demo" persona, read-only)
+# and publishes it to GitHub Pages. Weekly cron keeps the market charts fresh.
+name: demo-pages
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1" # Monday morning — refresh Yahoo history in the demo
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Only the canonical repo publishes the demo — a fork/clone won't try to
+    # deploy to Pages it hasn't set up (no failed runs, no wasted minutes).
+    if: github.repository == 'grzella/kist-finance'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      # Gate: the public demo must never be built from a red commit. security.yml
+      # also runs the suite, but the two workflows are independent — without this
+      # step a push with failing tests still redeployed Pages.
+      - name: Tests (gate before publishing the demo)
+        run: python -m pytest -q
+      - run: python demo/build_demo.py --out dist
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

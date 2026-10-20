@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""Seed a FRESH database with obviously-fake sample data so a new clone
+shows a working app. Refuses to run if data already exists (protects real data).
+
+Usage:  python3 seed.py   (refuses to touch a database that already has data)
+"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "server"))
+import config  # noqa: E402
+config.setup()
+import db  # noqa: E402
+import engine_bridge as eb  # noqa: E402
+import planner  # noqa: E402
+import market  # noqa: E402
+
+db.init_db()          # base tables (accounts, transactions, goals, debts…)
+planner.ensure_tables()
+
+existing = eb._rows("select count(*) c from wealth_items")
+if existing and existing[0]["c"] > 0:
+    # Seeding overwrites settings (salary, buffers) — never do that
+    # to a database that already holds data, even with --force.
+    print("DB already has data — refusing to seed over it (it would overwrite your settings).")
+    print("For a fresh demo, delete the database file and run seed.py again.")
+    sys.exit(1)
+
+print("Seeding sample data (fake persona: Alex Demo)…")
+
+# --- settings ---
+planner.set_settings({
+    "monthly_savings": 6000,
+    "annual_bonus_net": 40000,
+    "tax_salary_gross_annual": 240000,
+    "tax_rental_monthly": 2500,
+    "cf_monthly_surplus": 6000,
+    "cf_safety_buffer": 30000,
+    "cf_liquid_start": 40000,
+})
+
+# --- fixed expenses (new module: entity grouping + subscriptions + invoices) ---
+from datetime import date  # noqa: E402
+
+
+def _months_back(n):
+    y, m = date.today().year, date.today().month - n
+    while m < 1:
+        m += 12; y -= 1
+    return f"{y:04d}-{m:02d}"
+
+
+_this_month = _months_back(0)
+_last_month = _months_back(1)
+_two_months_ago = _months_back(2)
+
+
+def _exp(name, amount, category="", entity="personal", essential=True, invoice=False,
+        history=None):
+    iid = planner.add_expense_item({
+        "name": name, "category": category, "entity": entity, "payer": "me",
+        "essential": essential, "invoice": invoice,
+    })
+    for month, amt in (history or {_this_month: amount}).items():
+        planner.set_expense_value(iid, month, amt)
+
+
+_exp("Mortgage (Sample City)", 3500, entity="personal",
+    history={_two_months_ago: 3500, _this_month: 3500})
+_exp("Groceries", 1500, entity="personal",
+    history={_two_months_ago: 1350, _last_month: 1420, _this_month: 1500})
+_exp("Utilities", 900, entity="personal")
+_exp("Transport", 700, entity="personal")
+_exp("Insurance", 400, entity="personal")
+_exp("Fun / misc", 700, entity="personal", essential=False)
+_exp("Netflix", 15.99, category="subscription-entertainment", essential=False)
+_exp("Spotify", 10.99, category="subscription-entertainment", essential=False)
+_exp("Cloud storage (2TB)", 9.99, category="subscription-work", essential=False, invoice=True)
+_exp("Dev tools (API + hosting)", 45, category="subscription-work", essential=False, invoice=True)
+_exp("Accounting software", 39, entity="business", invoice=True)
+_exp("Business insurance", 60, entity="business", invoice=True)
+_exp("Rental unit — HOA fee", 180, entity="rental")
+_exp("Rental unit — property tax", 45, entity="rental")
+
+# --- debt (sample mortgage) ---
+debt_id = planner.add_debt({
+    "name": "Mortgage — Sample City apartment",
+    "balance": 320000, "interest_rate": 6.5, "minimum_payment": 3500, "type": "mortgage",
+})
+
+# --- wealth items ---
+planner.add_wealth_item({"name": "Cash (checking)", "kind": "cushion", "owner": "me", "value": 25000})
+planner.add_wealth_item({"name": "Emergency savings", "kind": "cushion", "owner": "me", "value": 30000})
+planner.add_wealth_item({"name": "ETF portfolio (broker)", "kind": "investment", "owner": "me", "value": 85000})
+planner.add_wealth_item({"name": "Company shares (RSU)", "kind": "investment", "owner": "me", "value": 60000})
+planner.add_wealth_item({"name": "Pension account", "kind": "investment", "owner": "me", "value": 45000})
+planner.add_wealth_item({"name": "Salary (net, monthly)", "kind": "income", "owner": "me", "value": 14000})
+planner.add_wealth_item({
+    "name": "Apartment — Sample City", "kind": "investment", "owner": "me",
+    "value": 620000, "linked_debt_id": debt_id})
+
+# --- goals ---
+planner.add_goal({"name": "House abroad — 50% deposit", "target_amount": 400000,
+                  "current_amount": 0, "monthly_contribution": None})
+planner.add_goal({"name": "Work-optional — 1.5M liquid portfolio", "target_amount": 1500000,
+                  "current_amount": 190000, "monthly_contribution": None})
+
+# --- offers (sample inbound) ---
+planner.add_offer({"company": "Acme Corp", "role": "Engineering Manager", "total_monthly": 42000,
+                   "work_model": "hybrid", "status": "new", "received_at": "2026-05-10",
+                   "notes": "Sample offer — demo data.", "tier": 2})
+planner.add_offer({"company": "Globex", "role": "Senior Engineering Manager", "total_monthly": 55000,
+                   "work_model": "remote", "status": "interviewing", "received_at": "2026-06-18",
+                   "notes": "Sample offer — demo data.", "tier": 1})
+
+# --- RSU grant (sample) ---
+market.update_rsu({"ticker": "AAPL", "grant_value_usd": 100000, "shares_held": 200,
+                   "shares_next_vest": 100})
+
+print("✅ Sample data seeded. Start the app:  ./run.sh")
+print("   Tip: toggle demo mode in Control Center to mask all figures.")

@@ -1,0 +1,674 @@
+"""Monthly market-barometer collector from Google Trends.
+
+Search interest for the English role titles (worldwide) = a real monthly demand
+history: free, keyless, already an index (0-100). Ideal for remote roles searched
+in English. Run by the `barometer_collect` task in Schedules — it appends the
+LAST FULL month, idempotently (skips a month already in the DB). Historical
+backfill is done once on setup (see the barometer README).
+
+Requires `pytrends` (in requirements). The current, partial month is not
+collected — Trends would give a deflated average; it lands on the next run.
+"""
+from datetime import date
+
+GEO = ""  # worldwide — the best signal for English remote role titles
+_SOURCE = "Google Trends (search interest)"
+_GEO_LABEL = "global (remote proxy)"
+
+
+HISTORY_START = "2026-01"  # first month of barometer history
+
+
+def _last_full_month():
+    t = date.today()
+    y, m = (t.year, t.month - 1) if t.month > 1 else (t.year - 1, 12)
+    return f"{y:04d}-{m:02d}"
+
+
+def _full_months_since(start):
+    """Months 'YYYY-MM' from `start` through the last FULL month, inclusive.
+
+    The current month is always skipped — Trends would report a deflated average
+    for it and opening counts would be partial. It lands on a run next month.
+    """
+    y, m = int(start[:4]), int(start[5:7])
+    last = _last_full_month()
+    out = []
+    while f"{y:04d}-{m:02d}" <= last:
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
+
+def collect(force=False):
+    """Fills in missing full months of the 'trends' stream and rewrites the WHOLE series.
+
+    Google Trends scales every request to its own window (100 = the window's peak), so
+    numbers from different requests are not comparable. Every run therefore stores all
+    months since HISTORY_START from a single request; appending only the missing month
+    once put a month ~20x too low and showed a false "-95%/3m". The same request also
+    patches older gaps.
+
+    Best-effort — on error it returns ok:False and changes nothing; the scheduler
+    then does NOT record a run and retries (see schedules._succeeded).
+    """
+    import planner
+    try:
+        from pytrends.request import TrendReq
+    except Exception:
+        return {"ok": False, "error": "pytrends not installed (pip install pytrends)"}
+
+    cfg = planner.barometer_config()
+    roles = cfg["roles"]
+    queries = [r["query"] for r in roles][:5]  # Trends: max 5 terms at once
+
+    # Own stream only — an 'openings' point must not block a 'trends' write.
+    old_ids = {}
+    for p in planner.list_barometer()["points"]:
+        if p.get("stream") == "trends":
+            old_ids.setdefault(p["month"], []).append(p["id"])
+    months = _full_months_since(HISTORY_START)
+    if not force and all(m in old_ids for m in months):
+        return {"ok": True, "added": [], "up_to_date": _last_full_month()}
+
+    try:
+        tr = TrendReq(hl="en-US", tz=0)
+        tr.build_payload(queries, timeframe=f"{HISTORY_START}-01 {date.today().isoformat()}", geo=GEO)
+        df = tr.interest_over_time()
+        if "isPartial" in df:
+            df = df.drop(columns=["isPartial"])
+        monthly = df.resample("MS").mean().round(1)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:140]}
+
+    added, missing = [], []
+    for month in months:
+        row = monthly[monthly.index.strftime("%Y-%m") == month]
+        if row.empty:
+            missing.append(month)
+            continue
+        for bid in old_ids.get(month, []):
+            planner.delete_barometer_point(bid)
+        counts = {roles[i]["key"]: float(row[queries[i]].iloc[0]) for i in range(len(roles))}
+        planner.add_barometer_point({
+            "month": month, "counts": counts, "stream": "trends",
+            "sources": _SOURCE, "geo": _GEO_LABEL, "as_of": date.today().isoformat()})
+        if month not in old_ids:
+            added.append(month)
+
+    # Success only if the last full month is now covered; otherwise stay ok:False
+    # so the next app open retries within the same period.
+    done = _last_full_month() in (set(old_ids) | set(added))
+    out = {"ok": done, "added": added}
+    if missing:
+        out["no_trends_data"] = missing
+    if not done:
+        out["error"] = f"could not complete {_last_full_month()}"
+    return out
+
+
+def collect_openings():
+    """Monthly collector of REAL postings (the 'openings' stream) from JSearch
+    (Google for Jobs: LinkedIn/Indeed/Glassdoor aggregate). Needs a RapidAPI key in
+    env RAPIDAPI_JSEARCH_KEY (or the 'rapidapi_jsearch_key' setting). Without a key
+    it's a no-op with a clear message. Fixed method: PAGES pages per role — the raw
+    count is a proxy, the app turns it into an index (comparable month to month)."""
+    import os
+    import json as _json
+    import urllib.request
+    import urllib.parse
+    import planner
+    key = os.environ.get("RAPIDAPI_JSEARCH_KEY") or planner.get_setting("rapidapi_jsearch_key")
+    if not key:
+        # No key = nothing to do (not a failure): mark the period done so it does not
+        # raise a permanent warning; the key state is exposed as openings_key_set.
+        return {"ok": True, "skipped": "no API key (RAPIDAPI_JSEARCH_KEY)"}
+    PAGES = 3  # fixed depth — do NOT change (it breaks index comparability)
+    cfg = planner.barometer_config()
+    roles = cfg["roles"]
+    geo = ", ".join(cfg.get("geo") or []) or "Remote"
+    target = _last_full_month()
+    already = [p for p in planner.list_barometer()["points"]
+               if p["month"] == target and p["stream"] == "openings"]
+    if already:
+        return {"ok": True, "skipped": target}
+    counts = {}
+    try:
+        for r in roles:
+            n = 0
+            for pg in range(1, PAGES + 1):
+                qs = urllib.parse.urlencode({"query": f"{r['query']} in {geo}", "page": pg, "num_pages": 1})
+                req = urllib.request.Request(
+                    "https://jsearch.p.rapidapi.com/search?" + qs,
+                    headers={"X-RapidAPI-Key": key, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"})
+                data = _json.loads(urllib.request.urlopen(req, timeout=20).read())
+                n += len(data.get("data") or [])
+            counts[r["key"]] = n
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:140]}
+    planner.add_barometer_point({
+        "month": target, "counts": counts, "stream": "openings",
+        "sources": f"JSearch/Google-for-Jobs ({PAGES} pages)", "geo": geo,
+        "as_of": date.today().isoformat()})
+    return {"ok": True, "added": target, "counts": counts}
+
+
+def backfill(replace=True):
+    """One-off backfill of history from 2026-01 to the last full month for the
+    configured roles (Google Trends, worldwide). `replace` removes existing
+    estimates / old Trends points so nothing is duplicated. Run once: python -c
+    'import config; config.setup(); import barometer_collect as b; print(b.backfill())'."""
+    import planner
+    try:
+        from pytrends.request import TrendReq
+    except Exception:
+        return {"ok": False, "error": "pytrends not installed"}
+    cfg = planner.barometer_config()
+    roles = cfg["roles"]
+    queries = [r["query"] for r in roles][:5]
+    try:
+        tr = TrendReq(hl="en-US", tz=0)
+        tr.build_payload(queries, timeframe=f"2026-01-01 {date.today().isoformat()}", geo=GEO)
+        df = tr.interest_over_time()
+        if "isPartial" in df:
+            df = df.drop(columns=["isPartial"])
+        monthly = df.resample("MS").mean().round(1)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:140]}
+    if replace:
+        for p in planner.list_barometer()["points"]:
+            src = (p.get("sources") or p.get("note") or "").lower()
+            if "estimat" in src or "trends" in src:
+                planner.delete_barometer_point(p["id"])
+    this_month = date.today().strftime("%Y-%m")
+    added = []
+    for ts, row in monthly.iterrows():
+        month = ts.strftime("%Y-%m")
+        if month >= this_month:  # full months only
+            continue
+        counts = {roles[i]["key"]: float(row[queries[i]].iloc[0]) for i in range(len(roles))}
+        planner.add_barometer_point({"month": month, "counts": counts, "stream": "trends",
+            "sources": _SOURCE, "geo": _GEO_LABEL, "as_of": date.today().isoformat()})
+        added.append(month)
+    return {"ok": True, "added": added, "skipped_current": this_month}
+
+
+# ---------- watchlist: real open roles at companies in your target market ----------
+#
+# Google Trends measures who SEARCHES for a title (mostly candidates), not who is
+# hiring, and JSearch caps out at 3 pages of 10. The watchlist counts real open roles
+# on the public Greenhouse / Lever / Ashby boards (keyless) of companies you pick
+# yourself (⚙️ on the Career tab), so it measures YOUR target market, not all of it.
+import re
+
+_ATS_URL = {
+    "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{}/jobs?content=false",
+    "lever": "https://api.lever.co/v0/postings/{}?mode=json",
+    "ashby": "https://api.ashbyhq.com/posting-api/job-board/{}",
+}
+
+# Title families: a role's `query` (or key) picks the family by what it names, so
+# "Senior PM" also counts "Senior Product Manager" and "Engineering Manager / Head"
+# catches Senior / Staff / Group EM. Head/Director share a family (VP is a separate
+# league). A query that names none of them matches literally.
+_FAMILIES = [
+    (re.compile(r"head|director", re.I), re.compile(r"product", re.I),
+     re.compile(r"head of product|director,? (of )?product|product director", re.I)),
+    (re.compile(r"\bpm\b|product manager", re.I), None,
+     re.compile(r"product manager|\bpm\b", re.I)),
+    (re.compile(r"\bem\b|engineering manager", re.I), None,
+     re.compile(r"engineering manager|manager,? (software |platform )?engineering", re.I)),
+    (re.compile(r"head|director", re.I), None,
+     re.compile(r"head of (software |platform )?engineering|director,? (of )?(software |platform )?engineering|engineering director", re.I)),
+    (re.compile(r"senior|staff|principal", re.I), re.compile(r"engineer", re.I),
+     re.compile(r"\b(senior|staff|principal) (software |backend |frontend |full[- ]?stack |platform )?engineer\b(?!ing)", re.I)),
+]
+_FAMILY = {"em": _FAMILIES[2][2], "head": _FAMILIES[3][2]}  # built-in private-style keys
+
+
+def _family_for(role):
+    if role["key"] in _FAMILY:
+        return _FAMILY[role["key"]]
+    q = role.get("query") or role.get("label") or role["key"]
+    for names, also, fam in _FAMILIES:
+        if names.search(q) and (also is None or also.search(q)):
+            return fam
+    return re.compile(re.escape(q), re.I)
+
+
+# A Sales / Solutions / Support Engineering Manager is a different job.
+_NOT_ENG = re.compile(r"\b(sales|solutions?|support|customer|field|partner|analytics?|analytical) engineering", re.I)
+_EU = re.compile(r"poland|polska|warsaw|gda[nń]sk|krak[oó]w|wroc[lł]aw|europe|emea|london|berlin|amsterdam|dublin|paris|munich|"
+                 r"stockholm|lisbon|madrid|barcelona|prague|zurich|vienna|oslo|copenhagen|helsinki|tallinn|bucharest|"
+                 r"united kingdom|germany|netherlands|ireland|france|spain|portugal|sweden|denmark|norway|finland|"
+                 r"czech|austria|switzerland|romania|estonia|italy", re.I)
+_NON_EU = re.compile(r"united states|\bus\b|\busa\b|u\.s\.|north america|canada|india|australia|apac|latam|americas|brazil|mexico|singapore|japan|israel", re.I)
+
+
+def _eu_location(loc):
+    """A role counts when its location points to Europe, or it is remote without an
+    explicit restriction to another continent ("Remote - US" is out)."""
+    if _EU.search(loc):
+        return True
+    return "remote" in loc.lower() and not _NON_EU.search(loc)
+
+
+def _board_jobs(ats, slug):
+    """(title, location) pairs from one board; None on a network error / bad slug."""
+    import json as _json
+    import urllib.request
+    try:
+        req = urllib.request.Request(_ATS_URL[ats].format(slug), headers={"User-Agent": "kist-barometer"})
+        d = _json.loads(urllib.request.urlopen(req, timeout=20).read())
+    except Exception:
+        return None
+    if ats == "greenhouse":
+        return [(j.get("title", ""), (j.get("location") or {}).get("name", "")) for j in d.get("jobs", [])]
+    if ats == "lever":
+        return [(j.get("text", ""), " ".join([(j.get("categories") or {}).get("location", "")]
+                                          + ((j.get("categories") or {}).get("allLocations") or []))) for j in d]
+    return [(j.get("title", ""), " ".join([j.get("location", "")]
+                                        + [s.get("location", "") for s in (j.get("secondaryLocations") or [])]))
+            for j in d.get("jobs", [])]
+
+
+def count_watchlist(boards, roles, fetch=_board_jobs):
+    """Counts roles per family across all boards. Returns (counts, hits, failed):
+    hits = "company: title (location)" lines for the preview, failed = boards that
+    did not answer."""
+    import concurrent.futures as cf
+    fams = [(r["key"], _family_for(r)) for r in roles]
+    counts = {k: 0 for k, _ in fams}
+    hits, failed = [], []
+    with cf.ThreadPoolExecutor(8) as ex:
+        results = list(ex.map(lambda b: (b, fetch(*b)), boards))
+    for (ats, slug), jobs in results:
+        if jobs is None:
+            failed.append(f"{ats}:{slug}")
+            continue
+        seen = set()
+        for title, loc in jobs:
+            if _NOT_ENG.search(title) or not _eu_location(loc):
+                continue
+            # the same role posted once per country ("... | EMEA | (Remote, Spain)") counts once
+            key = re.sub(r"\s*\|.*$|\s*\((remote|hybrid)[^)]*\)\s*$", "", title, flags=re.I).strip().lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            for k, fam in fams:
+                if fam.search(title):
+                    counts[k] += 1
+                    hits.append(f"{slug}: {title} ({loc.strip()})")
+                    break
+    return counts, hits, failed
+
+
+def collect_watchlist(force=False):
+    """Monthly snapshot of open roles at the watchlist companies ('watchlist' stream).
+    Labelled with the current month (a snapshot as of the collection day), idempotent."""
+    import planner
+    cfg = planner.barometer_config()
+    boards = []
+    for item in cfg.get("watchlist") or []:
+        ats, _, slug = item.partition(":")
+        if ats in _ATS_URL and slug:
+            boards.append((ats, slug))
+    if not boards:
+        return {"ok": True, "skipped": "empty watchlist"}
+    month = date.today().isoformat()[:7]
+    old = [p for p in planner.list_barometer()["points"] if p["stream"] == "watchlist" and p["month"] == month]
+    if old and not force:
+        return {"ok": True, "skipped": month}
+    counts, hits, failed = count_watchlist(boards, cfg["roles"])
+    if len(failed) > len(boards) // 2:
+        return {"ok": False, "error": f"{len(failed)} of {len(boards)} boards did not answer"}
+    for p in old:
+        planner.delete_barometer_point(p["id"])
+    planner.add_barometer_point({
+        "month": month, "counts": counts, "stream": "watchlist",
+        "sources": f"watchlist: {len(boards) - len(failed)} companies (Greenhouse/Lever/Ashby)",
+        "geo": "Europe / remote EMEA", "as_of": date.today().isoformat(),
+        "note": "\n".join(sorted(hits)) + (f"\n\nno response: {', '.join(failed)}" if failed else "")})
+    return {"ok": True, "added": month, "counts": counts, "failed": failed}
+
+
+# ---------- IT job boards: No Fluff Jobs (keyless) ----------
+#
+# The watchlist only sees companies with a public ATS and JSearch needs a key. Regional IT job
+# boards carry more local EM/Head postings; No Fluff Jobs answers without a browser (checked
+# 2026-10-06; the Just Join IT / RocketJobs APIs sit behind Cloudflare, so they are counted from
+# their sitemaps below; pracuj/theprotocol return 403).
+# LinkedIn cannot be counted. `region` comes from the config (default pl; nofluffjobs regions).
+# salaryCurrency/salaryPeriod are required: without them the API answers 400
+_NOFLUFF_URL = ("https://nofluffjobs.com/api/search/posting?page=1&pageSize=1&region={region}"
+                "&salaryCurrency=PLN&salaryPeriod=month")
+
+
+def nofluff_count(query, region="pl"):
+    """Number of postings matching the phrase (full text) in a region; a proxy like JSearch."""
+    import json as _json
+    import urllib.request
+    body = _json.dumps({"criteriaSearch": {"requirement": [], "keyword": [query]}}).encode()
+    req = urllib.request.Request(_NOFLUFF_URL.format(region=region), data=body, method="POST",
+                                 headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"})
+    data = _json.loads(urllib.request.urlopen(req, timeout=20).read())
+    return int(data.get("totalCount") or 0)
+
+
+def collect_boards(force=False, fetch=nofluff_count):
+    """Monthly snapshot of postings per role on No Fluff Jobs (stream 'boards').
+    A snapshot on the collection day, like the watchlist; idempotent within a month."""
+    import planner
+    cfg = planner.barometer_config()
+    region = (cfg.get("boards_region") or "pl").lower()
+    month = date.today().isoformat()[:7]
+    old = [p for p in planner.list_barometer()["points"] if p["stream"] == "boards" and p["month"] == month]
+    if old and not force:
+        return {"ok": True, "skipped": month}
+    counts = {}
+    try:
+        for r in cfg["roles"]:
+            counts[r["key"]] = fetch(r.get("query") or r["label"], region)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:140]}
+    for p in old:
+        planner.delete_barometer_point(p["id"])
+    planner.add_barometer_point({
+        "month": month, "counts": counts, "stream": "boards",
+        "sources": f"No Fluff Jobs ({region.upper()}, full text)", "geo": region.upper(),
+        "as_of": date.today().isoformat()})
+    return {"ok": True, "added": month, "counts": counts}
+
+
+# ---------- Indeed Hiring Lab: history of IT postings in Europe (backdrop for the watchlist) ----------
+#
+# The watchlist is a snapshot with no past. Hiring Lab publishes a daily index of
+# Indeed posting volume per sector and country (Feb 2020 = 100), since 2020: the only
+# free, real history of posting counts. It covers whole sectors, not specific roles;
+# only GB, DE and FR publish per-sector CSVs in Europe. Collected like Trends: full
+# months, the whole series rewritten each run (Hiring Lab revises past data).
+HIRINGLAB_COUNTRIES = ["GB", "DE", "FR"]
+_HIRINGLAB_URL = "https://raw.githubusercontent.com/hiring-lab/job_postings_tracker/master/{c}/job_postings_by_sector_{c}.csv"
+HIRINGLAB_KEY = "it_eu"
+# "IT broad": the mean of Indeed's four IT sectors (Software Development + the rest of IT).
+HIRINGLAB_BROAD_KEY = "it_broad"
+HIRINGLAB_BROAD = ["Software Development", "Data & Analytics", "IT Systems & Solutions",
+                   "IT Infrastructure, Operations & Support"]
+
+
+def hiringlab_monthly(csv_text, months, sector="Software Development"):
+    """Monthly mean of a sector's 'total postings' index from a Hiring Lab CSV."""
+    import csv, io
+    acc = {}
+    for row in csv.DictReader(io.StringIO(csv_text)):
+        m = row["date"][:7]
+        if m in months and row["variable"] == "total postings" and row["display_name"] == sector:
+            acc.setdefault(m, []).append(float(row["indeed_job_postings_index"]))
+    return {m: round(sum(v) / len(v), 1) for m, v in acc.items()}
+
+
+def collect_hiringlab(force=False, fetch=None):
+    """'hiringlab' stream: mean of the HIRINGLAB_COUNTRIES indices per full month."""
+    import urllib.request
+    import engine_bridge as eb
+    import planner
+    months = _full_months_since(HISTORY_START)
+    # Straight from the table: list_barometer() filters hiringlab out of points, so old
+    # rows would never be deleted and every run would duplicate the months.
+    old_ids = {}
+    for r in eb._rows("select id, month from market_barometer where stream='hiringlab'"):
+        old_ids.setdefault(r["month"], []).append(r["id"])
+    if not force and all(m in old_ids for m in months):
+        return {"ok": True, "added": [], "up_to_date": _last_full_month()}
+    if fetch is None:
+        def fetch(c):
+            req = urllib.request.Request(_HIRINGLAB_URL.format(c=c), headers={"User-Agent": "kist-barometer"})
+            return urllib.request.urlopen(req, timeout=60).read().decode("utf-8")
+    per_country = {}  # country -> sector -> {month: index}
+    for c in HIRINGLAB_COUNTRIES:
+        try:
+            text = fetch(c)
+            per_country[c] = {sec: hiringlab_monthly(text, set(months), sec) for sec in HIRINGLAB_BROAD}
+        except Exception as e:
+            return {"ok": False, "error": f"{c}: {str(e)[:120]}"}
+
+    def avg(month, sectors):
+        # mean of sectors within a country, then mean of countries (each weighs the same);
+        # a country lacking a sector (FR has no "Data & Analytics") averages the ones it has
+        per_c = []
+        for c in HIRINGLAB_COUNTRIES:
+            v = [per_country[c][sec][month] for sec in sectors if month in per_country[c][sec]]
+            if v:
+                per_c.append(sum(v) / len(v))
+        return round(sum(per_c) / len(per_c), 1) if per_c else None
+
+    added = []
+    for month in months:
+        sd, broad = avg(month, HIRINGLAB_BROAD[:1]), avg(month, HIRINGLAB_BROAD)
+        if sd is None:
+            continue
+        for bid in old_ids.get(month, []):
+            planner.delete_barometer_point(bid)
+        counts = {HIRINGLAB_KEY: sd}
+        if broad is not None:
+            counts[HIRINGLAB_BROAD_KEY] = broad
+        planner.add_barometer_point({
+            "month": month, "counts": counts, "stream": "hiringlab",
+            "sources": f"Indeed Hiring Lab: Software Development and IT broad ({len(HIRINGLAB_BROAD)} sectors), mean {'/'.join(HIRINGLAB_COUNTRIES)} (Feb 2020 = 100)",
+            "geo": f"Europe ({', '.join(HIRINGLAB_COUNTRIES)})", "as_of": date.today().isoformat()})
+        if month not in old_ids:
+            added.append(month)
+    done = _last_full_month() in (set(old_ids) | set(added))
+    return {"ok": done, "added": added} if done else {"ok": False, "added": added, "error": f"missing {_last_full_month()}"}
+
+
+# ---------- Just Join IT and Rocket Jobs: active-offer sitemaps ----------
+#
+# Both sites' APIs (api.justjoin.it, api.rocketjobs.pl) answer 503 behind Cloudflare and
+# robots.txt disallows /api/ (checked 2026-10-19). The active-offer sitemaps are allowed and
+# listed in robots.txt: the slug carries the title, so we filter by slug and fetch only the
+# matching offers (a few dozen), because salary ranges live only in the offer page's Next.js
+# data. Monthly, with a pause between pages, to keep the load on the site negligible.
+PLBOARDS = {"jjit": ("Just Join IT", "https://justjoin.it/sitemaps/active-jobs.xml"),
+            "rocketjobs": ("Rocket Jobs", "https://rocketjobs.pl/sitemaps/active-jobs.xml")}
+# VP counts as Head on these boards: same tier, and there are only a handful of them
+_VP = re.compile(r"\bvp,? (of )?engineering|vice president,? (of )?engineering", re.I)
+_PER_MONTH = {"month": 1, "hour": 168, "day": 21, "year": 1 / 12}
+
+
+def _board_family(role):
+    fam = _family_for(role)
+    if fam is _FAMILIES[3][2]:
+        return re.compile(fam.pattern + "|" + _VP.pattern, re.I)
+    return fam
+
+
+def _same_https_host(url, ref):
+    from urllib.parse import urlparse
+    u, r = urlparse(url), urlparse(ref)
+    return u.scheme == "https" and bool(u.hostname) and u.hostname == r.hostname
+
+
+def _http_get(url, limit=8_000_000):
+    """https only, redirects only within the same host, bounded read: the URLs come
+    from the boards' sitemaps, and a bare urlopen would also follow file:// or a
+    redirect to localhost, where this app's API answers without a token."""
+    import urllib.error
+    import urllib.request
+
+    if not _same_https_host(url, url):
+        raise ValueError("refusing non-https URL")
+
+    class _SameHost(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, hdrs, newurl):
+            if not _same_https_host(newurl, req.full_url):
+                raise urllib.error.HTTPError(newurl, code, "off-host redirect refused", hdrs, fp)
+            return super().redirect_request(req, fp, code, msg, hdrs, newurl)
+
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; kist-barometer; monthly)"})
+    with urllib.request.build_opener(_SameHost).open(req, timeout=30) as r:
+        return r.read(limit).decode("utf-8", "replace")
+
+
+def offer_details(html, currency="PLN"):
+    """From an offer page: title, company, city, remote, salary range (from, to) per month
+    in `currency`, or None. Hourly rates x168 (full time); B2B and employment together."""
+    import json as _json
+    ld = next((d for d in (_json.loads(m) for m in re.findall(
+        r'<script type="application/ld\+json"[^>]*>(.*?)</script>', html, re.S)) if d.get("@type") == "JobPosting"), None)
+    if not ld:
+        return None
+    addr = ((ld.get("jobLocation") or {}).get("address") or {})
+    out = {"title": ld.get("title", "").strip(), "company": (ld.get("hiringOrganization") or {}).get("name", ""),
+           "city": addr.get("addressLocality", ""), "country": addr.get("addressCountry", ""),
+           "remote": ld.get("jobLocationType") == "TELECOMMUTE", "pay": None}
+    # The main offer's range is the only employmentTypes array with fromPln/toPln fields
+    # (always null); the others on the page belong to "similar offers". The amounts sit in
+    # the element for each currency, original or converted by the site.
+    flight = html.replace('\\"', '"')
+    dec = _json.JSONDecoder()
+    for m in re.finditer(r'"employmentTypes":\[', flight):
+        try:
+            arr, _ = dec.raw_decode(flight, m.end() - 1)
+        except ValueError:
+            continue
+        if not arr or "toPln" not in arr[0]:
+            continue
+        cur = [e for e in arr if e.get("currency") == currency]
+        lo = [e["from"] * _PER_MONTH.get(e.get("unit"), 1) for e in cur if e.get("from")]
+        hi = [e["to"] * _PER_MONTH.get(e.get("unit"), 1) for e in cur if e.get("to")]
+        if hi:
+            out["pay"] = (round(min(lo or hi)), round(max(hi)))
+        break
+    return out
+
+
+def scan_plboard(index_url, roles, get=_http_get, pause=2.0, currency="PLN"):
+    """Counts offers per role from one board's sitemap. Returns (counts, pays, hits):
+    pays = upper range bounds per role, hits = preview lines."""
+    import time
+    fams = {r["key"]: _board_family(r) for r in roles}
+    urls = []
+    locs = lambda xml: [u for u in re.findall(r"<loc>([^<]+)</loc>", xml) if _same_https_host(u, index_url)]
+    for part in locs(get(index_url)):
+        urls += locs(get(part))
+    words = lambda u: u.rstrip("/").rsplit("/", 1)[-1].replace("-", " ")
+    cand = [u for u in urls if any(f.search(words(u)) for f in fams.values()) and not _NOT_ENG.search(words(u))]
+    counts, pays, hits, seen = {k: 0 for k in fams}, {k: [] for k in fams}, [], set()
+    for u in cand:
+        time.sleep(pause)
+        try:
+            o = offer_details(get(u), currency)
+        except Exception:
+            continue
+        if not o or _NOT_ENG.search(o["title"]) or not (o["country"] in ("PL", "") or o["remote"]):
+            continue
+        # the same role posted in several cities counts once
+        key = (o["company"].lower(), o["title"].lower())
+        k = next((k for k, f in fams.items() if f.search(o["title"])), None)
+        if k is None or key in seen:
+            continue
+        seen.add(key)
+        counts[k] += 1
+        pay = ""
+        if o["pay"]:
+            pays[k].append(o["pay"][1])
+            pay = f" · {o['pay'][0]:,}–{o['pay'][1]:,} {currency}/mo"
+        hits.append(f"{o['company']}: {o['title']} ({o['city']}{', remote' if o['remote'] else ''}){pay}")
+    return counts, pays, hits
+
+
+def collect_plboards(force=False, get=_http_get, pause=2.0):
+    """Monthly snapshot of offers for your roles on Just Join IT and Rocket Jobs ('jjit',
+    'rocketjobs' streams), like the watchlist: a snapshot as of the collection day,
+    idempotent within the month. The median upper range bound goes into counts as 'pay:<role>'."""
+    import statistics
+    import planner
+    cfg = planner.barometer_config()
+    currency = (planner.get_setting("base_currency") or "PLN").upper()
+    month = date.today().isoformat()[:7]
+    out, errors = {"ok": True, "added": {}}, []
+    for st, (name, url) in PLBOARDS.items():
+        old = [p for p in planner.list_barometer()["points"] if p["stream"] == st and p["month"] == month]
+        if old and not force:
+            out["added"][st] = "skipped"
+            continue
+        try:
+            counts, pays, hits = scan_plboard(url, cfg["roles"], get=get, pause=pause, currency=currency)
+        except Exception as e:
+            errors.append(f"{name}: {str(e)[:100]}")
+            continue
+        for p in old:
+            planner.delete_barometer_point(p["id"])
+        n_pay = sum(len(v) for v in pays.values())
+        planner.add_barometer_point({
+            "month": month, "stream": st,
+            "counts": {**counts, **{f"pay:{k}": round(statistics.median(v)) for k, v in pays.items() if v}},
+            "sources": f"{name} (active-offer sitemap), ranges in {n_pay} of {sum(counts.values())}",
+            "geo": "PL / remote", "as_of": date.today().isoformat(), "note": "\n".join(sorted(hits))})
+        out["added"][st] = counts
+    if errors:
+        out.update(ok=False, error="; ".join(errors))
+    return out
+
+
+# ---------- levels.fyi: manual import ----------
+#
+# levels.fyi's Terms (access section, as of 2026-10-19) forbid automated access and building
+# a dataset, including from public pages and by AI agents, without a written agreement. So no
+# collector: you paste a page summary (the .md version of a role/location page,
+# levels.fyi/t/<job-family>/locations/<country>.md), the app extracts the numbers
+# and the raw text is kept in <data dir>/raw/levels-fyi with the sample date.
+def _amount(s):
+    return int(s.replace(",", "").replace(" ", ""))
+
+
+def parse_levels(text, currency="PLN"):
+    """Numbers from a levels.fyi summary: median and percentiles of yearly TC in `currency`,
+    sample size, last-updated date, scope, URL and the levels table (e.g. L4).
+    ValueError when there are no numbers in that currency."""
+    from datetime import datetime
+    c = re.escape(currency)
+    if not re.search(rf"\b{c}\s*\d", text):
+        raise ValueError(f"no {currency} amounts: paste the summary for a location priced in {currency}")
+    g = lambda pat: (re.search(pat, text) or [None, None])[1]
+    out = {"median": g(rf"Median Total Compensation:\s*{c}\s*([\d, ]+\d)"),
+           "p90": g(rf"90th Percentile:\s*{c}\s*([\d, ]+\d)"), "n": g(r"Sample Size:\s*([\d,]+)")}
+    out = {k: _amount(v) for k, v in out.items() if v}
+    q = re.search(rf"25th / 75th Percentile:\s*{c}\s*([\d,]+)\s*/\s*{c}\s*([\d,]+)", text)
+    if q:
+        out["p25"], out["p75"] = _amount(q[1]), _amount(q[2])
+    sec = text.split("Levels Breakdown", 1)[1].split("\n#", 1)[0] if "Levels Breakdown" in text else ""
+    levels = {lv.strip(): _amount(v) for lv, v in re.findall(rf"^\|\s*([^|]+?)\s*\|\s*{c}\s*([\d,]+)\s*\|", sec, re.M)}
+    if levels:
+        out["levels"] = levels
+    if "median" not in out and not levels:
+        raise ValueError("found neither a median nor a levels table")
+    upd = g(r"Last Updated:\s*([A-Z][a-z]+ \d{1,2}, \d{4})") or g(r"last updated ([A-Z][a-z]+ \d{1,2}, \d{4})")
+    out["as_of"] = datetime.strptime(upd, "%B %d, %Y").date().isoformat() if upd else date.today().isoformat()
+    out["scope"] = (g(r"\*\*Scope:\*\*\s*(.+)") or g(r"^# (?:Levels\.fyi\s*[–-]\s*)?(.+)") or "levels.fyi").strip()
+    out["url"] = (g(r"\*\*URL:\*\*\s*(\S+)") or "").strip()
+    return out
+
+
+def import_levels(text, label="", role=None):
+    """Stores a levels.fyi sample: raw text to <data dir>/raw/levels-fyi, the numbers as a
+    'levels' stream point (the sample's month), assigned to one market role. The same label
+    and date replace the old point."""
+    import os
+    from pathlib import Path
+    import engine_bridge as eb
+    import planner
+    d = parse_levels(text, (planner.get_setting("base_currency") or "PLN").upper())
+    label = (label or d["scope"]).strip()[:80]
+    raw = Path(os.environ["FINANCE_PROJECT_DIR"]) / "raw" / "levels-fyi"
+    raw.mkdir(parents=True, exist_ok=True)
+    slug = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")[:60]
+    (raw / f"{d['as_of']}-{slug}.md").write_text(text)
+    for r in eb._rows("select id from market_barometer where stream='levels' and as_of=? and sources=?", (d["as_of"], label)):
+        planner.delete_barometer_point(r["id"])
+    counts = {k: d[k] for k in ("median", "p25", "p75", "p90", "n", "levels") if k in d}
+    counts["role"] = role or planner.barometer_config()["roles"][0]["key"]  # which market role the median feeds
+    bid = planner.add_barometer_point({"month": d["as_of"][:7], "stream": "levels", "counts": counts,
+                                       "sources": label, "geo": "", "as_of": d["as_of"], "note": d["url"]})
+    return {"ok": True, "id": bid, **d, "label": label}

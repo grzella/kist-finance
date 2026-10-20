@@ -1,0 +1,218 @@
+function securityReviewHtml(rev) {
+  if (!rev || !rev.verdict) {
+    return `<div class="muted">Not run yet. Click "Run security &amp; tests"
+      to do a full scan (leaks in the repo and git history, code review from a contributor's perspective,
+      personal-data audit, connection configuration, functional tests).</div>`;
+  }
+  const SEV = {
+    critical: TOKENS.neg, high: "#ff8f3f", medium: TOKENS.warn, low: TOKENS.accent, info: TOKENS.muted,
+  };
+  const STAT = { pass: ["✓", TOKENS.pos], warn: ["!", TOKENS.warn], fail: ["✗", TOKENS.neg] };
+  const row = (i) => {
+    const [ic, col] = STAT[i.status] || ["·", TOKENS.muted];
+    return `<tr>
+      <td style="color:${col};font-weight:700;text-align:center">${ic}</td>
+      <td><span class="badge" style="background:${SEV[i.severity]}22;color:${SEV[i.severity]}">${i.severity}</span></td>
+      <td><b>${i.title}</b>${i.status !== "pass" && i.detail ? `<div class="muted" style="font-size:.82em">${i.detail}</div>` : ""}
+        ${i.status !== "pass" && i.fix ? `<div style="font-size:.82em;color:var(--warn)">🔧 ${i.fix}</div>` : ""}</td>
+    </tr>`;
+  };
+  const area = (a) => `<div class="mt"><div style="font-weight:600;margin-bottom:4px">${a.area}</div>
+    <div style="overflow-x:auto"><table>
+      <tbody>${a.items.map(row).join("")}</tbody></table></div></div>`;
+  return `<div class="row" style="justify-content:space-between;align-items:baseline;flex-wrap:wrap">
+      <div>${rev.summary}</div>
+      <div class="muted" style="font-size:.82em">last run: ${rev.generated_at}</div>
+    </div>
+    ${(rev.areas || []).map(area).join("")}`;
+}
+
+async function renderControl(el) {
+  const [d, rev, bk] = await Promise.all([
+    api.get("/api/health"),
+    api.get("/api/security-review").catch(() => ({})),
+    api.get("/api/backup/status").catch(() => null),
+  ]);
+  const s = d.summary;
+  const vColor = { ok: TOKENS.pos, warn: TOKENS.warn, error: TOKENS.neg };
+  const secColor = vColor[rev && rev.verdict] || TOKENS.muted;
+  const badge = (st) => {
+    const m = { ok: ["✅", "pos"], warn: ["⚠️", ""], error: ["🛑", "neg"], info: ["ℹ️", "muted"] };
+    const [ic, cls] = m[st] || ["·", "muted"];
+    return `<span class="badge ${cls}">${ic} ${st}</span>`;
+  };
+  el.innerHTML = `
+    <h2>🛠️ Control Center</h2>
+    ${ctrlTabs("control")}
+    <div class="muted" style="margin-bottom:12px">Everything that should happen automatically: frequency, last update (date+time) and status.
+      Checked: ${d.checked_at}.</div>
+
+    <div class="grid cols-4">
+      <div class="card kpi"><div class="label">Tasks OK</div><div class="value pos">${s.ok}</div><div class="sub">of ${s.total}</div></div>
+      <div class="card kpi"><div class="label">Warnings</div><div class="value ${s.warn ? "" : "muted"}"${" style=\"color:var(--warn)\"".repeat(s.warn ? 1 : 0)}>${s.warn}</div><div class="sub">stale / offline</div></div>
+      <div class="card kpi"><div class="label">Errors</div><div class="value ${s.error ? "neg" : "muted"}">${s.error}</div><div class="sub">need action</div></div>
+      <div class="card kpi"><div class="label">Refresh</div>
+        <div class="value"><button class="primary" id="hRefresh" style="font-size:.5em;padding:8px 14px">Check now</button></div></div>
+    </div>
+
+    <div class="grid cols-2 mt">
+      <div class="card" style="border-left:4px solid var(--warn);margin:0">
+        <h3>🔬 Demo mode</h3>
+        <div class="row" style="align-items:center;gap:12px">
+          <button class="${demoOn() ? "danger" : "primary"}" id="demoToggle">${demoOn() ? "Disable demo mode" : "Enable demo mode"}</button>
+          <span class="muted" style="font-size:.85em">Masks amounts with a 0-1 pattern (e.g. "010 101 PLN") — for screenshots without revealing figures.
+            Status: <b class="${demoOn() ? "neg" : "pos"}">${demoOn() ? "ON" : "off"}</b>. Also via <code>?demo</code>.</span>
+        </div>
+      </div>
+      <div class="card" style="border-left:4px solid var(--accent);margin:0">
+        <h3>🌐 Currency</h3>
+        <div class="row" style="align-items:center;gap:8px">
+          <span>💱 <select id="curSel">${["PLN","EUR","USD","GBP","CHF"].map((c) => `<option ${c === (window.APP_CURRENCY || "PLN") ? "selected" : ""}>${c}</option>`).join("")}</select></span>
+          <span class="muted" style="font-size:.85em">Applies everywhere amounts are shown. The app's UI is English-only.</span>
+        </div>
+      </div>
+    </div>
+
+
+    ${bk ? `<div class="card mt" style="border-left:4px solid var(--accent)">
+      <h3>💾 Data backup
+        <span class="badge" style="background:${bk.configured ? "var(--pos)22;color:var(--pos)" : "var(--warn)22;color:var(--warn)"}">${bk.configured ? "configured" : "not set"}</span></h3>
+      <div class="muted" style="font-size:.85em;margin-bottom:8px">Writes a consistent snapshot of the database into a folder your
+        Google Drive / Dropbox / iCloud client already syncs. It needs no API keys: your desktop client pushes the file to the cloud.</div>
+      <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="bkDest" style="min-width:300px">
+          <option value="">— choose a synced folder —</option>
+          ${bk.destinations.map((dd) => `<option value="${dd.path}" ${bk.dir === dd.path ? "selected" : ""}>${dd.label} — ${dd.path}</option>`).join("")}
+          ${bk.dir && !bk.destinations.some((dd) => dd.path === bk.dir) ? `<option value="${bk.dir}" selected>${bk.dir}</option>` : ""}
+        </select>
+        <button class="primary" id="bkRun" ${bk.configured ? "" : "disabled"}>Back up now</button>
+      </div>
+      <div class="row mt" style="gap:14px;align-items:center;flex-wrap:wrap">
+        <label style="cursor:pointer;font-size:.85em"><input type="checkbox" id="bkAuto" ${bk.auto ? "checked" : ""}> Auto-backup on start (if the last one is older than 24h)</label>
+        ${bk.backups && bk.backups.length ? `<select id="bkRestoreSel" style="min-width:260px">
+          ${bk.backups.map((s) => `<option value="${s.file}">${s.file} · ${s.when} · ${s.size_kb} KB${s.encrypted ? " 🔒" : ""}</option>`).join("")}
+        </select><button id="bkRestore" class="danger">Restore</button>` : ""}
+      </div>
+      <div class="muted mt" style="font-size:.82em">
+        ${bk.last ? `Last: <b>${bk.last.name}</b> (${bk.last.when}) · ${bk.count} total` : "No backups yet."}
+        ${bk.encryption.on ? " · 🔒 encrypted" : bk.encryption.lib ? " · set BACKUP_KEY in .env to encrypt" : " · " + bk.encryption.hint}
+      </div>
+      <div id="bkOut" class="mt"></div>
+    </div>` : ""}
+
+    <div class="card mt" style="border-left:4px solid var(--neg)">
+      <h3>🧨 Data — fresh start</h3>
+      <div class="row" style="align-items:center;gap:12px;flex-wrap:wrap">
+        <button class="danger" id="wipeBtn">Wipe all data</button>
+        <span class="muted" style="font-size:.85em">Deletes the local database (sample or your own — everything, incl. settings)
+          and takes you back to the setup wizard. Backups in your synced folder are untouched.</span>
+      </div>
+    </div>
+
+    <div class="card mt" style="border-left:4px solid ${secColor}">
+      <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <h3 style="margin:0">🔐 Security &amp; tests
+          ${rev && rev.verdict ? `<span class="badge" style="background:${secColor}22;color:${secColor}">score ${rev.score}/100</span>` : ""}</h3>
+        <button class="primary" id="secRun">🔐 Run security &amp; tests</button>
+      </div>
+      <div class="muted" style="font-size:.85em;margin:6px 0 4px">Full pentest + functional tests: secret leaks in the working tree
+        <b>and in git history</b> (this matters for a public repo), maintainer personal-data audit, code review from a contributor's perspective
+        (eval/exec, shell, SQL injection, debug, bind 0.0.0.0), configuration/connection hygiene and endpoint smoke tests.
+        Runs automatically weekly (GitHub Actions on PRs) or manually with this button.</div>
+      <div id="secBody">${securityReviewHtml(rev)}</div>
+    </div>
+
+    <div class="card mt">
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Task</th><th>Frequency</th><th>Last update</th><th>Status</th><th>Details</th></tr></thead>
+        <tbody>${d.tasks.map((t) => `<tr>
+          <td><b>${t.name}</b></td>
+          <td class="muted" style="font-size:.88em">${t.freq}</td>
+          <td style="white-space:nowrap">${t.last}</td>
+          <td>${badge(t.status)}</td>
+          <td class="muted" style="font-size:.88em">${t.detail}</td>
+        </tr>`).join("")}</tbody>
+      </table></div>
+    </div>
+
+    <div class="card mt muted" style="font-size:.85em">
+      <b>How it works:</b> n8n pulls rates and marketing data into Supabase (public data); RSU predictions and the barometer
+      are maintained by Claude/the app locally; data backup is encrypted on Google Drive. The "sensitive-data audit"
+      checks that nothing from <code>private/ .finance/ doc-raw/ *.env</code> made it into git — it should always be ✅.
+      E-mail/Telegram alert on stale data: a ready-made n8n workflow in <code>integrations/n8n/</code> (import + Telegram bot).
+      Still to build: an automatic data-consistency test after import, monitoring whether Google Drive is mounted.
+    </div>`;
+
+  document.getElementById("hRefresh").addEventListener("click", () => route());
+  document.getElementById("demoToggle").addEventListener("click", () => toggleDemo(!demoOn()));
+  document.getElementById("wipeBtn").addEventListener("click", async () => {
+    if (!confirm("Delete ALL local data (goals, wealth, settings…) and restart the wizard? Backups stay.")) return;
+    await api.post("/api/data/wipe", { confirm: true });
+    location.hash = "#wizard"; location.reload();
+  });
+  document.getElementById("curSel").addEventListener("change", async (e) => {
+    await api.post("/api/app-config", { base_currency: e.target.value });
+    window.APP_CURRENCY = e.target.value; location.reload();
+  });
+  const bkDest = document.getElementById("bkDest");
+  if (bkDest) {
+    bkDest.addEventListener("change", async (e) => {
+      await api.post("/api/backup/config", { dir: e.target.value }); route();
+    });
+  }
+  const bkRun = document.getElementById("bkRun");
+  if (bkRun) {
+    bkRun.addEventListener("click", async () => {
+      bkRun.disabled = true;
+      const o = document.getElementById("bkOut");
+      o.innerHTML = '<div class="muted">Backing up…</div>';
+      try {
+        const r = await api.post("/api/backup/run", {});
+        o.innerHTML = r.ok
+          ? `<div class="pos">✅ ${r.file} (${r.size_kb} KB${r.encrypted ? ", 🔒 encrypted" : ""}) → ${r.dir}</div>`
+          : `<div class="neg">${r.error}</div>`;
+      } catch (e) { o.innerHTML = `<div class="neg">${e.message}</div>`; }
+      finally { bkRun.disabled = false; }
+    });
+  }
+  const bkAuto = document.getElementById("bkAuto");
+  if (bkAuto) {
+    bkAuto.addEventListener("change", (e) => api.post("/api/backup/auto", { enabled: e.target.checked }));
+  }
+  const bkRestore = document.getElementById("bkRestore");
+  if (bkRestore) {
+    bkRestore.addEventListener("click", async () => {
+      const file = document.getElementById("bkRestoreSel").value;
+      if (!confirm(`Restore the database from "${file}"? Current data will be replaced (a pre-restore copy is made first).`)) return;
+      bkRestore.disabled = true;
+      const o = document.getElementById("bkOut");
+      o.innerHTML = '<div class="muted">Restoring…</div>';
+      try {
+        const r = await api.post("/api/backup/restore", { file });
+        o.innerHTML = r.ok
+          ? `<div class="pos">✅ Restored ${r.restored}${r.safety_copy ? " · pre-restore copy: " + r.safety_copy : ""}. Refresh the page.</div>`
+          : `<div class="neg">${r.error}</div>`;
+      } catch (e) { o.innerHTML = `<div class="neg">${e.message}</div>`; }
+      finally { bkRestore.disabled = false; }
+    });
+  }
+  document.getElementById("secRun").addEventListener("click", async (e) => {
+    const btn = e.target;
+    btn.disabled = true;
+    btn.textContent = "⏳ Scanning repo, history, code and endpoints…";
+    const body = document.getElementById("secBody");
+    body.innerHTML = '<div class="muted">Full scan in progress (may take 10–20 seconds; searching git history)…</div>';
+    try {
+      const fresh = await api.post("/api/security-review/run");
+      body.innerHTML = securityReviewHtml(fresh);
+      const card = btn.closest(".card");
+      const col = { ok: TOKENS.pos, warn: TOKENS.warn, error: TOKENS.neg }[fresh.verdict] || TOKENS.muted;
+      if (card) card.style.borderLeftColor = col;
+    } catch (err) {
+      body.innerHTML = `<div class="neg">Scan error: ${err.message}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = "🔐 Run security &amp; tests";
+    }
+  });
+}

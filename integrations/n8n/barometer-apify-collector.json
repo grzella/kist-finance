@@ -1,0 +1,39 @@
+{
+  "name": "Kist — market barometer collector (Apify LinkedIn/Indeed)",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "months", "triggerAtDayOfMonth": 1, "triggerAtHour": 6}]}},
+      "name": "Monthly (1st, 06:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reads the app's barometer config (roles + geography), runs an Apify job-board\n// scraper actor per role (LinkedIn / Indeed / etc. — the actors handle anti-bot,\n// not you), counts returned postings, then POSTs one generalized barometer point.\n//\n// IMPORTANT — a RELATIVE INDEX, not a true total. Fix the method: same actor,\n// same maxItems, same query shape every month. The app turns the proxy count into\n// an index (base 100), comparable month-to-month. Raw count + source shown in the\n// app's tooltip so the number is never mistaken for a precise total.\n//\n// Requires: APIFY_TOKEN, and APIFY_ACTOR (e.g. a LinkedIn Jobs Scraper actor id,\n// like 'bebity~linkedin-jobs-scraper' — pick one you trust on apify.com and adapt\n// the `input` shape to that actor's schema). Set KIST_URL to your app.\nconst KIST = $env.KIST_URL || 'http://127.0.0.1:8321';\nconst TOKEN = $env.APIFY_TOKEN;\nconst ACTOR = $env.APIFY_ACTOR; // e.g. 'bebity~linkedin-jobs-scraper'\nconst MAX = 200; // fixed cap — DO NOT change between months (breaks comparability)\n\nconst cfg = await this.helpers.httpRequest({ url: `${KIST}/api/market-barometer`, json: true });\nconst roles = cfg.roles || [];\nconst geo = (cfg.geo || []).join(', ') || 'Remote';\n\nconst counts = {};\nfor (const r of roles) {\n  // run-sync-get-dataset-items returns the actor's scraped items directly\n  const items = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `https://api.apify.com/v2/acts/${ACTOR}/run-sync-get-dataset-items?token=${TOKEN}`,\n    body: { title: r.query || r.label, location: geo, rows: MAX, maxItems: MAX },\n    json: true,\n  });\n  counts[r.key] = Array.isArray(items) ? items.length : 0;\n}\n\nconst month = new Date().toISOString().slice(0, 7);\nreturn [{ json: {\n  month, counts,\n  sources: `Apify ${ACTOR} (max ${MAX})`,\n  geo, as_of: new Date().toISOString().slice(0, 10),\n} }];"
+      },
+      "name": "Count postings (Apify)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.KIST_URL || 'http://127.0.0.1:8321' }}/api/market-barometer",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "POST to Kist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    }
+  ],
+  "connections": {
+    "Monthly (1st, 06:00)": {"main": [[{"node": "Count postings (Apify)", "type": "main", "index": 0}]]},
+    "Count postings (Apify)": {"main": [[{"node": "POST to Kist", "type": "main", "index": 0}]]}
+  }
+}
