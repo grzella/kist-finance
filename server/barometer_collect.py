@@ -664,7 +664,12 @@ def import_levels(text, label="", role=None):
     raw = Path(os.environ["FINANCE_PROJECT_DIR"]) / "raw" / "levels-fyi"
     raw.mkdir(parents=True, exist_ok=True)
     slug = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")[:60]
-    (raw / f"{d['as_of']}-{slug}.md").write_text(text)
+    # normpath + prefix check: date and slug are already sanitized, but CodeQL
+    # traces the file name back to user text (py/path-injection)
+    dest = os.path.normpath(os.path.join(str(raw), f"{d['as_of']}-{slug}.md"))
+    if not dest.startswith(str(raw) + os.sep):
+        raise ValueError("invalid file name for the raw sample")
+    Path(dest).write_text(text)
     for r in eb._rows("select id from market_barometer where stream='levels' and as_of=? and sources=?", (d["as_of"], label)):
         planner.delete_barometer_point(r["id"])
     counts = {k: d[k] for k in ("median", "p25", "p75", "p90", "n", "levels") if k in d}

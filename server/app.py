@@ -924,8 +924,10 @@ def barometer_levels_import():
     d = request.get_json(force=True)
     try:
         return jsonify(barometer_collect.import_levels(d.get("text") or "", d.get("label") or "", d.get("role") or None)), 201
-    except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
+    except ValueError:
+        # fixed message: CodeQL treats str(e) returned to the client as stack-trace exposure
+        ccy = (planner.get_setting("base_currency") or "PLN").upper()
+        return jsonify({"ok": False, "error": f"could not parse the levels.fyi text: paste the summary for a location priced in {ccy}, with a median or a levels table"}), 400
 
 
 @app.delete("/api/market-barometer/<bid>")
