@@ -1587,11 +1587,13 @@ def generate_brief(kind="daily"):
         except Exception:
             data = None
     if data is None:
+        # no thinking mode: Qwen3 spent the whole token budget on reasoning
+        # (finish_reason=length) and the brief came back empty; it is only a summary of facts
         data = llm_local.chat_json(prompt, BRIEF_SCHEMA, system=system,
-                                   max_tokens=900, think=True)
+                                   max_tokens=900, think=False)
         by = llm_local.status().get("model", "local model")
     if not data:
-        return {"ok": False, "error": "AI offline — start llama-server (Control → AI mode)"}
+        return {"ok": False, "error": "AI gave no brief: " + (llm_local.LAST_ERROR or "offline — start llama-server (Control → AI mode)")}
     data["as_of"] = datetime.now().strftime("%Y-%m-%d, %H:%M")
     # date of the actual data (last cached candle) — without it "as of" implies
     # the insights include today's session even when the collector hasn't run yet

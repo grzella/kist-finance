@@ -16,6 +16,7 @@ import urllib.request
 
 BASE = os.environ.get("LOCAL_LLM_URL", "http://127.0.0.1:8080/v1")
 KEY = os.environ.get("LOCAL_LLM_KEY", "")
+LAST_ERROR = ""  # why the last chat() returned None: every failure used to look like "AI offline"
 
 
 def _headers(extra=None):
@@ -78,11 +79,15 @@ def chat(prompt, system=None, max_tokens=400, temperature=0.2, json_schema=None,
             "json_schema": {"name": "out", "schema": json_schema, "strict": True}}
     req = urllib.request.Request(BASE + "/chat/completions", data=json.dumps(payload).encode(),
                                  headers=_headers({"Content-Type": "application/json"}))
+    global LAST_ERROR
     try:
         with urllib.request.urlopen(req, timeout=120) as r:
             out = json.loads(r.read())
-        return out["choices"][0]["message"]["content"]
-    except Exception:
+        ch = out["choices"][0]
+        LAST_ERROR = "" if ch.get("finish_reason") == "stop" else f"finish_reason={ch.get('finish_reason')}"
+        return ch["message"]["content"]
+    except Exception as e:
+        LAST_ERROR = f"{type(e).__name__}: {str(e)[:120]}"
         return None
 
 
@@ -95,6 +100,8 @@ def chat_json(prompt, schema, system=None, max_tokens=400, temperature=0.2, thin
     try:
         return json.loads(raw)
     except Exception:
+        global LAST_ERROR
+        LAST_ERROR = f"invalid JSON ({LAST_ERROR or 'finish_reason=stop'}): {raw[:80]!r}"
         return None
 
 
