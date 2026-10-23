@@ -90,3 +90,97 @@ def test_generic_settings_writer_still_cannot_set_commit_repos(client, clean_set
     client.put("/api/settings", json={"commit_repos": "/etc"})
     import planner
     assert not planner.get_setting("commit_repos")
+
+
+# ---------- 2. rubric and evidence ----------
+
+def test_rubric_is_well_formed():
+    import ai_learning as al
+    assert [l["lvl"] for l in al.LEVELS] == [0, 1, 2, 3, 4, 5]
+    ids = [s["id"] for s in al.SKILLS]
+    assert len(ids) == len(set(ids)) >= 10
+    for s in al.SKILLS:
+        assert s["weight"] in (1, 2, 3) and s["how"] and s["area"] and s["name"]
+        assert any(s.get(k) for k in ("dep", "path", "text")), s["id"]
+        assert not s.get("link") or s["link"].startswith("https://")
+    for c in al.COURSES:
+        assert c["link"].startswith("https://") and set(c["skills"]) <= set(ids)
+
+
+def test_collect_local_reads_deps_paths_commits_and_readme(tmp_path):
+    import ai_learning as al
+    repo = make_repo(tmp_path / "copilot", {
+        "README.md": "A small copilot with retrieval over notes.",
+        "requirements.txt": "flask\nchromadb==0.5\nopenai\n",
+        "evals/gold.jsonl": "{}",
+        "src/app.py": "print(1)"}, commits=("first", "add bm25 reranking", "fix typo"))
+    s = al.collect_local(str(repo))
+    assert s["name"] == "copilot" and s["origin"] == "local"
+    assert "chromadb" in s["deps"] and "evals/gold.jsonl" in s["paths"]
+    assert "add bm25 reranking" in s["commits"]
+    assert "retrieval" in s["readme"]
+
+
+def test_collect_local_author_filter_and_limits(tmp_path):
+    import ai_learning as al
+    repo = make_repo(tmp_path / "r", {"a.txt": "x"}, commits=("mine",))
+    assert al.collect_local(str(repo), author="T")["commits"] == ["mine"]
+    assert al.collect_local(str(repo), author="Nobody Else")["commits"] == []
+
+
+def test_collect_local_never_follows_a_symlinked_readme_or_manifest(tmp_path):
+    import ai_learning as al
+    secret = tmp_path / "outside.txt"
+    secret.write_text("chromadb openai langfuse", encoding="utf-8")
+    repo = make_repo(tmp_path / "r", {"a.txt": "x"})
+    (repo / "README.md").symlink_to(secret)
+    (repo / "requirements.txt").symlink_to(secret)
+    _git(repo, "add", "-A")
+    s = al.collect_local(str(repo))
+    assert s["readme"] == "" and s["deps"] == ""
+
+
+def test_collect_local_survives_a_broken_repo(tmp_path):
+    import ai_learning as al
+    s = al.collect_local(str(tmp_path / "gone"))
+    assert s["paths"] == [] and s["commits"] == []
+
+
+def test_collect_gh_maps_repos_and_skips_forks_and_failures(monkeypatch):
+    import ai_learning as al
+    payload = json.dumps([
+        {"name": "rag-notes", "description": "Retrieval over my notes", "isFork": False,
+         "repositoryTopics": [{"name": "llm"}], "primaryLanguage": {"name": "Python"}},
+        {"name": "someone-elses", "description": "x", "isFork": True, "repositoryTopics": None}])
+    monkeypatch.setattr(al, "_run", lambda cmd, timeout=15: payload)
+    got = al.collect_gh()
+    assert [g["name"] for g in got] == ["rag-notes"] and got[0]["origin"] == "gh"
+    assert "retrieval" in got[0]["meta"] and "llm" in got[0]["meta"]
+    monkeypatch.setattr(al, "_run", lambda cmd, timeout=15: None)    # gh missing or logged out
+    assert al.collect_gh() == []
+    monkeypatch.setattr(al, "_run", lambda cmd, timeout=15: "not json")
+    assert al.collect_gh() == []
+
+
+def test_collect_sources_merges_local_and_gh_without_double_counting(client, clean_settings, tmp_path, monkeypatch):
+    import ai_learning as al
+    repo = make_repo(tmp_path / "rag-notes", {"a.txt": "x"})
+    client.put("/api/ai-learning/repos", json={"repos": [str(repo)]})
+    monkeypatch.setattr(al, "_run", lambda cmd, timeout=15: json.dumps(
+        [{"name": "rag-notes", "description": "", "isFork": False, "repositoryTopics": [], "primaryLanguage": None},
+         {"name": "other", "description": "", "isFork": False, "repositoryTopics": [], "primaryLanguage": None}]))
+    names = [(s["name"], s["origin"]) for s in al.collect_sources()]
+    assert names == [("rag-notes", "local"), ("other", "gh")]
+
+
+def test_match_finds_evidence_per_skill_and_keeps_lines_short(tmp_path):
+    import ai_learning as al
+    repo = make_repo(tmp_path / "copilot", {
+        "README.md": "Uses retrieval.", "requirements.txt": "chromadb\nragas\n",
+        "evals/gold.jsonl": "{}"}, commits=("first", "x" * 300 + " eval harness"))
+    hits = al.match(al.collect_local(str(repo)))
+    assert {"rag", "evals"} <= set(hits)
+    kinds = {k for k, _ in hits["evals"]}
+    assert {"dep", "path"} <= kinds
+    assert all(len(d) <= 100 for _, d in hits["evals"] + hits["rag"])
+    assert "prompting" not in hits                                   # nothing to see there
