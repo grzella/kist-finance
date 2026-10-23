@@ -19,7 +19,7 @@ async function renderCommits(el) {
       <div class="muted" style="font-size:.9em">Not set up yet — so nothing is counted. This tab turns daily commits into a streak and an "I code with AI" profile, once you point it at <b>your</b> data (two independent options, use either or both):</div>
       <ol style="padding-left:18px;font-size:.92em">
         <li class="mt"><b>Connect GitHub</b> — run <code>gh auth login</code> with your account. Pulls your full contribution calendar (commits + PRs + issues + reviews, all repos).</li>
-        <li class="mt"><b>Point at local repos</b> — in <a href="#data">Data → Settings</a> set <code>commit_repos</code> (comma-separated absolute paths) and optionally <code>commit_author</code> (a git <code>--author</code> filter). Catches unpushed work too.</li>
+        <li class="mt"><b>Point at local repos</b> — in <a href="#ailearn">AI learning → Repositories</a> add the absolute paths of your git repositories (<code>commit_repos</code>) and optionally an author filter (<code>commit_author</code>). Catches unpushed work too.</li>
       </ol>
       <div class="muted" style="font-size:.82em">Deliberately empty until then: a fresh clone must never show commits scraped from whatever repos happen to sit in your home folder.</div>
     </div>` : ""}
@@ -29,7 +29,7 @@ async function renderCommits(el) {
         ${gh.github && gh.github.connected
           ? `<b class="pos">Full GitHub activity</b> (commits + PRs + issues + reviews, all repos — including merged contributions to other projects) merged with local repos (${gh.repos}) over ${gh.days} days. In window: ${gh.github.prs} PRs · ${gh.github.issues} issues · ${gh.github.reviews} reviews.`
           : `Your commits from local repos (${gh.repos}) over ${gh.days} days (GitHub offline — local only).`}
-        <div style="font-size:.82em;margin:4px 0;padding:6px 10px;background:var(--accent)18;border-radius:6px">⚠️ Whose data is this? Activity found on <b>this machine</b>: local git repos scanned here${gh.github && gh.github.connected && gh.github.login ? ` + the gh CLI account (<a href="https://github.com/${esc(gh.github.login)}" target="_blank">@${esc(gh.github.login)}</a>)` : ""}. If you cloned this app, these may be someone else's numbers — switch to yours: run <code>gh auth login</code> with your account and set <code>commit_repos</code> / <code>commit_author</code> in the Data tab → Settings.</div>
+        <div style="font-size:.82em;margin:4px 0;padding:6px 10px;background:var(--accent)18;border-radius:6px">⚠️ Whose data is this? Activity found on <b>this machine</b>: local git repos scanned here${gh.github && gh.github.connected && gh.github.login ? ` + the gh CLI account (<a href="https://github.com/${esc(gh.github.login)}" target="_blank">@${esc(gh.github.login)}</a>)` : ""}. If you cloned this app, these may be someone else's numbers — switch to yours: run <code>gh auth login</code> with your account and set your repositories in <a href="#ailearn">AI learning → Repositories</a>.</div>
         Goal: coding activity every day — builds an AI-native, "I code with AI" profile. Status also in Control Center → Automation &amp; health.</div>
       <div class="grid cols-4">
         <div class="card kpi"><div class="label">Today</div><div class="value ${gh.today > 0 ? "pos" : ""}">${gh.today}</div><div class="sub">contributions</div></div>
