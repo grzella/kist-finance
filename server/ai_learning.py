@@ -298,3 +298,56 @@ def match(source):
         if found:
             hits[sk["id"]] = found
     return hits
+
+
+# ---------- statuses, score, project grades: all arithmetic, no model ----------
+
+KIND_ORDER = ("dep", "path", "commit", "readme", "repo info")
+POINTS = {"have": 1.0, "partial": 0.5, "missing": 0.0}
+MAX_EVIDENCE = 3
+MAX_PROJECTS = 6
+
+
+def _status(hits):
+    """have: at least three distinct hits from at least two kinds of evidence (a dependency
+    plus a folder plus a commit is a habit, three commit messages are a mention);
+    partial: any hit; missing: none."""
+    if len(hits) >= 3 and len({h[1] for h in hits}) >= 2:
+        return "have"
+    return "partial" if hits else "missing"
+
+
+def _grade(n):
+    return "A" if n >= 6 else "B" if n >= 4 else "C" if n >= 2 else "D"
+
+
+def assess(sources):
+    """The whole assessment minus the narration. Same repos, same answer."""
+    per_skill = {s["id"]: [] for s in SKILLS}
+    projects = []
+    for src in sources:
+        hits = match(src)
+        for sid, found in hits.items():
+            per_skill[sid] += [(src["name"], kind, detail) for kind, detail in found]
+        if hits:
+            projects.append({"name": src["name"], "origin": src["origin"], "n": len(hits),
+                             "skills": [s["name"] for s in SKILLS if s["id"] in hits]})
+    skills, earned = [], 0.0
+    for sk in SKILLS:
+        hits = list(dict.fromkeys(per_skill[sk["id"]]))
+        hits.sort(key=lambda h: KIND_ORDER.index(h[1]))
+        status = _status(hits)
+        earned += sk["weight"] * POINTS[status]
+        skills.append({"id": sk["id"], "area": sk["area"], "name": sk["name"], "status": status,
+                       "how": sk["how"], **({"link": sk["link"]} if sk.get("link") else {}),
+                       "evidence": [f"{n} · {k}: {d}"[:140] for n, k, d in hits[:MAX_EVIDENCE]]})
+    score = round(5 * earned / sum(s["weight"] for s in SKILLS), 1)
+    level = int(score)
+    projects.sort(key=lambda p: -p["n"])
+    return {
+        "score": score, "level": level, "level_name": LEVELS[level]["name"], "target": min(5, level + 1),
+        "counts": {k: sum(1 for s in skills if s["status"] == k) for k in POINTS},
+        "skills": skills,
+        "projects": [{"name": p["name"], "origin": p["origin"], "grade": _grade(p["n"]), "skills": p["skills"]}
+                     for p in projects[:MAX_PROJECTS]],
+    }

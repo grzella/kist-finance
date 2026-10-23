@@ -184,3 +184,77 @@ def test_match_finds_evidence_per_skill_and_keeps_lines_short(tmp_path):
     assert {"dep", "path"} <= kinds
     assert all(len(d) <= 100 for _, d in hits["evals"] + hits["rag"])
     assert "prompting" not in hits                                   # nothing to see there
+
+
+# ---------- 3. statuses, score, project grades ----------
+
+def src(name="p", **kw):
+    import ai_learning as al
+    return al._source(name, kw.pop("origin", "local"), **kw)
+
+
+def test_empty_evidence_scores_zero_and_everything_is_missing():
+    import ai_learning as al
+    a = al.assess([src()])
+    assert a["score"] == 0.0 and a["level"] == 0 and a["level_name"] == "Observer"
+    assert {s["status"] for s in a["skills"]} == {"missing"} and a["projects"] == []
+    assert al.assess([])["score"] == 0.0
+
+
+def test_status_thresholds_partial_on_one_hit_have_on_three_across_two_kinds():
+    import ai_learning as al
+    one = {s["id"]: s for s in al.assess([src(deps="ragas")])["skills"]}
+    assert one["evals"]["status"] == "partial" and one["evals"]["evidence"] == ["p · dep: ragas"]
+    one_kind = {s["id"]: s for s in al.assess([src(commits=["eval one", "gold set two", "benchmark three"])])["skills"]}
+    assert one_kind["evals"]["status"] == "partial"                  # several hits but a single kind
+    strong = {s["id"]: s for s in al.assess([src(deps="ragas", paths=["evals/gold.jsonl"],
+                                                 commits=["eval harness"])])["skills"]}
+    assert strong["evals"]["status"] == "have"
+
+
+def test_hits_from_several_repos_add_up_and_evidence_is_capped_and_deduped():
+    import ai_learning as al
+    a = al.assess([src("one", deps="ragas"), src("two", paths=["evals/a.json"], commits=["eval harness"])])
+    ev = {s["id"]: s for s in a["skills"]}["evals"]
+    assert ev["status"] == "have"
+    assert ev["evidence"] == ["one · dep: ragas", "two · path: evals/a.json", "two · commit: eval harness"]
+    many = al.assess([src(paths=[f"evals/{i}.json" for i in range(9)], deps="ragas deepeval promptfoo")])
+    assert len({s["id"]: s for s in many["skills"]}["evals"]["evidence"]) <= 3
+
+
+def test_score_is_the_weighted_share_of_the_scale():
+    import ai_learning as al
+    total = sum(s["weight"] for s in al.SKILLS)
+    a = al.assess([src(deps="ragas", paths=["evals/gold.jsonl"], commits=["eval harness"])])
+    st = {s["id"]: s["status"] for s in a["skills"]}
+    assert st["evals"] == "have"
+    earned = sum(s["weight"] * {"have": 1, "partial": .5, "missing": 0}[st[s["id"]]] for s in al.SKILLS)
+    assert a["score"] == round(5 * earned / total, 1) and 0 < a["score"] < 5
+    assert a["level"] == int(a["score"]) and a["level_name"] == al.LEVELS[a["level"]]["name"]
+    assert a["target"] == min(5, a["level"] + 1)
+    assert a["counts"] == {k: sum(1 for v in st.values() if v == k) for k in ("have", "partial", "missing")}
+
+
+def test_everything_present_caps_at_five():
+    import ai_learning as al
+    blob = " ".join(f for s in al.SKILLS for f in s.get("dep", []))
+    paths = ["docs/a.md", "evals/gold.jsonl", "prompts/a.txt", "rag/a.py", "agents/a.py", "n8n/a.json",
+             "llm_log.py", "guardrails.py", "retrieval/e.py"]
+    a = al.assess([src(deps=blob, paths=paths, commits=["eval", "rag", "agent", "prompt", "cost", "docs"],
+                       readme="llm rag agent injection ollama n8n automation json schema latency guideline")])
+    assert a["score"] == 5.0 and a["level"] == 5 and a["target"] == 5
+
+
+def test_projects_are_graded_by_how_many_skills_they_show_and_empty_ones_dropped():
+    import ai_learning as al
+    rich = src("rich", deps="chromadb ragas openai langgraph pydantic", paths=["evals/a.json"],
+               commits=["prompt tweak"], readme="rag with ollama")
+    thin = src("thin", deps="openai")
+    nothing = src("nothing")
+    a = al.assess([nothing, thin, rich])
+    by = {p["name"]: p for p in a["projects"]}
+    assert set(by) == {"rich", "thin"}
+    assert by["rich"]["grade"] in ("A", "B") and by["thin"]["grade"] == "D"
+    assert [p["name"] for p in a["projects"]] == ["rich", "thin"]    # best first
+    assert by["thin"]["skills"] == ["Calling models from code"] and by["thin"]["origin"] == "local"
+    assert len(al.assess([src(f"p{i}", deps="openai") for i in range(9)])["projects"]) == 6
