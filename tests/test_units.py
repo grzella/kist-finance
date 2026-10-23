@@ -788,3 +788,36 @@ def test_unsourced_numbers_flags_only_numbers_missing_from_evidence():
     got = db_tools.unsourced_numbers("1 280,00 and 5,6% over 3 goals, about 1,3 m in 2026",
                                      "balance 1280.0; rate 5.60; year 2026")
     assert got == ["1,3"]
+
+
+def test_ai_learning_roundtrip_keeps_assessment_and_state_apart(client):
+    import json, planner
+    planner.set_settings({"analysis_ai_learning": json.dumps({"as_of": "2026-01-01", "scale": [], "score": 2})})
+    try:
+        r = client.put("/api/ai-learning/state", json={
+            "skills": {"s1": "have", "s2": "bogus", "s3": "missing"},
+            "certs": {"c1": "done", "c2": "—", "c3": "in progress"},
+            "log": [{"date": "2026-02-03T99", "text": "  tried RAG  "}, {"date": "2026-02-04", "text": "  "}, "junk"]})
+        assert r.status_code == 200
+        d = client.get("/api/ai-learning").get_json()
+        assert d["content"]["score"] == 2                      # a state write never touches the assessment
+        assert d["state"]["skills"] == {"s1": "have", "s3": "missing"}   # unknown statuses dropped
+        assert d["state"]["certs"] == {"c1": "done", "c3": "in progress"}
+        assert d["state"]["log"] == [{"date": "2026-02-03", "text": "tried RAG"}]
+    finally:
+        planner.set_settings({"analysis_ai_learning": "", "ai_learning_state": ""})
+
+
+def test_ai_learning_empty_and_bad_body(client):
+    d = client.get("/api/ai-learning").get_json()
+    assert d == {"content": {}, "state": {}}                   # fresh install: the view shows how to start
+    assert client.put("/api/ai-learning/state", json=[1, 2]).status_code == 200   # not an object: stored empty
+    assert client.get("/api/ai-learning").get_json()["state"] == {"skills": {}, "certs": {}, "log": []}
+    import planner
+    planner.set_settings({"ai_learning_state": ""})
+
+
+def test_career_module_owns_the_ai_learning_view(client):
+    cfg = client.get("/api/app-config").get_json()
+    mod = next(m for m in cfg["registry"] if m["id"] == "career")
+    assert "ailearn" in mod["views"]

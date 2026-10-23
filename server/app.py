@@ -1187,6 +1187,42 @@ def rsu_analysis():
     return _analysis("rsu_vest_analysis")
 
 
+SKILL_STATES = ("have", "partial", "missing")
+CERT_STATES = ("planned", "in progress", "done")
+
+
+def _clean_ai_learning_state(body):
+    """The browser owns this blob (status dropdowns + a progress log), so only known values
+    and bounded strings get stored; it is rendered back into the DOM by ailearn.js."""
+    def pick(src, allowed):
+        src = src if isinstance(src, dict) else {}
+        return {str(k)[:60]: v for k, v in src.items() if v in allowed}
+    log = []
+    for e in (body.get("log") if isinstance(body.get("log"), list) else [])[-200:]:
+        if isinstance(e, dict) and str(e.get("text") or "").strip():
+            log.append({"date": str(e.get("date") or "")[:10], "text": str(e["text"]).strip()[:500]})
+    return {"skills": pick(body.get("skills"), SKILL_STATES),
+            "certs": pick(body.get("certs"), CERT_STATES), "log": log}
+
+
+@app.get("/api/ai-learning")
+def ai_learning_get():
+    """AI learning tab: the assessment (authored by you or any AI assistant, `analysis_ai_learning`)
+    plus your own progress (`ai_learning_state`), kept apart so a refreshed assessment never
+    overwrites what you ticked off."""
+    return jsonify({"content": planner.get_json_setting("analysis_ai_learning", {}),
+                    "state": planner.get_json_setting("ai_learning_state", {})})
+
+
+@app.put("/api/ai-learning/state")
+def ai_learning_state_put():
+    import json as _json
+    body = request.get_json(force=True)
+    state = _clean_ai_learning_state(body if isinstance(body, dict) else {})
+    planner.set_settings({"ai_learning_state": _json.dumps(state, ensure_ascii=False)})
+    return jsonify({"ok": True})
+
+
 @app.get("/api/analysis/<name>")
 def analysis(name):
     return _analysis("analysis_" + name)

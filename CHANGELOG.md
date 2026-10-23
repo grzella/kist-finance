@@ -6,6 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ## [Unreleased]
 
 ### Added (2026-10-23)
+- **🧠 AI learning tab** (Career module, `#ailearn`, `static/js/views/ailearn.js`): a 0-5 level scale with a verdict, graded projects, a skill map with have / partial / missing statuses, courses and certificates by priority and format, a daily / weekly / quarterly reading routine, a 12-month plan and a progress log. The assessment lives in the `analysis_ai_learning` setting (written by you or any AI assistant); your statuses and log live in `ai_learning_state` (`GET /api/ai-learning`, `PUT /api/ai-learning/state`, values validated server-side), so a refreshed assessment never overwrites your progress. Linked from the Career tab, listed in the data inventory, covered by the XSS view checks. The demo ships a sample assessment for "Alex" with a little progress already logged.
 - **README screenshots** of Ratios, the net-worth forecast cone and forecast calibration (`docs/screenshots/`), taken from the fake demo persona by `scripts/screenshots.py` (headless Playwright against the static demo build).
 
 ### Fixed (2026-10-08)

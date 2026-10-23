@@ -264,6 +264,7 @@ def data_inventory():
     brief_asof, brief_has = setting_asof("analysis_market_brief")
     vest_asof, vest_has = setting_asof("rsu_vest_analysis", "vest_month")
     prop_asof, prop_has = setting_asof("analysis_property")
+    ail_asof, ail_has = setting_asof("analysis_ai_learning")
     ft_c, ft_last = cnt_last("forecast_track", "made_on")
     llm_c, llm_last = cnt_last("llm_log", "ts")
     import llm_log
@@ -331,6 +332,8 @@ def data_inventory():
                  "per vest (~quarterly)", vest_asof, note="earnings, guidance, targets" if vest_has else "none"),
             item("Goal analysis (e.g. property)", "claude", "app_settings: analysis_property",
                  "on demand / rarely", prop_asof, note="deep analysis" if prop_has else "none"),
+            item("AI learning assessment", "claude", "app_settings: analysis_ai_learning",
+                 "quarterly", ail_asof, note="skill map, courses, sources" if ail_has else "none"),
          ]},
         {"key": "manual_reg", "title": "\U0001F7E1 Manual \u2014 regular (what we want to reduce)",
          "note": "The only things you actually enter each month. Goal: bring this down to the minimum.",

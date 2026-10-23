@@ -316,7 +316,7 @@ def test_request_caps_convergence_check_recognises_hardened(client):
 def test_view_escaping_check_recognises_hardened():
     import security_review as sr
     items = sr._check_view_escaping(sr._repo_root())
-    assert [i["status"] for i in items] == ["pass"] * 7, items
+    assert [i["status"] for i in items] == ["pass"] * 8, items
 
 
 def test_view_escaping_sweep_recognises_hardened():
@@ -583,3 +583,19 @@ def test_supabase_rows_with_a_non_iso_date_are_dropped(client, monkeypatch):
     monkeypatch.setattr(market, "_topup_from_yahoo", lambda: 0)
     market.refresh_cache()
     assert market.prices("ZZOK") and not market.prices("ZZBAD")
+
+
+def test_view_escaping_check_flags_ailearn_raw_sink(tmp_path):
+    import security_review as sr
+    views = tmp_path / "static" / "js" / "views"
+    views.mkdir(parents=True)
+    (views / "ailearn.js").write_text("`<p>${a.verdict}</p><i>${e.text}</i>`", encoding="utf-8")
+    items = sr._check_view_escaping(tmp_path)
+    assert any(i["status"] == "fail" and "ailearn.js" in i["title"] for i in items), items
+
+
+@pytest.mark.parametrize("sink", ["${a.verdict}", "${c.why}", "${c.name}", "${s.how}",
+                                  "${e.text}", "${x.what}", "${r.gap}", "${a.format_note}"])
+def test_ailearn_fields_are_escaped(sink):
+    src = (_VIEWS / "ailearn.js").read_text(encoding="utf-8")
+    assert sink not in src, f"ailearn.js: raw {sink} = stored XSS (assessment is LLM text, log is free text)"

@@ -16,6 +16,7 @@ const views = {
   property: renderProperty,
   career: renderCareer,
   commits: renderCommits,
+  ailearn: renderAiLearn,
   offers: renderOffers,
   debts: renderDebts,
   business: renderBusiness,

@@ -257,6 +257,124 @@ planner.set_settings({"analysis_contributions": json.dumps({
         "Answer two Discussions questions — visibility compounds.",
         "Then take one good-first-issue and see it through review."]})})
 
+# --- AI learning tab (Career): a sample assessment for Alex + a little progress of their own ---
+planner.set_settings({"analysis_ai_learning": json.dumps({
+    "as_of": TODAY.isoformat(), "score": 2.6, "target": 4,
+    "score_label": "Practitioner, edging toward Orchestrator",
+    "scale": [
+        {"lvl": 0, "name": "Observer", "desc": "Reads about AI, has not changed how they work."},
+        {"lvl": 1, "name": "User", "desc": "Uses chat assistants daily for drafting and research."},
+        {"lvl": 2, "name": "Practitioner", "desc": "Has repeatable prompts and small automations; checks outputs against evidence."},
+        {"lvl": 3, "name": "Orchestrator", "desc": "Chains models and tools into workflows with evals, owns the quality bar."},
+        {"lvl": 4, "name": "Architect", "desc": "Designs AI systems end to end: data, retrieval, evals, cost, failure modes."},
+        {"lvl": 5, "name": "Authority", "desc": "Others cite and reuse their methods; shapes the practice beyond their team."}],
+    "verdict": "Alex prototypes with AI every week and already treats outputs as claims to verify, which is the "
+               "hard part of level 2. The gap to level 3 is measurement: workflows exist but nobody scores them. "
+               "One small eval set per workflow, plus a written postmortem each quarter, closes most of it.",
+    "projects": [
+        {"name": "alex/discovery-copilot", "grade": "B+",
+         "what": "Interview-notes summariser with a retrieval step over past research.",
+         "gap": "No eval set: nobody knows whether v2 beat v1. Add 30 labelled questions."},
+        {"name": "alex/pm-metrics-bot", "grade": "B",
+         "what": "Weekly product metrics digest written by a model from SQL results.",
+         "gap": "Numbers are not cross-checked against the query output; add a verifier pass."},
+        {"name": "alex/prompt-notebook", "grade": "C+",
+         "what": "A folder of favourite prompts.",
+         "gap": "Unversioned and unscored. Turn the five best into tested templates."}],
+    "skills": [
+        {"id": "prompting", "area": "Foundations", "name": "Structured prompting", "status": "have",
+         "how": "Roles, examples and output schemas used daily; keep a versioned template library.",
+         "link": "https://www.promptingguide.ai/"},
+        {"id": "llm-limits", "area": "Foundations", "name": "Failure modes and limits", "status": "partial",
+         "how": "Knows hallucination and context limits in theory; practise by writing down three failures per month."},
+        {"id": "cost", "area": "Foundations", "name": "Token cost and latency budgeting", "status": "missing",
+         "how": "Estimate cost per task before building; compare a small local model with a hosted one on the same task."},
+        {"id": "rag", "area": "Building", "name": "Retrieval (RAG) basics", "status": "partial",
+         "how": "Built one working pipeline; next is chunking experiments and hybrid keyword + embedding search.",
+         "link": "https://huggingface.co/learn"},
+        {"id": "tools", "area": "Building", "name": "Tool use and agents", "status": "partial",
+         "how": "Wire a model to two real tools (SQL, calendar) with a hard step limit and logged calls."},
+        {"id": "local", "area": "Building", "name": "Running a local model", "status": "have",
+         "how": "Runs a quantised model locally for private data.",
+         "link": "https://github.com/ggml-org/llama.cpp"},
+        {"id": "evals", "area": "Quality", "name": "Evals and regression sets", "status": "missing",
+         "how": "A gold set of 30 to 50 cases per workflow, scored on every prompt or model change.",
+         "link": "https://hamel.dev/blog/posts/evals/"},
+        {"id": "obs", "area": "Quality", "name": "Logging and review of real usage", "status": "partial",
+         "how": "Prompt log exists; add ratings and a monthly review of the worst ten answers."},
+        {"id": "safety", "area": "Quality", "name": "Data privacy and prompt injection", "status": "partial",
+         "how": "Keeps private data local; learn to treat retrieved text as untrusted input."},
+        {"id": "teach", "area": "Leadership", "name": "Teaching the team", "status": "missing",
+         "how": "Run one 45-minute session on a workflow that saved real time, with the numbers."},
+        {"id": "policy", "area": "Leadership", "name": "Team usage guidelines", "status": "missing",
+         "how": "A one-page policy: what data may go where, what must be verified, who reviews."}],
+    "certs": [
+        {"id": "dlai", "name": "Short courses on agents and evals", "provider": "DeepLearning.AI",
+         "cost": "free", "time": "2 to 3 h each", "format": "online", "priority": "high",
+         "why": "Cheapest way to fill the evals and tool-use gaps with working notebooks.",
+         "link": "https://www.deeplearning.ai/short-courses/"},
+        {"id": "hf", "name": "Open-source ML course (retrieval and fine-tuning modules)", "provider": "Hugging Face",
+         "cost": "free", "time": "self-paced, ~20 h", "format": "online", "priority": "medium",
+         "why": "Gives the vocabulary to argue with an ML engineer about retrieval quality.",
+         "link": "https://huggingface.co/learn"},
+        {"id": "cohort", "name": "Applied AI evals cohort", "provider": "Independent instructors (sample entry)",
+         "cost": "$800 to $1,500", "time": "4 weeks, 3 h/week", "format": "online", "priority": "medium",
+         "why": "Worth the learning budget only if the evals gap is still open after the free courses.",
+         "link": "https://hamel.dev/"},
+        {"id": "conf", "name": "Regional applied-AI conference", "provider": "Sample entry",
+         "cost": "$450 plus travel", "time": "2 days", "format": "in person", "priority": "low",
+         "why": "Good for the network; talks are recorded, so skip unless you plan to present.",
+         "link": "https://www.latent.space/"},
+        {"id": "workshop", "name": "Hands-on agents workshop", "provider": "Sample entry",
+         "cost": "$300", "time": "1 day", "format": "hybrid", "priority": "medium",
+         "why": "One day with a mentor beats three weeks of tutorials for tool use.",
+         "link": "https://www.deeplearning.ai/"},
+        {"id": "generic", "name": "Generic 'AI for managers' certificate", "provider": "Sample entry",
+         "cost": "$1,200", "time": "6 weeks", "format": "online", "priority": "skip",
+         "why": "Broad slides, no artefacts; nothing you cannot get from the free courses above.",
+         "link": "https://www.deeplearning.ai/"}],
+    "format_note": "Sample entries: in your install the assessment lists courses you can actually reach, "
+                   "with the employer learning budget in mind.",
+    "sources": {
+        "method": "Three layers so that staying current costs minutes, not evenings: a daily skim, a weekly deep read, a quarterly reset.",
+        "daily": [
+            {"name": "Simon Willison's weblog", "link": "https://simonwillison.net/",
+             "what": "Hands-on notes on new models and tools, with working examples."}],
+        "weekly": [
+            {"name": "Latent Space", "link": "https://www.latent.space/",
+             "what": "Interviews and write-ups from people shipping AI systems."},
+            {"name": "Hamel Husain's blog", "link": "https://hamel.dev/blog/",
+             "what": "Practical evals and debugging of LLM applications."}],
+        "quarterly": [
+            {"name": "Prompting Guide", "link": "https://www.promptingguide.ai/",
+             "what": "Re-read the techniques list and retire what newer models made unnecessary."}],
+        "services": [
+            {"name": "Hugging Face papers", "link": "https://huggingface.co/papers",
+             "what": "Daily curated research papers, upvoted by practitioners."},
+            {"name": "GitHub trending (Python)", "link": "https://github.com/trending/python",
+             "what": "What the open-source community is building this week."}]},
+    "routine": [
+        "Monday: pick one workflow to measure this week.",
+        "Friday: write the log entry, even if the result was negative.",
+        "Monthly: review the ten worst answers from the prompt log.",
+        "Quarterly: re-rate the skill map and archive what stopped mattering."],
+    "plan_12m": [
+        "Months 1 to 2: build a 30-case eval set for the discovery copilot and score v1 against v2.",
+        "Months 3 to 4: add a verifier pass to the metrics bot and cut manual checking.",
+        "Months 5 to 6: run a local vs hosted cost comparison on two workflows.",
+        "Months 7 to 9: teach one 45-minute team session and write the team usage guideline.",
+        "Months 10 to 12: publish a short write-up of the eval method and what it caught."]})})
+planner.set_settings({"ai_learning_state": json.dumps({
+    "skills": {"rag": "partial", "tools": "partial"},
+    "certs": {"dlai": "in progress", "hf": "planned"},
+    "log": [
+        {"date": (TODAY - timedelta(days=41)).isoformat(),
+         "text": "Wrote 12 interview-summary questions with expected answers; v1 passes 8 of 12. Baseline recorded."},
+        {"date": (TODAY - timedelta(days=17)).isoformat(),
+         "text": "Hybrid keyword + embedding search on the research folder: relevant notes in the top 5 went from 7 to 10 of 12. Adopting."},
+        {"date": (TODAY - timedelta(days=4)).isoformat(),
+         "text": "Metrics bot quoted a number that was not in the query result. Added a verifier pass; it flagged 2 of 9 digests."}]})})
+
 # --- fake performance-marketing intelligence (business module) ---
 MARKETING = {
     "weeks": [

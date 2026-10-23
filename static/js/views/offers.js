@@ -27,7 +27,8 @@ async function renderOffers(el) {
     <div style="margin-bottom:10px">
       <a href="#career" class="pill pos">🧭 Long-term career analysis →</a>
       <a href="#commits" class="pill pos" style="margin-left:6px">
-        🧑‍💻 Committing${gh ? ` — today ${gh.today}, streak ${gh.streak}🔥` : ""} →</a></div>
+        🧑‍💻 Committing${gh ? ` — today ${gh.today}, streak ${gh.streak}🔥` : ""} →</a>
+      <a href="#ailearn" class="pill pos" style="margin-left:6px">🧠 AI learning →</a></div>
     ${statsBar}
     <div class="muted" style="margin:6px 0 12px;font-size:.88em">Reference point (auto): <b>${s ? fmt.pln(s.current) : "—"}</b>/mo —
       current gross total (base + bonus + RSU + cash vest, computed dynamically from the RSU stock price). Offer deltas and goal impact are computed against this.</div>
