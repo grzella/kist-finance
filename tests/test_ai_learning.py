@@ -342,3 +342,73 @@ def test_the_prompt_carries_only_computed_facts_not_file_contents(monkeypatch):
     al.build([src("copilot", readme="TOP-SECRET-README-BODY rag", **RICH)], today="2026-10-23")
     assert "TOP-SECRET-README-BODY" not in seen["p"] and "copilot" in seen["p"] and "evals" in seen["p"].lower()
     assert len(seen["p"]) < 8000
+
+
+# ---------- 5. scoring endpoint and history ----------
+
+@pytest.fixture
+def one_repo(client, clean_settings, tmp_path, monkeypatch):
+    import ai_learning as al, llm_local
+    repo = make_repo(tmp_path / "copilot", {"requirements.txt": "chromadb\nragas\n", "evals/gold.jsonl": "{}"},
+                     commits=("first", "add eval harness"))
+    client.put("/api/ai-learning/repos", json={"repos": [str(repo)]})
+    monkeypatch.setattr(al, "collect_gh", lambda: [])
+    monkeypatch.setattr(llm_local, "chat_json", lambda *a, **k: None)
+    return repo
+
+
+def test_score_without_any_source_is_a_helpful_400(client, clean_settings, monkeypatch):
+    import ai_learning as al
+    monkeypatch.setattr(al, "collect_gh", lambda: [])
+    r = client.post("/api/ai-learning/score")
+    assert r.status_code == 400 and "gh auth login" in r.get_json()["error"]
+    assert client.get("/api/ai-learning").get_json()["history"] == []
+
+
+def test_score_writes_the_assessment_and_appends_a_history_point(client, one_repo):
+    import planner
+    planner.set_settings({"ai_learning_state": json.dumps({"skills": {"rag": "have"}, "certs": {}, "log": []})})
+    r = client.post("/api/ai-learning/score")
+    assert r.status_code == 200
+    out = r.get_json()
+    assert out["ok"] and out["point"]["score"] == out["assessment"]["score"] > 0
+    d = client.get("/api/ai-learning").get_json()
+    assert d["content"]["generated"]["by"] == "repos" and d["content"]["skills"]
+    assert d["state"]["skills"] == {"rag": "have"}                    # your own statuses are never touched
+    assert len(d["history"]) == 1
+    h = d["history"][0]
+    assert set(h) == {"date", "score", "level", "have", "partial", "missing", "repos", "narration"}
+    assert h["repos"] == 1 and h["narration"] == "template"
+    client.post("/api/ai-learning/score")
+    assert len(client.get("/api/ai-learning").get_json()["history"]) == 2
+
+
+def test_history_is_capped_and_sanitised_on_read(client, one_repo):
+    import planner
+    junk = [{"date": "2026-01-01T99", "score": "x", "level": 2, "have": 1, "partial": 2, "missing": 3,
+             "repos": 1, "narration": "<script>"}, "bad", {"score": 2.5}]
+    planner.set_settings({"ai_learning_history": json.dumps(junk + [{"date": "2026-02-01", "score": 1.0}] * 130)})
+    hist = client.get("/api/ai-learning").get_json()["history"]
+    assert len(hist) == 120 and all(isinstance(h["score"], float) for h in hist)
+    client.post("/api/ai-learning/score")
+    hist = client.get("/api/ai-learning").get_json()["history"]
+    assert len(hist) == 120 and hist[-1]["narration"] == "template"
+
+
+def test_a_second_score_while_one_runs_is_refused_and_the_lock_is_released(client, one_repo, monkeypatch):
+    import ai_learning as al
+    assert al._LOCK.acquire(blocking=False)
+    try:
+        assert client.post("/api/ai-learning/score").status_code == 409
+    finally:
+        al._LOCK.release()
+    monkeypatch.setattr(al, "build", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError):
+        al.run_score()
+    monkeypatch.undo()
+    assert client.post("/api/ai-learning/score").status_code == 200   # not stuck behind a crashed run
+
+
+def test_score_is_blocked_cross_origin(client, one_repo):
+    r = client.post("/api/ai-learning/score", headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403

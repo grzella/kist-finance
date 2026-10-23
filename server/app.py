@@ -1210,8 +1210,10 @@ def ai_learning_get():
     """AI learning tab: the assessment (authored by you or any AI assistant, `analysis_ai_learning`)
     plus your own progress (`ai_learning_state`), kept apart so a refreshed assessment never
     overwrites what you ticked off."""
+    import ai_learning
     return jsonify({"content": planner.get_json_setting("analysis_ai_learning", {}),
-                    "state": planner.get_json_setting("ai_learning_state", {})})
+                    "state": planner.get_json_setting("ai_learning_state", {}),
+                    "history": ai_learning.history()})
 
 
 @app.put("/api/ai-learning/state")
@@ -1236,6 +1238,15 @@ def ai_learning_repos_put():
     import ai_learning
     result, err = ai_learning.set_repos(request.get_json(force=True, silent=True))
     return (jsonify({"error": err}), 400) if err else jsonify(result)
+
+
+@app.post("/api/ai-learning/score")
+def ai_learning_score():
+    """Score from your repositories: evidence, statuses and the 0-5 level are computed in code,
+    the local model only writes the narration. Appends one point to the history."""
+    import ai_learning
+    result, status = ai_learning.run_score()
+    return jsonify(result), status
 
 
 @app.get("/api/analysis/<name>")

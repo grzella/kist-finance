@@ -9,6 +9,8 @@ import json
 import os
 import re
 import subprocess
+import threading
+from datetime import date
 from pathlib import Path
 
 import planner
@@ -462,3 +464,50 @@ def build(sources, today, narrate=True):
         "generated": {"by": "repos", "narration": "local model" if result else "template",
                       "sources": {o: sum(1 for s in sources if s["origin"] == o) for o in ("local", "gh")}},
     }
+
+
+# ---------- scoring run and history ----------
+
+_LOCK = threading.Lock()   # one run at a time: git, gh and the model can take a while
+MAX_HISTORY = 120
+NO_SOURCES = ("Nothing to score yet: add repositories above or log in to GitHub with `gh auth login`, "
+              "then try again.")
+
+
+def history():
+    """Past scoring points, oldest first, shaped and capped on read (the setting is plain text
+    that other writers could have touched)."""
+    out = []
+    for h in planner.get_json_setting("ai_learning_history", []) or []:
+        if not isinstance(h, dict):
+            continue
+        try:
+            out.append({"date": str(h.get("date") or "")[:10], "score": float(h["score"]),
+                        "level": int(h.get("level") or 0), "have": int(h.get("have") or 0),
+                        "partial": int(h.get("partial") or 0), "missing": int(h.get("missing") or 0),
+                        "repos": int(h.get("repos") or 0), "narration": str(h.get("narration") or "")[:20]})
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out[-MAX_HISTORY:]
+
+
+def run_score():
+    """Collect evidence, score, narrate, store the assessment and append one history point.
+    Returns (result, http status). Your own statuses and log (`ai_learning_state`) are never touched."""
+    if not _LOCK.acquire(blocking=False):
+        return {"error": "A scoring run is already in progress."}, 409
+    try:
+        sources = collect_sources()
+        if not sources:
+            return {"error": NO_SOURCES}, 400
+        a = build(sources, date.today().isoformat())
+        point = {"date": a["as_of"], "score": a["score"], "level": int(a["score"]),
+                 "have": sum(s["status"] == "have" for s in a["skills"]),
+                 "partial": sum(s["status"] == "partial" for s in a["skills"]),
+                 "missing": sum(s["status"] == "missing" for s in a["skills"]),
+                 "repos": len(sources), "narration": a["generated"]["narration"]}
+        planner.set_settings({"analysis_ai_learning": json.dumps(a, ensure_ascii=False),
+                              "ai_learning_history": json.dumps(history() + [point])})
+        return {"ok": True, "assessment": a, "point": point}, 200
+    finally:
+        _LOCK.release()
