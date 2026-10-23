@@ -1223,6 +1223,21 @@ def ai_learning_state_put():
     return jsonify({"ok": True})
 
 
+@app.get("/api/ai-learning/repos")
+def ai_learning_repos_get():
+    import ai_learning
+    return jsonify(ai_learning.repos_config())
+
+
+@app.put("/api/ai-learning/repos")
+def ai_learning_repos_put():
+    """The one browser-facing writer for `commit_repos` / `commit_author` (the generic settings
+    writer blocks them): only existing git working copies are stored, at most 20."""
+    import ai_learning
+    result, err = ai_learning.set_repos(request.get_json(force=True, silent=True))
+    return (jsonify({"error": err}), 400) if err else jsonify(result)
+
+
 @app.get("/api/analysis/<name>")
 def analysis(name):
     return _analysis("analysis_" + name)
