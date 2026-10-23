@@ -72,3 +72,71 @@ def test_ai_mode_only_local_never_calls_cloud(client, monkeypatch):
     monkeypatch.setattr(llm_local, "chat_with_tools", lambda *a, **k: None)
     out = app._ai_answer("stay local", use_rag=False)
     assert called["cloud"] is False and out["best"] == "local only"
+
+
+class _FakeResp:
+    """Stand-in for a llama-server response: no LLM server in tests."""
+    def __init__(self, body):
+        import json
+        self._raw = json.dumps(body).encode()
+
+    def read(self):
+        return self._raw
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _fake_server(monkeypatch, usage):
+    import llm_local
+    body = {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
+    if usage is not None:
+        body["usage"] = usage
+    monkeypatch.setattr(llm_local.urllib.request, "urlopen", lambda *a, **k: _FakeResp(body))
+    monkeypatch.setattr(llm_local, "_MODEL_NAME", "fake")
+
+
+def test_llm_log_stores_caller_latency_and_tokens(client, monkeypatch):
+    """An entry carries the calling function, the pipeline time and the tokens from llama.cpp `usage`."""
+    import app, llm_log
+    _fake_server(monkeypatch, {"prompt_tokens": 12, "completion_tokens": 5})
+    app._ai_answer("question with tokens", use_rag=False, caller="test_caller")
+    row = next(e for e in llm_log.recent(10) if e["prompt"] == "question with tokens")
+    assert row["caller"] == "test_caller"
+    assert row["tokens_in"] == 12 and row["tokens_out"] == 5 and row["llm_calls"] == 1
+    assert row["duration_ms"] >= 0
+    by = {r["caller"]: r for r in llm_log.stats_by_caller()}
+    assert by["test_caller"]["tokens_in"] >= 12
+
+
+def test_llm_log_tokens_are_null_when_server_returns_no_usage(client, monkeypatch):
+    """A server without `usage`: tokens are NULL (not 0), time and call count stay."""
+    import app, llm_log
+    _fake_server(monkeypatch, None)
+    app._ai_answer("question without usage", use_rag=False, caller="test_caller")
+    row = next(e for e in llm_log.recent(10) if e["prompt"] == "question without usage")
+    assert row["tokens_in"] is None and row["tokens_out"] is None
+    assert row["llm_calls"] == 1
+
+
+def test_llm_log_migration_keeps_old_rows(client):
+    """A database from before tracing: ALTER adds the columns, the old entry survives with NULLs."""
+    import engine_bridge as eb, llm_log
+    eb._exec("alter table llm_log rename to llm_log_keep")
+    eb._exec("""create table llm_log (id text primary key, ts text not null, mode text, prompt text,
+        rag_used integer default 0, local_ok integer, local_text text, cloud_ok integer,
+        cloud_text text, synthesis_text text, rating integer, lessons text)""")
+    eb._exec("insert into llm_log (id, ts, prompt) values ('old1', '2026-01-01T00:00:00', 'old question')")
+    llm_log._MIGRATED = False
+    try:
+        row = next(e for e in llm_log.recent(5) if e["id"] == "old1")
+        assert row["caller"] is None and row["duration_ms"] is None and row["tokens_in"] is None
+        assert llm_log.stats_by_caller() == [
+            {"caller": "unknown", "n": 1, "avg_ms": None, "max_ms": None, "tokens_in": 0, "tokens_out": 0}]
+    finally:
+        eb._exec("drop table llm_log")
+        eb._exec("alter table llm_log_keep rename to llm_log")
+        llm_log._MIGRATED = True

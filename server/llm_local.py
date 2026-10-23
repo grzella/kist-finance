@@ -12,11 +12,39 @@ gracefully to "offline" when no server is up.
 """
 import json
 import os
+import threading
+import time
 import urllib.request
 
 BASE = os.environ.get("LOCAL_LLM_URL", "http://127.0.0.1:8080/v1")
 KEY = os.environ.get("LOCAL_LLM_KEY", "")
 LAST_ERROR = ""  # why the last chat() returned None: every failure used to look like "AI offline"
+
+
+# Trace of model calls in the current thread (Flask serves requests concurrently, so not a
+# global list like LAST_ERROR). The AI pipeline calls trace_start(), then trace_take().
+_trace = threading.local()
+
+
+def trace_start():
+    _trace.calls = []
+
+
+def trace_take():
+    """Calls since the last trace_start(): [{ms, tokens_in, tokens_out}].
+    Tokens are None when the server returned no `usage`."""
+    calls, _trace.calls = getattr(_trace, "calls", []), []
+    return calls
+
+
+def _note(started, out=None):
+    calls = getattr(_trace, "calls", None)
+    if calls is None:  # nobody is tracing (a call from outside the AI pipeline)
+        return
+    usage = (out or {}).get("usage") or {}
+    calls.append({"ms": round((time.monotonic() - started) * 1000),
+                  "tokens_in": usage.get("prompt_tokens"),
+                  "tokens_out": usage.get("completion_tokens")})
 
 
 def _headers(extra=None):
@@ -80,6 +108,8 @@ def chat(prompt, system=None, max_tokens=400, temperature=0.2, json_schema=None,
     req = urllib.request.Request(BASE + "/chat/completions", data=json.dumps(payload).encode(),
                                  headers=_headers({"Content-Type": "application/json"}))
     global LAST_ERROR
+    started = time.monotonic()
+    out = None
     try:
         with urllib.request.urlopen(req, timeout=120) as r:
             out = json.loads(r.read())
@@ -89,6 +119,8 @@ def chat(prompt, system=None, max_tokens=400, temperature=0.2, json_schema=None,
     except Exception as e:
         LAST_ERROR = f"{type(e).__name__}: {str(e)[:120]}"
         return None
+    finally:
+        _note(started, out)  # on errors too: the wait counts
 
 
 def chat_json(prompt, schema, system=None, max_tokens=400, temperature=0.2, think=None):
@@ -124,12 +156,16 @@ def chat_with_tools(prompt, tools, handlers, system=None, max_tokens=700,
         req = urllib.request.Request(BASE + "/chat/completions",
                                      data=json.dumps(payload).encode(),
                                      headers=_headers({"Content-Type": "application/json"}))
+        started = time.monotonic()
+        out = None
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
                 out = json.loads(r.read())
             msg = out["choices"][0]["message"]
         except Exception:
             return None
+        finally:
+            _note(started, out)
         calls = msg.get("tool_calls") or []
         if not calls:
             return msg.get("content") or None  # empty → None, so callers fall back

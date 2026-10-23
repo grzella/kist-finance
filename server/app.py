@@ -1,5 +1,6 @@
 """Kist — local Flask app. Personal data never leaves this machine."""
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -696,16 +697,18 @@ def llm_ask():
     too_big = _cap_prompt_fields(("prompt", prompt), ("system", system))
     if too_big:
         return too_big
-    return jsonify(_ai_answer(prompt, system=system, use_rag=b.get("rag", True)))
+    return jsonify(_ai_answer(prompt, system=system, use_rag=b.get("rag", True), caller="llm_ask"))
 
 
-def _ai_answer(prompt, system=None, use_rag=True):
+def _ai_answer(prompt, system=None, use_rag=True, caller="_ai_answer"):
     """The app's shared AI pipeline: RAG grounding → local model → (both mode:
     cloud + verdict synthesis) → prompt log. Used by /api/llm/ask AND internal
     analyses (e.g. the AI second opinion on recommendations) — the Control
     Center mode governs all of it."""
     import llm_local, llm_cloud, finance_prompt, rag, llm_log
     system = system or finance_prompt.SYSTEM
+    started = time.monotonic()
+    llm_local.trace_start()
     mode = planner.get_setting("ai_mode") or "local"
     if use_rag and planner.get_setting("rag_dirty") == "1":
         try:
@@ -748,7 +751,9 @@ def _ai_answer(prompt, system=None, use_rag=True):
                  "check them): " + ", ".join(unsourced[:6]))
     out["unsourced_numbers"] = unsourced
     out["best"] = best
-    out["log_id"] = llm_log.record(prompt, out)
+    out["log_id"] = llm_log.record(prompt, out, caller=caller,
+                                   duration_ms=round((time.monotonic() - started) * 1000),
+                                   calls=llm_local.trace_take())
     return out
 
 
@@ -771,7 +776,7 @@ def recommendation_ai():
               "Assess them: which do you agree with and why, what would you change, "
               "and which ONE recommendation is missing. Be concise.\n\n"
               f"RECOMMENDATIONS:\n{items}\n\nFACTS: {facts}")
-    out = _ai_answer(prompt)
+    out = _ai_answer(prompt, caller="recommendation_ai")
     stored = {"at": datetime.now().isoformat(timespec="minutes"), "mode": out["mode"],
               "rag_used": out["rag_used"], "text": out.get("best"),
               "by": "synthesis" if out.get("synthesis") else ("cloud" if (out.get("cloud") or {}).get("ok") else ("local (cloud did not answer)" if out["mode"] == "both" else "local"))}
@@ -783,7 +788,8 @@ def recommendation_ai():
 @app.get("/api/llm/log")
 def llm_log_view():
     import llm_log
-    return jsonify({"stats": llm_log.stats(), "recent": llm_log.recent(int(request.args.get("n", 25)))})
+    return jsonify({"stats": llm_log.stats(), "by_caller": llm_log.stats_by_caller(),
+                    "recent": llm_log.recent(int(request.args.get("n", 25)))})
 
 
 @app.get("/api/ai/improve")
