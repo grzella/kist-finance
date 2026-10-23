@@ -311,10 +311,11 @@ MAX_PROJECTS = 6
 
 
 def _status(hits):
-    """have: at least three distinct hits from at least two kinds of evidence (a dependency
-    plus a folder plus a commit is a habit, three commit messages are a mention);
-    partial: any hit; missing: none."""
-    if len(hits) >= 3 and len({h[1] for h in hits}) >= 2:
+    """have: at least three independent signals, where one repository's dependency, folder
+    and commit subject (or the same kind in different repositories) are independent and ten
+    keywords in one README are one (a dependency plus a folder plus a commit is a habit,
+    a keyword-heavy README is a mention); partial: any hit; missing: none."""
+    if len({(h[0], h[1]) for h in hits}) >= 3:
         return "have"
     return "partial" if hits else "missing"
 
@@ -391,16 +392,17 @@ def _gaps(a):
 
 def _template(a):
     gaps = _gaps(a)
-    nxt = " Next: " + " and ".join(g["name"].lower() for g in gaps[:2]) + "." if gaps else ""
+    nxt = " Next: " + ", then ".join(g["name"].lower() for g in gaps[:2]) + "." if gaps else ""
     c = a["counts"]
     verdict = (f"{c['have']} of {len(a['skills'])} skills show clear evidence in your repositories, "
                f"{c['partial']} partial, {c['missing']} missing: level {a['level']}, {a['level_name']}." + nxt)
+    heaviest = [s["name"] for s in sorted(SKILLS, key=lambda s: -s["weight"])]
     notes = {}
     for p in a["projects"]:
-        missing = [g["name"] for g in gaps if g["name"] not in p["skills"]][:2]
+        absent = [n for n in heaviest if n not in p["skills"]][:2]
         notes[p["name"]] = {"what": "Shows: " + ", ".join(p["skills"][:4]) + ".",
-                            "gap": ("No evidence yet for " + " and ".join(missing).lower() + ".") if missing
-                            else "Covers every skill in the rubric."}
+                            "gap": ("No evidence yet for " + " and ".join(n.lower() for n in absent) + ".") if absent
+                            else "Shows every skill in the rubric; make the evidence stronger with tests, evals and logs."}
     return verdict, notes
 
 
@@ -470,7 +472,7 @@ def build(sources, today, narrate=True):
 
 _LOCK = threading.Lock()   # one run at a time: git, gh and the model can take a while
 MAX_HISTORY = 120
-NO_SOURCES = ("Nothing to score yet: add repositories above or log in to GitHub with `gh auth login`, "
+NO_SOURCES = ("Nothing to score yet: add repositories above or log in to GitHub with gh auth login, "
               "then try again.")
 
 

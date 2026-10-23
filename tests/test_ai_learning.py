@@ -193,6 +193,18 @@ def src(name="p", **kw):
     return al._source(name, kw.pop("origin", "local"), **kw)
 
 
+def full_source(name="x"):
+    """Evidence of every kind (dependency, folder, commit, README) for every skill in the rubric."""
+    import ai_learning as al
+    return src(name, deps=" ".join(f for sk in al.SKILLS for f in sk.get("dep", [])),
+               paths=["docs/a.md", "evals/gold.jsonl", "prompts/a.txt", "rag/index.py", "agents/a.py", "n8n/flow.json",
+                      "llm_log.py", "guardrails.py"],
+               commits=["eval gold set", "rag retrieval", "agent tool use", "prompt tweak", "cost latency tokens",
+                        "docs guideline", "llm openai", "json schema grammar", "ollama quantize", "n8n automation",
+                        "injection redact", "prompt log tracing"],
+               readme="llm openai json schema rag agent ollama n8n automation eval benchmark injection prompt log latency guideline")
+
+
 def test_empty_evidence_scores_zero_and_everything_is_missing():
     import ai_learning as al
     a = al.assess([src()])
@@ -237,11 +249,8 @@ def test_score_is_the_weighted_share_of_the_scale():
 
 def test_everything_present_caps_at_five():
     import ai_learning as al
-    blob = " ".join(f for s in al.SKILLS for f in s.get("dep", []))
-    paths = ["docs/a.md", "evals/gold.jsonl", "prompts/a.txt", "rag/a.py", "agents/a.py", "n8n/a.json",
-             "llm_log.py", "guardrails.py", "retrieval/e.py"]
-    a = al.assess([src(deps=blob, paths=paths, commits=["eval", "rag", "agent", "prompt", "cost", "docs"],
-                       readme="llm rag agent injection ollama n8n automation json schema latency guideline")])
+    a = al.assess([full_source()])
+    assert {x["status"] for x in a["skills"]} == {"have"}
     assert a["score"] == 5.0 and a["level"] == 5 and a["target"] == 5
 
 
@@ -288,11 +297,7 @@ def test_certs_target_open_courses_for_the_gaps_only():
     prio = {c["id"]: c["priority"] for c in a["certs"]}
     assert prio["agents-course"] == "high"                           # a missing weight-2 skill
     assert all(c["link"].startswith("https://") and c["format"] == "online" for c in a["certs"])
-    full = al.build([src("x", deps=" ".join(f for s in al.SKILLS for f in s.get("dep", [])),
-                         paths=["docs/a", "evals/g", "prompts/a", "rag/a", "agents/a", "n8n/a", "llm_log.py", "guardrails.py"],
-                         commits=["eval", "rag", "agent", "prompt", "cost", "docs"],
-                         readme="llm injection ollama n8n json schema latency guideline")],
-                    today="2026-10-23", narrate=False)
+    full = al.build([full_source()], today="2026-10-23", narrate=False)
     assert full["certs"] == []
 
 
@@ -412,3 +417,24 @@ def test_a_second_score_while_one_runs_is_refused_and_the_lock_is_released(clien
 def test_score_is_blocked_cross_origin(client, one_repo):
     r = client.post("/api/ai-learning/score", headers={"Origin": "https://evil.example"})
     assert r.status_code == 403
+
+
+def test_one_kind_of_evidence_counts_once_so_a_keyword_heavy_readme_is_not_a_habit():
+    import ai_learning as al
+    noisy = src("p", readme="rag retrieval embedding bm25 rerank " * 3)
+    rag = {s["id"]: s for s in al.assess([noisy])["skills"]}["rag"]
+    assert rag["status"] == "partial" and len(rag["evidence"]) == 3     # shown, but counted once
+    grounded = src("p", readme="rag", paths=["rag/index.py"], deps="chromadb")
+    assert {s["id"]: s for s in al.assess([grounded])["skills"]}["rag"]["status"] == "have"
+
+
+def test_template_gap_names_what_the_project_has_no_evidence_for_heaviest_first():
+    import ai_learning as al
+    a = al.assess([src("copilot", deps="openai")])
+    verdict, notes = al._template(a)
+    assert notes["copilot"]["what"] == "Shows: Calling models from code."
+    assert notes["copilot"]["gap"] == "No evidence yet for evals and regression sets and retrieval (rag)."
+    assert ", then " in verdict or "Next:" in verdict
+    everything = full_source("all")
+    note = al._template(al.assess([everything]))[1]["all"]
+    assert note["gap"].startswith("Shows every skill in the rubric")
