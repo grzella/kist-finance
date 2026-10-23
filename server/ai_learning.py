@@ -351,3 +351,114 @@ def assess(sources):
         "projects": [{"name": p["name"], "origin": p["origin"], "grade": _grade(p["n"]), "skills": p["skills"]}
                      for p in projects[:MAX_PROJECTS]],
     }
+
+
+# ---------- the assembled assessment (same shape the AI learning view renders) ----------
+
+NARRATION_SCHEMA = {
+    "type": "object", "additionalProperties": False, "required": ["verdict", "projects"],
+    "properties": {
+        "verdict": {"type": "string"},
+        "projects": {"type": "array", "items": {
+            "type": "object", "additionalProperties": False, "required": ["name", "what", "gap"],
+            "properties": {"name": {"type": "string"}, "what": {"type": "string"}, "gap": {"type": "string"}}}}}}
+NARRATION_SYSTEM = (
+    "You write short, factual commentary for a personal AI-skills assessment. Levels, grades and "
+    "statuses are already computed: never change them, never add repositories, skills or numbers. "
+    "Use only facts from the input. Plain English, no digits except ones that appear in the input.")
+MONTHS = ["Months 1 to 2", "Months 3 to 4", "Months 5 to 7", "Months 8 to 10", "Months 11 to 12"]
+
+
+def _facts(a):
+    """Everything the model gets: computed levels and the short evidence lines, no file contents."""
+    lines = [f"Score {a['score']} of 5 ({a['level_name']}); skills: {a['counts']['have']} have, "
+             f"{a['counts']['partial']} partial, {a['counts']['missing']} missing."]
+    for s in a["skills"]:
+        lines.append(f"- {s['name']}: {s['status']}" + (f" ({'; '.join(s['evidence'])})" if s["evidence"] else ""))
+    lines.append("Projects:")
+    lines += [f"- {p['name']}, grade {p['grade']}, shows: {', '.join(p['skills'])}" for p in a["projects"]]
+    return "\n".join(lines)
+
+
+def _gaps(a):
+    """Skills that are not 'have', missing before partial, heavier first."""
+    w = {s["id"]: s["weight"] for s in SKILLS}
+    return sorted((s for s in a["skills"] if s["status"] != "have"),
+                  key=lambda s: (s["status"] != "missing", -w[s["id"]]))
+
+
+def _template(a):
+    gaps = _gaps(a)
+    nxt = " Next: " + " and ".join(g["name"].lower() for g in gaps[:2]) + "." if gaps else ""
+    c = a["counts"]
+    verdict = (f"{c['have']} of {len(a['skills'])} skills show clear evidence in your repositories, "
+               f"{c['partial']} partial, {c['missing']} missing: level {a['level']}, {a['level_name']}." + nxt)
+    notes = {}
+    for p in a["projects"]:
+        missing = [g["name"] for g in gaps if g["name"] not in p["skills"]][:2]
+        notes[p["name"]] = {"what": "Shows: " + ", ".join(p["skills"][:4]) + ".",
+                            "gap": ("No evidence yet for " + " and ".join(missing).lower() + ".") if missing
+                            else "Covers every skill in the rubric."}
+    return verdict, notes
+
+
+def _numbers(text):
+    return set(re.findall(r"\d+(?:[.,]\d+)?", text))
+
+
+def _narration(a):
+    """(verdict, {project: {what, gap}}) from the local model, or None. Only text is taken;
+    an answer that uses a number the facts don't contain is dropped (R23: code computes, the
+    model narrates)."""
+    import llm_local
+    facts = _facts(a)
+    prompt = (facts + "\n\nWrite: a verdict (3 to 4 sentences: where this person stands and the one most "
+              "valuable next step) and, for each project listed, one 'what' sentence and one 'gap' sentence.")
+    out = llm_local.chat_json(prompt, NARRATION_SCHEMA, system=NARRATION_SYSTEM, max_tokens=900, think=False)
+    if not isinstance(out, dict) or not isinstance(out.get("verdict"), str) or not out["verdict"].strip():
+        return None
+    projects = out.get("projects") if isinstance(out.get("projects"), list) else []
+    notes = {p["name"]: {"what": str(p.get("what") or "")[:400], "gap": str(p.get("gap") or "")[:400]}
+             for p in projects if isinstance(p, dict) and p.get("name") in {x["name"] for x in a["projects"]}}
+    text = out["verdict"] + " " + " ".join(n["what"] + " " + n["gap"] for n in notes.values())
+    if _numbers(text) - _numbers(facts):
+        return None
+    return out["verdict"].strip()[:900], notes
+
+
+def _certs(a):
+    status = {s["id"]: s["status"] for s in a["skills"]}
+    names = {s["id"]: s["name"] for s in SKILLS}
+    weight = {s["id"]: s["weight"] for s in SKILLS}
+    certs = []
+    for c in COURSES:
+        gaps = [k for k in c["skills"] if status[k] != "have"]
+        if not gaps:
+            continue
+        high = any(status[k] == "missing" and weight[k] >= 2 for k in gaps)
+        prio = "high" if high else "medium" if any(status[k] == "missing" for k in gaps) else "low"
+        certs.append({"id": c["id"], "name": c["name"], "provider": c["provider"], "cost": c["cost"],
+                      "time": c["time"], "format": c["format"], "priority": prio, "link": c["link"],
+                      "why": c["why"] + " Closes: " + ", ".join(names[k].lower() for k in gaps) + "."})
+    return certs
+
+
+def build(sources, today, narrate=True):
+    a = assess(sources)
+    result = _narration(a) if narrate else None
+    verdict, notes = result or _template(a)
+    template_notes = _template(a)[1]
+    projects = [{"name": p["name"], "grade": p["grade"],
+                 **{k: (notes.get(p["name"]) or template_notes[p["name"]])[k] or template_notes[p["name"]][k]
+                    for k in ("what", "gap")}} for p in a["projects"]]
+    gaps = _gaps(a)[:len(MONTHS)]
+    return {
+        "as_of": today, "score": a["score"], "target": a["target"], "score_label": a["level_name"],
+        "scale": LEVELS, "verdict": verdict, "projects": projects,
+        "skills": a["skills"], "certs": _certs(a),
+        "format_note": "Free, openly licensed courses, linked rather than copied.",
+        "sources": SOURCES, "routine": ROUTINE,
+        "plan_12m": [f"{m}: {g['name']}. {g['how']}" for m, g in zip(MONTHS, gaps)],
+        "generated": {"by": "repos", "narration": "local model" if result else "template",
+                      "sources": {o: sum(1 for s in sources if s["origin"] == o) for o in ("local", "gh")}},
+    }

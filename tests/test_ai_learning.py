@@ -258,3 +258,87 @@ def test_projects_are_graded_by_how_many_skills_they_show_and_empty_ones_dropped
     assert [p["name"] for p in a["projects"]] == ["rich", "thin"]    # best first
     assert by["thin"]["skills"] == ["Calling models from code"] and by["thin"]["origin"] == "local"
     assert len(al.assess([src(f"p{i}", deps="openai") for i in range(9)])["projects"]) == 6
+
+
+# ---------- 4. the assembled assessment: model narrates, code decides ----------
+
+RICH = dict(deps="chromadb ragas openai", paths=["evals/gold.jsonl"], commits=["add reranking", "eval harness"])
+
+
+def test_build_without_a_model_uses_a_template_and_keeps_the_view_shape(monkeypatch):
+    import ai_learning as al, llm_local
+    monkeypatch.setattr(llm_local, "chat_json", lambda *a, **k: None)
+    a = al.build([src("copilot", **RICH)], today="2026-10-23")
+    assert a["as_of"] == "2026-10-23" and a["scale"] == al.LEVELS
+    assert a["score_label"] == a["scale"][int(a["score"])]["name"] and a["target"] == min(5, int(a["score"]) + 1)
+    assert a["generated"] == {"by": "repos", "narration": "template", "sources": {"local": 1, "gh": 0}}
+    assert "skills show clear evidence" in a["verdict"] or "show evidence" in a["verdict"]
+    p = a["projects"][0]
+    assert p["name"] == "copilot" and p["grade"] and p["what"] and p["gap"]
+    assert all(s["status"] in ("have", "partial", "missing") and s["how"] for s in a["skills"])
+    assert a["sources"]["daily"] and a["routine"] and 1 <= len(a["plan_12m"]) <= 5
+    assert a["plan_12m"][0].startswith("Months 1 to 2")
+
+
+def test_certs_target_open_courses_for_the_gaps_only():
+    import ai_learning as al
+    a = al.build([src("copilot", **RICH)], today="2026-10-23", narrate=False)
+    ids = {c["id"] for c in a["certs"]}
+    assert "evals-notes" in ids and "agents-course" in ids           # evals partial, agents missing
+    prio = {c["id"]: c["priority"] for c in a["certs"]}
+    assert prio["agents-course"] == "high"                           # a missing weight-2 skill
+    assert all(c["link"].startswith("https://") and c["format"] == "online" for c in a["certs"])
+    full = al.build([src("x", deps=" ".join(f for s in al.SKILLS for f in s.get("dep", [])),
+                         paths=["docs/a", "evals/g", "prompts/a", "rag/a", "agents/a", "n8n/a", "llm_log.py", "guardrails.py"],
+                         commits=["eval", "rag", "agent", "prompt", "cost", "docs"],
+                         readme="llm injection ollama n8n json schema latency guideline")],
+                    today="2026-10-23", narrate=False)
+    assert full["certs"] == []
+
+
+def test_model_text_is_used_but_levels_and_grades_stay_computed(monkeypatch):
+    import ai_learning as al, llm_local
+    seen = {}
+
+    def fake(prompt, schema, **kw):
+        seen["prompt"], seen["kw"] = prompt, kw
+        return {"verdict": "You build retrieval and measure it. Add a verifier next.",
+                "projects": [{"name": "copilot", "what": "Retrieval with an eval set.", "gap": "Log real usage.",
+                              "grade": "A", "score": 99}, {"name": "invented", "what": "x", "gap": "y"}]}
+    monkeypatch.setattr(llm_local, "chat_json", fake)
+    a = al.build([src("copilot", **RICH)], today="2026-10-23")
+    assert a["generated"]["narration"] == "local model"
+    assert a["verdict"].startswith("You build retrieval")
+    assert [p["name"] for p in a["projects"]] == ["copilot"]         # the model cannot add repositories
+    assert a["projects"][0]["what"] == "Retrieval with an eval set."
+    assert a["projects"][0]["grade"] == al.assess([src("copilot", **RICH)])["projects"][0]["grade"]
+    assert a["score"] < 5 and "score" not in a["projects"][0]        # and cannot set grades or scores
+    assert seen["kw"].get("think") is False
+    assert "dep: chromadb" in seen["prompt"]                          # evidence lines, not files
+
+
+def test_model_numbers_not_in_the_facts_discard_the_narration(monkeypatch):
+    import ai_learning as al, llm_local
+    monkeypatch.setattr(llm_local, "chat_json", lambda *a, **k: {
+        "verdict": "You are level 4.7 of 5, ranking in the top 3%.", "projects": []})
+    a = al.build([src("copilot", **RICH)], today="2026-10-23")
+    assert a["generated"]["narration"] == "template" and "3%" not in a["verdict"]
+
+
+def test_model_garbage_falls_back_to_the_template(monkeypatch):
+    import ai_learning as al, llm_local
+    for bad in ({"verdict": ""}, {"verdict": 7, "projects": "x"}, [], "text"):
+        monkeypatch.setattr(llm_local, "chat_json", lambda *a, _b=bad, **k: _b)
+        a = al.build([src("copilot", **RICH)], today="2026-10-23")
+        assert a["generated"]["narration"] == "template" and a["verdict"], bad
+    monkeypatch.setattr(llm_local, "chat_json", lambda *a, **k: {"verdict": "ok " * 500, "projects": []})
+    assert len(al.build([src("c", **RICH)], today="2026-10-23")["verdict"]) <= 900
+
+
+def test_the_prompt_carries_only_computed_facts_not_file_contents(monkeypatch):
+    import ai_learning as al, llm_local
+    seen = {}
+    monkeypatch.setattr(llm_local, "chat_json", lambda prompt, schema, **k: seen.update(p=prompt) or None)
+    al.build([src("copilot", readme="TOP-SECRET-README-BODY rag", **RICH)], today="2026-10-23")
+    assert "TOP-SECRET-README-BODY" not in seen["p"] and "copilot" in seen["p"] and "evals" in seen["p"].lower()
+    assert len(seen["p"]) < 8000
