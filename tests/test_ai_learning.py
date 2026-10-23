@@ -130,11 +130,11 @@ def test_collect_local_author_filter_and_limits(tmp_path):
 
 def test_collect_local_never_follows_a_symlinked_readme_or_manifest(tmp_path):
     import ai_learning as al
-    secret = tmp_path / "outside.txt"
-    secret.write_text("chromadb openai langfuse", encoding="utf-8")
+    outside_file = tmp_path / "outside.txt"
+    outside_file.write_text("chromadb openai langfuse", encoding="utf-8")
     repo = make_repo(tmp_path / "r", {"a.txt": "x"})
-    (repo / "README.md").symlink_to(secret)
-    (repo / "requirements.txt").symlink_to(secret)
+    (repo / "README.md").symlink_to(outside_file)
+    (repo / "requirements.txt").symlink_to(outside_file)
     _git(repo, "add", "-A")
     s = al.collect_local(str(repo))
     assert s["readme"] == "" and s["deps"] == ""
