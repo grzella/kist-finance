@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added (2026-10-23)
+- **README screenshots** of Ratios, the net-worth forecast cone and forecast calibration (`docs/screenshots/`), taken from the fake demo persona by `scripts/screenshots.py` (headless Playwright against the static demo build).
+
 ### Fixed (2026-10-08)
 - **Empty or cut-off local answers with the SQL tool**: Qwen3 thinking was left on in `chat_with_tools` and the reasoning used the whole 700-token budget (`finish_reason: length`). Thinking is now off there, an empty answer counts as no answer, and the plain-chat fallback runs without thinking too.
 - **The tool path lives in `db_tools.ask_local()`**, shared by the app and the local eval, so the eval measures the answer the user sees.

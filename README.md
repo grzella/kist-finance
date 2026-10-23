@@ -37,6 +37,24 @@ That's it. On first launch a **setup wizard** walks you through:
 
 Re-run the wizard anytime at `http://127.0.0.1:8321/#wizard`. Use a different port with `PORT=8400 ./run.sh`.
 
+## Screenshots
+
+All captured from the fake "Alex Demo" persona (no real data).
+
+**📐 Ratios** — eleven ratios with traffic lights, a net-worth trajectory and a monthly history:
+
+![Ratios tab](docs/screenshots/ratios.png)
+
+**🔮 Forecast cone** — 24-month net-worth cone (p10 / median / p90) with scenario toggles:
+
+![Net-worth trajectory cone](docs/screenshots/forecast-cone.png)
+
+**🎯 Forecast calibration** — how often the p10–p90 band really covered the outcome, per horizon:
+
+![Forecast calibration](docs/screenshots/forecast-calibration.png)
+
+Regenerate them with `.venv/bin/python scripts/screenshots.py` (needs `pip install playwright` and `playwright install chromium`; builds the demo from a throwaway database).
+
 ## Modules
 
 Core (always on):
