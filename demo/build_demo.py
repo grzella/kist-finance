@@ -291,6 +291,7 @@ planner.set_settings({"analysis_ai_learning": json.dumps({
          "how": "Estimate cost per task before building; compare a small local model with a hosted one on the same task."},
         {"id": "rag", "area": "Building", "name": "Retrieval (RAG) basics", "status": "partial",
          "how": "Built one working pipeline; next is chunking experiments and hybrid keyword + embedding search.",
+         "evidence": ["discovery-copilot · dep: chromadb", "discovery-copilot · commit: add hybrid search over research notes"],
          "link": "https://huggingface.co/learn"},
         {"id": "tools", "area": "Building", "name": "Tool use and agents", "status": "partial",
          "how": "Wire a model to two real tools (SQL, calendar) with a hard step limit and logged calls."},
@@ -299,6 +300,7 @@ planner.set_settings({"analysis_ai_learning": json.dumps({
          "link": "https://github.com/ggml-org/llama.cpp"},
         {"id": "evals", "area": "Quality", "name": "Evals and regression sets", "status": "missing",
          "how": "A gold set of 30 to 50 cases per workflow, scored on every prompt or model change.",
+         "evidence": [],
          "link": "https://hamel.dev/blog/posts/evals/"},
         {"id": "obs", "area": "Quality", "name": "Logging and review of real usage", "status": "partial",
          "how": "Prompt log exists; add ratings and a monthly review of the worst ten answers."},
@@ -353,6 +355,7 @@ planner.set_settings({"analysis_ai_learning": json.dumps({
              "what": "Daily curated research papers, upvoted by practitioners."},
             {"name": "GitHub trending (Python)", "link": "https://github.com/trending/python",
              "what": "What the open-source community is building this week."}]},
+    "generated": {"by": "repos", "narration": "local model", "sources": {"local": 3, "gh": 0}},
     "routine": [
         "Monday: pick one workflow to measure this week.",
         "Friday: write the log entry, even if the result was negative.",
@@ -364,6 +367,13 @@ planner.set_settings({"analysis_ai_learning": json.dumps({
         "Months 5 to 6: run a local vs hosted cost comparison on two workflows.",
         "Months 7 to 9: teach one 45-minute team session and write the team usage guideline.",
         "Months 10 to 12: publish a short write-up of the eval method and what it caught."]})})
+planner.set_settings({"ai_learning_history": json.dumps([
+    {"date": (TODAY - timedelta(days=90)).isoformat(), "score": 1.9, "level": 1, "have": 1, "partial": 5, "missing": 5,
+     "repos": 2, "narration": "template"},
+    {"date": (TODAY - timedelta(days=45)).isoformat(), "score": 2.3, "level": 2, "have": 2, "partial": 4, "missing": 5,
+     "repos": 3, "narration": "local model"},
+    {"date": TODAY.isoformat(), "score": 2.6, "level": 2, "have": 2, "partial": 5, "missing": 4,
+     "repos": 3, "narration": "local model"}])})
 planner.set_settings({"ai_learning_state": json.dumps({
     "skills": {"rag": "partial", "tools": "partial"},
     "certs": {"dlai": "in progress", "hf": "planned"},

@@ -809,12 +809,14 @@ def test_ai_learning_roundtrip_keeps_assessment_and_state_apart(client):
 
 
 def test_ai_learning_empty_and_bad_body(client):
-    d = client.get("/api/ai-learning").get_json()
-    assert d == {"content": {}, "state": {}, "history": []}                   # fresh install: the view shows how to start
-    assert client.put("/api/ai-learning/state", json=[1, 2]).status_code == 200   # not an object: stored empty
-    assert client.get("/api/ai-learning").get_json()["state"] == {"skills": {}, "certs": {}, "log": []}
     import planner
-    planner.set_settings({"ai_learning_state": ""})
+    try:
+        d = client.get("/api/ai-learning").get_json()
+        assert d == {"content": {}, "state": {}, "history": []}               # fresh install: the view shows how to start
+        assert client.put("/api/ai-learning/state", json=[1, 2]).status_code == 200   # not an object: stored empty
+        assert client.get("/api/ai-learning").get_json()["state"] == {"skills": {}, "certs": {}, "log": []}
+    finally:
+        planner.set_settings({"ai_learning_state": ""})
 
 
 def test_career_module_owns_the_ai_learning_view(client):

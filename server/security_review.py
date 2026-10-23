@@ -783,8 +783,9 @@ def _check_view_escaping(repo):
         # ailearn.js (AI learning tab): the assessment is LLM-authored text, the progress log is
         # user free text; both go straight into innerHTML.
         ("ailearn.js", ("${a.verdict}", "${c.why}", "${c.name}", "${s.how}", "${e.text}",
-                        "${x.what}", "${r.gap}", "${a.format_note}"),
-         ("esc(a.verdict)", "esc(c.why)", "esc(s.how)", "esc(e.text)", "esc(x.what)")),
+                        "${x.what}", "${r.gap}", "${a.format_note}", "${ev}", "${h.narration}",
+                        "${gen.narration}", "${last.date}"),
+         ("esc(a.verdict)", "esc(c.why)", "esc(s.how)", "esc(e.text)", "esc(x.what)", "esc(ev)")),
         # ai.js (AI improvement tab) renders the model's answers, the prompt log and
         # distilled lessons: LLM self-ingest plus user free text, the highest-stakes sinks.
         ("ai.js", ("${res.text}", "${r.synthesis.text}", "${ans}", "${e.prompt}",
@@ -820,7 +821,8 @@ def _check_view_escaping(repo):
 _XSS_ESCAPED_SINKS = {
     "ailearn.js": ["a.as_of", "a.verdict", "a.format_note", "a.score_label", "l.name",
                    "l.desc", "c.name", "c.why", "c.provider", "s.how", "x.what", "x.name",
-                   "r.gap", "e.text"],
+                   "r.gap", "e.text", "ev", "h.date", "h.narration", "gen.narration", "last.date",
+                   "rp.author", "(rp.repos"],
     "api.js": ["a.stale.as_of"],
     "business.js": ["w.week", "m.month", "mkt.weeks[0].week"],
     "cashflow.js": ["d.sweep_target_name"],

@@ -1,17 +1,67 @@
 // Career → AI learning: where you stand on a 0-5 scale, a skill map with statuses you set,
 // courses by priority, what to follow and a progress log. The assessment (analysis_ai_learning)
-// is authored by you or any AI assistant; the statuses and the log are yours and live apart
-// from it (ai_learning_state), so refreshing the assessment never wipes your progress.
+// is scored from your repositories ("Score from my repos": evidence, statuses and the level are
+// computed in code, the local model only writes the text) or pasted from any AI assistant; the
+// statuses and the log are yours and live apart from it (ai_learning_state), so a new
+// assessment never wipes your progress.
+const AL_PROMPT = `Assess my AI skills and return ONLY valid JSON: {"as_of": "YYYY-MM-DD", "score": 0-5, "target": number, "score_label": str, "scale": [{"lvl": 0-5, "name": str, "desc": str}], "verdict": str, "projects": [{"name": str, "grade": str, "what": str, "gap": str}], "skills": [{"id": str, "area": str, "name": str, "status": "have|partial|missing", "how": str, "link": str}], "certs": [{"id": str, "name": str, "provider": str, "cost": str, "time": str, "format": "online|in person|hybrid", "priority": "high|medium|low|skip", "why": str, "link": str}], "sources": {"method": str, "daily": [{"name": str, "link": str, "what": str}], "weekly": [], "quarterly": [], "services": []}, "routine": [str], "plan_12m": [str]}. Interview me about my work first.`;
+
+// the server answers errors as `400 {"error": "..."}`
+const alErr = (e) => { const m = String(e.message || e).replace(/^\d+ /, ""); try { return JSON.parse(m).error || m; } catch (_) { return m; } };
+
+function alScorePanel(rp, a, hist) {
+  const gen = a.generated || {};
+  const last = hist.length ? hist[hist.length - 1] : null;
+  return `<div class="card" id="alScore" style="border-left:4px solid var(--accent)">
+    <h3>Score from my repos</h3>
+    <div class="muted" style="font-size:.9em">Reads your local repositories (<code>git</code>) and your GitHub account (<code>gh</code>): dependencies, folder names, recent commit subjects and the README are matched against a fixed rubric.
+      Statuses, the 0-5 level and the project grades are computed in code; the <b>local</b> model only writes the sentences. Nothing leaves this machine, and each run adds a point to the history.</div>
+    <details class="mt" ${(rp.repos || []).length ? "" : "open"}><summary><b>Repositories</b> <span class="muted">(${(rp.repos || []).length} connected)</span></summary>
+      <div class="muted mt" style="font-size:.85em">One absolute path per line, git repositories only (max 20). The same list feeds the Committing tab. Optional author filter for commit subjects, e.g. your name.</div>
+      <textarea id="alRepos" rows="4" class="mt" style="width:100%" placeholder="/Users/you/code/my-project">${esc((rp.repos || []).join("\n"))}</textarea>
+      <div class="row mt" style="gap:8px"><input id="alAuthor" maxlength="100" value="${esc(rp.author || "")}" placeholder="git author filter (optional)" style="width:260px"><button id="alSaveRepos">Save repositories</button><span class="muted" id="alRepoMsg" style="font-size:.9em"></span></div>
+    </details>
+    <div class="row mt" style="gap:10px;align-items:center"><button class="primary" id="alScoreBtn">Score from my repos</button>
+      <span class="muted" id="alScoreMsg" style="font-size:.9em">${gen.by === "repos" ? `Last run ${esc(a.as_of)}, text by ${esc(gen.narration)}.` : last ? `Last run ${esc(last.date)}.` : "Takes up to a couple of minutes when the local model writes the text."}</span></div>
+  </div>`;
+}
+
+function alBindScore(rerender) {
+  const msg = (id, t) => { const n = document.getElementById(id); if (n) n.textContent = t; };
+  document.getElementById("alSaveRepos").addEventListener("click", async () => {
+    try {
+      const repos = document.getElementById("alRepos").value.split("\n").map((x) => x.trim()).filter(Boolean);
+      const r = await api.put("/api/ai-learning/repos", { repos, author: document.getElementById("alAuthor").value });
+      if (r.ok === false) return;
+      document.getElementById("alRepos").value = (r.repos || []).join("\n");
+      msg("alRepoMsg", `Saved ${(r.repos || []).length}.` + (r.rejected && r.rejected.length ? " Skipped: " + r.rejected.map((j) => `${j.path} (${j.reason})`).join("; ") : ""));
+    } catch (e) { msg("alRepoMsg", alErr(e)); }
+  });
+  const btn = document.getElementById("alScoreBtn");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true; msg("alScoreMsg", "Scoring… reading repositories, then the local model writes the text.");
+    try {
+      const r = await api.post("/api/ai-learning/score");
+      if (r.ok === false) { msg("alScoreMsg", r.error || "Not saved."); return; }
+      await rerender();
+    } catch (e) { msg("alScoreMsg", alErr(e)); }
+    finally { btn.disabled = false; }
+  });
+}
+
 async function renderAiLearn(el) {
-  const d = await api.get("/api/ai-learning");
+  const [d, rp] = await Promise.all([api.get("/api/ai-learning"), api.get("/api/ai-learning/repos").catch(() => ({ repos: [], author: "" }))]);
   const a = d.content || {}; const st = d.state || {};
+  const hist = Array.isArray(d.history) ? d.history : [];
   st.skills = st.skills || {}; st.certs = st.certs || {}; st.log = st.log || [];
-  if (!a.scale) {
+  const rerender = () => renderAiLearn(el);
+  if (!Array.isArray(a.scale)) {
     el.innerHTML = `<div class="muted" style="margin-bottom:4px"><a href="#offers" style="text-decoration:none">← Career</a></div>
-      <div class="card"><h2>🧠 AI learning</h2>
-      <div class="muted">No assessment yet. Ask any AI assistant to write one into the <code>analysis_ai_learning</code> setting
-      (fields: <code>scale</code>, <code>score</code>, <code>target</code>, <code>skills</code>, <code>certs</code>, <code>sources</code>,
-      <code>routine</code>, <code>plan_12m</code>), then refresh this page.</div></div>`;
+      <h2>🧠 AI learning</h2>
+      <div class="muted" style="margin-bottom:10px">No assessment yet. Connect your repositories and score them, or paste one written by any AI assistant with the box below.</div>
+      ${alScorePanel(rp, a, hist)}
+      <div class="card mt"><h3>Or paste an assessment</h3>${aiJsonBox("analysis_ai_learning", AL_PROMPT)}</div>`;
+    alBindScore(rerender);
     return;
   }
   a.projects = a.projects || []; a.skills = a.skills || []; a.certs = a.certs || [];
@@ -25,7 +75,7 @@ async function renderAiLearn(el) {
   const certsSorted = [...a.certs].sort((x, y) => prRank(x.priority) - prRank(y.priority));
   const FMT = ["all", "online", "in person", "hybrid"];
   const certFilter = (c) => {
-    const f = window._alFmt || "all"; const fm = (c.format || "online").toLowerCase();
+    const f = window._alFmt || "all"; const fm = String(c.format || "online").toLowerCase();
     if (f === "all") return true;
     if (f === "online") return fm.startsWith("online");
     if (f === "hybrid") return fm.includes("hybrid");
@@ -67,17 +117,25 @@ async function renderAiLearn(el) {
   const logHtml = () => `
       <div class="row"><input id="alDate" type="date" value="${new Date().toISOString().slice(0, 10)}" style="width:160px"><input id="alText" maxlength="500" placeholder="e.g. hybrid BM25 + embeddings: recall@5 0.61 → 0.74 on my gold set; adopting" style="flex:1;min-width:260px"><button class="primary" id="alAdd">Add entry</button></div>
       ${st.log.length ? `<table class="mt"><tbody>${[...st.log].reverse().slice(0, 30).map((e, i) => `<tr><td class="muted" style="width:120px">${esc(e.date)}</td><td>${esc(e.text)}</td><td style="width:40px"><button class="danger" data-aldel="${st.log.length - 1 - i}">✕</button></td></tr>`).join("")}</tbody></table>` : '<div class="empty">Your first entry goes here after your first experiment.</div>'}
-      <div class="muted mt" style="font-size:.88em">To re-rate your level: change the statuses above, and at the quarterly review ask your AI assistant for a fresh assessment.</div>`;
+      <div class="muted mt" style="font-size:.88em">To re-rate your level: change the statuses above, and at the quarterly review press <b>Score from my repos</b> again.</div>`;
 
   el.innerHTML = `
     <div class="muted" style="margin-bottom:4px"><a href="#offers" style="text-decoration:none">← Career</a></div>
     <h2>🧠 AI learning: from user to architect</h2>
-    <div class="grid cols-4" id="alKpis">${kpisHtml()}</div>
+    ${alScorePanel(rp, a, hist)}
+    <div class="grid cols-4 mt" id="alKpis">${kpisHtml()}</div>
     <div class="card mt" style="border-left:4px solid var(--violet)">
       <h3>Scale and verdict <span class="muted" style="font-weight:normal;font-size:.8em">(as of ${esc(a.as_of)})</span></h3>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:10px">${a.scale.map((l) => `<span class="badge ${l.lvl <= Math.floor(a.score) ? "pos" : ""}" title="${esc(l.desc)}" style="${Math.floor(a.score) === l.lvl ? "border-color:var(--accent);color:var(--accent)" : ""}">${esc(l.lvl)} · ${esc(l.name)}</span>`).join("")}</div>
       <div>${esc(a.verdict)}</div>
     </div>
+    ${hist.length ? `<div class="card mt">
+      <h3>Score history <span class="muted" style="font-weight:normal;font-size:.8em">(one point per run)</span></h3>
+      <table><thead><tr><th>Date</th><th style="width:40%">Level</th><th>have · partial · missing</th><th>Repos</th><th>Text by</th></tr></thead>
+        <tbody>${[...hist].reverse().slice(0, 12).map((h) => `<tr><td class="muted">${esc(h.date)}</td>
+          <td><div style="display:flex;align-items:center;gap:8px"><div style="height:6px;border-radius:3px;background:var(--accent);width:${Math.max(2, Math.min(100, Number(h.score) * 20))}%"></div><b>${Number(h.score).toFixed(1)}</b></div></td>
+          <td>${Number(h.have)} · ${Number(h.partial)} · ${Number(h.missing)}</td><td>${Number(h.repos)}</td><td class="muted">${esc(h.narration)}</td></tr>`).join("")}</tbody></table>
+    </div>` : ""}
     ${a.projects.length ? `<div class="card mt">
       <h3>Your projects, graded</h3>
       <div style="display:grid;gap:10px">${a.projects.map((r) => `<div style="display:grid;grid-template-columns:minmax(160px,240px) 70px minmax(0,1fr) minmax(0,1fr);gap:14px;padding:10px 12px;border-radius:10px;background:var(--panel2)">
@@ -90,7 +148,8 @@ async function renderAiLearn(el) {
       <div style="display:grid;gap:8px">${a.skills.filter((s) => s.area === ar).map((s) => `<div style="display:grid;grid-template-columns:130px minmax(180px,1fr) minmax(0,2fr);gap:12px;align-items:start;padding:8px 10px;border-radius:8px;background:var(--panel2)">
           <select data-skill="${esc(s.id)}" class="${stCls[skillStatus(s)] || ""}" style="font-size:.9em">${Object.keys(SKILL_LABEL).map((o) => `<option ${skillStatus(s) === o ? "selected" : ""}>${o}</option>`).join("")}</select>
           <b>${esc(s.name)}</b>
-          <div style="font-size:.92em">${esc(s.how)}${s.link ? ` <a href="${esc(safeUrl(s.link))}" target="_blank" rel="noopener noreferrer">↗</a>` : ""}</div></div>`).join("")}</div>`).join("")}
+          <div style="font-size:.92em">${esc(s.how)}${s.link ? ` <a href="${esc(safeUrl(s.link))}" target="_blank" rel="noopener noreferrer">↗</a>` : ""}
+            ${Array.isArray(s.evidence) && s.evidence.length ? `<div class="muted" style="font-size:.85em;margin-top:4px">Evidence: ${s.evidence.map((ev) => esc(ev)).join(" · ")}</div>` : ""}</div></div>`).join("")}</div>`).join("")}
     </div>
     <div class="card mt" style="border-left:4px solid var(--warn)">
       <h3>Courses and certificates <span class="muted" style="font-weight:normal;font-size:.8em">(by priority)</span></h3>
@@ -135,7 +194,7 @@ async function renderAiLearn(el) {
       st.log.splice(+b.dataset.aldel, 1); await save(); paint("alLog", logHtml(), bindLog); paint("alKpis", kpisHtml());
     }));
   };
-  bindCerts(); bindLog();
+  bindCerts(); bindLog(); alBindScore(rerender);
   el.querySelectorAll("[data-skill]").forEach((sel) => sel.addEventListener("change", async () => {
     st.skills[sel.dataset.skill] = sel.value; await save();
     sel.className = stCls[sel.value] || ""; paint("alKpis", kpisHtml());
