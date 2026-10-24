@@ -13,7 +13,7 @@ function _overviewCard(o) {
   const delta = (a, b) => (a == null || b == null) ? "" : Math.abs(a - b) < 1 ? `<span class="muted">no change vs ${o.months[n - 2]} (no new entries)</span>`
     : `<span class="${a - b >= 0 ? "pos" : "neg"}">${a - b >= 0 ? "+" : "−"}${fmt.pln(Math.abs(a - b))} vs ${o.months[n - 2]}</span>`;
   const target = o.cushion.target, cush = last("cushion"), cash = last("cash");
-  const ok = target ? cush >= target : null;
+  const ok = target ? o.cushion.total >= target : null;  // percent and mark from the same cushion as Metrics (cash after the reserve + 80% of the portfolio); the tile shows what is set aside off the account
   const free = cash - (o.tax_uncovered ?? o.tax_reserve);  // cash after the part of the reserve nothing else covers
   const f3 = o.forecast[o.forecast.length - 1];
   return `<div class="card" style="border-left:4px solid ${CHART_COLORS[0]}">
@@ -26,7 +26,7 @@ function _overviewCard(o) {
       <div class="card kpi" style="margin:0"><div class="label">Emergency cushion</div>
         <div class="value ${ok ? "pos" : ""}">${fmt.pln(cush)}</div>
         <div class="sub">${(o.cushion_items || []).map((c) => esc(c.name)).join(", ") || "set aside off the account"}
-          ${target ? `<br>${ok ? "✓" : "⚠️"} ${fmt.num(cush / target * 100, 0)}% of the ${fmt.pln(target)} target (6 months of essential costs)` : ""}</div></div>
+          ${target ? `<br>${ok ? "✓" : "⚠️"} ${fmt.num(o.cushion.total / target * 100, 0)}% of the ${fmt.pln(target)} target (6 months of essential costs)` : ""}</div></div>
       <div class="card kpi" style="margin:0"><div class="label">Tax reserve</div>
         <div class="value">${fmt.pln(o.tax_reserve)}</div>
         <div class="sub">${!o.tax_reserve ? "no tax due"

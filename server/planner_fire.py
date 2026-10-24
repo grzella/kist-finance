@@ -9,6 +9,15 @@ from planner_proxy import P
 
 # ---------- FIRE / work-optional projection (zamiast Monte Carlo) ----------
 
+def _centered(mrets, drift_m):
+    """Returns centered on the assumed drift, as the trajectory does (metrics): a raw bull decade
+    pushed the cone's p50 above the 6.5% base line and the two forecasts disagreed."""
+    if not mrets:
+        return mrets
+    mu = sum(mrets) / len(mrets)
+    return [r - mu + drift_m for r in mrets]
+
+
 def fire_projection():
     """Liquid-portfolio projection toward the work-optional goal: 3 return scenarios
     plus a real (inflation-adjusted) version. Readable lines instead of a Monte-Carlo histogram."""
@@ -120,7 +129,8 @@ def fire_projection():
         for r in hist:
             by_m[r["date"][:7]] = r["close"]
         months_sorted = sorted(by_m)
-        mrets = [by_m[b] / by_m[a] - 1 for a, b in zip(months_sorted, months_sorted[1:]) if by_m[a]]
+        mrets = _centered(([by_m[b] / by_m[a] - 1 for a, b in zip(months_sorted, months_sorted[1:]) if by_m[a]]),
+                          float(P.EXPECTED_MARKET_RETURN) / 100.0 / 12.0)
         if len(mrets) >= 48:
             cone = {"benchmark": bench, "months_of_data": len(mrets), "points": {}}
             for yrs in (5, 10, 15):

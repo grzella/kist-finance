@@ -127,7 +127,7 @@ async function renderForecasts(el) {
       </div>
       <canvas id="fireChart" height="90" class="mt"></canvas>
       ${fire.cone && fire.cone.points && Object.keys(fire.cone.points).length ? `<div class="mt" style="font-size:.9em">
-        <b>Cone from real returns</b> <span class="muted">(block bootstrap of ${esc(fire.cone.benchmark)} monthly returns, ${fire.cone.months_of_data} months of data; nominal)</span>
+        <b>Cone from real returns</b> <span class="muted">(block bootstrap of ${esc(fire.cone.benchmark)} monthly returns centered on the base drift, ${fire.cone.months_of_data} months of data; nominal)</span>
         <table class="mt"><thead><tr><th>Horizon</th><th class="neg">p10</th><th>p50</th><th class="pos">p90</th></tr></thead>
         <tbody>${Object.entries(fire.cone.points).map(([y, q]) => `<tr><td>${y} years</td><td class="neg">${fmt.pln(q.p10)}</td><td><b>${fmt.pln(q.p50)}</b></td><td class="pos">${fmt.pln(q.p90)}</td></tr>`).join("")}</tbody></table></div>`
         : fire.cone && fire.cone.note ? `<div class="muted mt" style="font-size:.85em">Cone: ${fire.cone.note} (${esc(fire.cone.benchmark)}, ${fire.cone.months_of_data} months) — deepen the benchmark history in Market (10 years) and the cone appears.</div>` : ""}
@@ -186,7 +186,7 @@ async function renderForecasts(el) {
     ${traj0 ? `<div class="card mt" style="border-left:4px solid var(--violet)">
       <h3>🌫️ Net-worth trajectory — ${traj0.months}-month cone with scenarios</h3>
       <div class="muted" style="font-size:.85em;margin-bottom:8px">The invested part (ETF + employer stock + retirement) grows with a ${traj0.assumptions.drift_annual_pct}%/yr drift
-        + ${traj0.assumptions.method}; the rest accrues the surplus and net vest cash (${fmt.pln(traj0.assumptions.flow_monthly)}/mo), the bonus lands in month ${traj0.assumptions.bonus_month}.
+        + ${traj0.assumptions.method} and takes the surplus with net vest cash (${fmt.pln(traj0.assumptions.flow_monthly)}/mo) plus the bonus in month ${traj0.assumptions.bonus_month}; the rest (cash, home equity) accrues the repaid loan principal (${fmt.pln(traj0.assumptions.principal_monthly || 0)}/mo).
         Stock/USD shocks are one-off today; they show the size of the effect, not a forecast of the move.</div>
       <div class="row" style="gap:12px;flex-wrap:wrap;align-items:center;font-size:.9em">
         <label>Horizon <select id="tjM"><option value="12">12 mo</option><option value="24" selected>24 mo</option><option value="36">36 mo</option></select></label>

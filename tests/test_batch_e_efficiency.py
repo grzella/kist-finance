@@ -232,3 +232,24 @@ def test_savings_rate_total_comp_adds_extras(monkeypatch):
     assert f["extras_monthly"] == 1000
     net = 5000 + (f["expenses"] or f["debt_service"])
     assert f["savings_rate_tc_pct"] == pytest.approx((5000 + 1000) / (net + 1000) * 100, abs=0.3)
+
+
+def test_trajectory_flows_compound_and_principal_builds_net_worth(client, monkeypatch):
+    import metrics, planner
+    flat = [0.0] * 48  # bootstrap of zeros leaves only the drift
+    sim = metrics._simulate(0, 0, 12, 1000, 0, 0, 0.01, flat, 1, seed=1)
+    assert sim["p50"][-1] > 12000  # contributions in the portfolio compound with the drift
+    sim2 = metrics._simulate(0, 0, 12, 0, 0, 0, 0.01, flat, 1, seed=1, other_flow=1000)
+    assert sim2["p50"][-1] == 12000  # repaid principal accrues linearly
+    monkeypatch.setattr(planner, "list_debts", lambda: {"debts": [{"balance": 100000, "principal_month": 1000}]})
+    with_debt = metrics.trajectory(months=12)
+    monkeypatch.setattr(planner, "list_debts", lambda: {"debts": []})
+    without = metrics.trajectory(months=12)
+    assert with_debt["assumptions"]["principal_monthly"] == 1000 and without["assumptions"]["principal_monthly"] == 0
+    assert abs((with_debt["p50"][-1] - without["p50"][-1]) - 12000) <= 1
+
+
+def test_liquid_to_debt_explains_retirement(client):
+    r = client.get("/api/metrics").get_json()
+    item = next(i for i in r["current"]["items"] if i["key"] == "liquid_to_debt_pct")
+    assert "retirement accounts" in item["explain"]["what"]

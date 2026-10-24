@@ -57,3 +57,36 @@ def test_recommendation_with_new_numbers_supersedes_old(client):
     assert rows["rate 8.04%"]["first_seen"] == first and items[0]["since"] == first[:10]
     assert rows["x"]["resolved_at"] and rows["x"]["outcome"] is None   # really gone: left for the user to judge
     eb._exec("delete from rec_log where area in ('zz-test','zz-gone')")
+
+
+def _wealth(items, reserve=0):
+    return {"items": items, "tax_reserve": reserve, "debts": [], "totals": {}, "total": sum(i["latest_value"] for i in items), "trend": [], "debt_total": 0}
+
+
+def test_stress_liquid_is_the_metrics_cushion(client, monkeypatch):
+    import planner, stress
+    base = [{"name": "Cash PLN", "kind": "cushion", "latest_value": 60000},
+            {"name": "ETF VWCE", "kind": "investment", "latest_value": 100000}]
+    monkeypatch.setattr(planner, "wealth_summary", lambda: _wealth(base))
+    liquid, equity, _ = stress._liquid_and_equity()
+    assert liquid == planner.liquid_cushion(_wealth(base))["total"] == 60000 + 80000
+    with_deposit = base + [{"name": "Tenant deposit", "kind": "savings", "latest_value": 5000}]
+    monkeypatch.setattr(planner, "wealth_summary", lambda: _wealth(with_deposit))
+    assert stress._liquid_and_equity()[0] == liquid  # a tenant deposit is not a cushion
+
+
+def test_allocation_subtracts_uncovered_tax_reserve(client, monkeypatch):
+    import planner
+    monkeypatch.setattr(planner, "wealth_summary", lambda: _wealth([{"name": "Cash PLN", "kind": "cushion", "latest_value": 100000}], reserve=60000))
+    cash = next(r for r in planner.allocation()["rows"] if r["key"] == "cash")
+    assert cash["value"] == 40000
+    monkeypatch.setattr(planner, "wealth_summary", lambda: _wealth([{"name": "Cash PLN", "kind": "cushion", "latest_value": 100000},
+                                                                  {"name": "Tax reserve: bonds", "kind": "cushion", "latest_value": 60000}], reserve=60000))
+    cash = next(r for r in planner.allocation()["rows"] if r["key"] == "cash")
+    assert cash["value"] == 100000  # the reserve is covered by its own item, which stays out of the allocation
+
+
+def test_wealth_tile_percent_uses_the_metrics_cushion():
+    from pathlib import Path
+    js = Path(__file__).resolve().parent.parent / "static" / "js" / "views" / "wealth.js"
+    assert "o.cushion.total / target" in js.read_text(encoding="utf-8")

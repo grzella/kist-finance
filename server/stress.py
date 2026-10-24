@@ -12,18 +12,15 @@ import planner
 
 def _liquid_and_equity():
     w = planner.wealth_summary()
-    liquid = equity = 0.0
+    equity = 0.0
     for it in w.get("items", []):
-        kind = it.get("kind")
-        val = it.get("latest_value") or 0
-        if kind in ("cushion", "savings"):
-            liquid += val
-        if kind == "investment" and it.get("equity") is None:
+        if it.get("kind") == "investment" and it.get("equity") is None:
             # unlinked investments (brokerage/ETF/stock); real estate carries
             # a linked loan and an equity figure, and doesn't crash like equities
-            equity += val
-    # the tax reserve sits in cash but is already owed, the same rule as liquid_cushion()
-    liquid = max(0.0, liquid - (w.get("tax_reserve") or 0))
+            equity += it.get("latest_value") or 0
+    # the same cushion as the Metrics card (cash and bonds after the tax reserve plus 80% of the portfolio):
+    # the old per-kind sum counted a tenant deposit and missed cash classified as an investment
+    liquid = float(planner.liquid_cushion(w)["total"])
     return liquid, equity, w
 
 
@@ -61,7 +58,7 @@ def run():
     scenarios.append({
         "icon": "🪫", "title": "Income stops",
         "impact": f"{runway} months" if runway is not None else "—",
-        "detail": (f"Liquid assets ({zl(liquid)}) cover about {runway} months of essential "
+        "detail": (f"Cushion ({zl(liquid)}: cash, bonds and 80% of the portfolio) covers about {runway} months of essential "
                    f"costs ({zl(essential)}/mo, incl. your share of loan installments). "
                    + ("Solid — 6+ months is the usual bar." if (runway or 0) >= 6
                       else "Below the usual 6-month bar — see the emergency cushion recommendation."))

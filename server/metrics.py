@@ -231,7 +231,7 @@ def compute():
             "how": f"loan payments and insurance {_m(debt_service)} / net income {_m(net_income)} = {_p(raw['dti_pct'])}%",
             "why": "Banks compute the same ratio; above 40% refinancing and new credit get harder."},
         "liquid_to_debt_pct": {
-            "what": "How much of your debt you could repay right away from liquid assets.",
+            "what": "How much of your debt you could repay right away from liquid assets; counted with retirement accounts (PPK, IKZE, IKE), which cost penalties and tax when tapped early.",
             "how": f"liquid {_m(liquid)} (cash {_m(vals.get('cash', 0))} + ETF {_m(vals.get('etf', 0))} + employer stock {_m(vals.get('rsu', 0))} + retirement {_m(vals.get('retirement', 0))}) / debt {_m(debt_total)} = {_p(raw['liquid_to_debt_pct'])}%",
             "why": "≥ 50%: you could clear most debt without income; < 25%: repayment depends on current income."},
         "invest_share_pct": {
@@ -336,7 +336,7 @@ def _benchmark_monthly_returns():
         return None, []
 
 
-def _simulate(start_other, start_inv, months, flow, bonus, bonus_at, drift_m, rets, sims, seed):
+def _simulate(start_other, start_inv, months, flow, bonus, bonus_at, drift_m, rets, sims, seed, other_flow=0.0):
     rng = random.Random(seed)
     block = 6
     per_month = [[] for _ in range(months)]
@@ -351,7 +351,10 @@ def _simulate(start_other, start_inv, months, flow, bonus, bonus_at, drift_m, re
                 chunk = [rng.gauss(0, 0.045) for _ in range(block)]
             for r in chunk:
                 inv *= (1 + drift_m + r)
-                other += flow + (bonus if (m % 12) == bonus_at else 0)
+                # surplus, vests and the bonus go into the portfolio (investment policy), not into zero-return cash;
+                # the rest only takes the repaid loan principal (debt in net0 stands still, principal builds net worth)
+                inv += flow + (bonus if (m % 12) == bonus_at else 0)
+                other += other_flow
                 per_month[m].append(inv + other)
                 m += 1
                 if m >= months:
@@ -369,8 +372,9 @@ def _simulate(start_other, start_inv, months, flow, bonus, bonus_at, drift_m, re
 def trajectory(months=24, bonus=True, team_shock_pct=0.0, usd_shock_pct=0.0, real=False,
                sims=300, today=None):
     """Net-worth cone: the invested part grows with drift + block bootstrap of the benchmark's
-    monthly returns; the rest (cash, home equity) accrues the surplus and net vest cash; the
-    bonus lands in its month. Employer-stock / USD shocks are one-off at t0 (we know we cannot
+    monthly returns and takes the surplus, net vest cash and the bonus (in its month); the rest
+    (cash, home equity) accrues the repaid loan principal (constant principal part over the
+    horizon, a simplification). Employer-stock / USD shocks are one-off at t0 (we know we cannot
     predict their direction, so we show the size of the effect)."""
     today = today or date.today()
     months = max(6, min(int(months or 24), 60))
@@ -391,6 +395,11 @@ def trajectory(months=24, bonus=True, team_shock_pct=0.0, usd_shock_pct=0.0, rea
     extras = planner._annual_extras(today=today)
     flow = surplus + (float(extras.get("rsu_annual") or 0) + float(extras.get("cash_vest_annual_net") or 0)) / 12.0
     bonus_net = float(extras.get("bonus_net") or 0) if bonus else 0.0
+    try:  # the installment sits in expenses (left the surplus), so repaid principal is net-worth growth outside the portfolio
+        principal = sum(float(d.get("principal_month") or 0) for d in planner.list_debts().get("debts", [])
+                        if float(d.get("balance") or 0) > 0)
+    except Exception:
+        principal = 0.0
     try:
         bonus_month = int(planner._num(planner.get_setting("cf_bonus_month")) or planner.CF_DEFAULTS.get("cf_bonus_month", 9))
     except Exception:
@@ -398,7 +407,7 @@ def trajectory(months=24, bonus=True, team_shock_pct=0.0, usd_shock_pct=0.0, rea
     bonus_at = (bonus_month - today.month - 1) % 12   # month index (0..11) from today when the bonus lands
     drift_m = float(planner.EXPECTED_MARKET_RETURN) / 100.0 / 12.0
     bench, rets = _benchmark_monthly_returns()
-    sim = _simulate(other0, inv0, months, flow, bonus_net, bonus_at, drift_m, rets, sims, seed=20260905)
+    sim = _simulate(other0, inv0, months, flow, bonus_net, bonus_at, drift_m, rets, sims, seed=20260905, other_flow=principal)
     labels = []
     y, m = today.year, today.month
     for i in range(1, months + 1):
@@ -410,7 +419,7 @@ def trajectory(months=24, bonus=True, team_shock_pct=0.0, usd_shock_pct=0.0, rea
         for q in ("p10", "p50", "p90"):
             sim[q] = [round(v / ((1 + infl / 12) ** (i + 1))) for i, v in enumerate(sim[q])]
     out = {"labels": labels, **sim, "start": round(net0), "months": months,
-           "assumptions": {"surplus": round(surplus), "flow_monthly": round(flow),
+           "assumptions": {"surplus": round(surplus), "flow_monthly": round(flow), "principal_monthly": round(principal),
                            "bonus_net": round(bonus_net), "bonus_month": bonus_month,
                            "invested": round(inv0), "rsu": round(rsu_val), "fx_usd": round(fx_val),
                            "drift_annual_pct": planner.EXPECTED_MARKET_RETURN,

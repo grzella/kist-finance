@@ -102,8 +102,14 @@ def allocation():
     w = P.wealth_summary()
     targets = alloc_targets()
     classes = {k: 0.0 for k in ALLOC_TARGETS}
+    # a "Tax reserve…" item covers tax due, it is not free cash (same rule as liquid_cushion); the uncovered part of
+    # the reserve comes out of cash, otherwise the share denominator exceeded the net worth the explanation quotes
+    set_aside = 0.0
     for it in w.get("items", []):
         if it.get("kind") in ("income",):
+            continue
+        if P.is_tax_reserve(it.get("name")):
+            set_aside += float(it.get("latest_value") or 0)
             continue
         # "cushion" items without cash/account in the name (e.g. treasury bonds) are cash too
         cls = _alloc_class(it.get("name", "")) or ("cash" if it.get("kind") == "cushion" else None)
@@ -112,6 +118,7 @@ def allocation():
         # use equity for debt-linked (real estate), else latest value
         val = it.get("equity") if it.get("equity") is not None else (it.get("latest_value") or 0)
         classes[cls] += val or 0
+    classes["cash"] = max(0.0, classes["cash"] - max(0.0, float(w.get("tax_reserve") or 0) - set_aside))
     total = sum(classes.values()) or 1
     rows = []
     for k in ALLOC_TARGETS:

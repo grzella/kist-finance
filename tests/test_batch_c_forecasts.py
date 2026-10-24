@@ -57,3 +57,11 @@ def test_goal_simulation_indexes_target(client):
     b = planner._simulate_path(120000, 10000, [])
     assert a["months"] == 12 and (b["months"] is None or b["months"] > 12)
     planner.set_settings({"inflation_pct": 3})
+
+
+def test_fire_cone_returns_are_centered_on_the_drift():
+    import planner_fire
+    rets = [0.04, 0.0] * 60
+    c = planner_fire._centered(rets, 0.065 / 12)
+    assert abs(sum(c) / len(c) - 0.065 / 12) < 1e-12 and len(c) == 120
+    assert planner_fire._centered([], 0.01) == []
