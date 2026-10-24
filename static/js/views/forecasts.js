@@ -75,7 +75,7 @@ async function renderForecasts(el) {
       the RSU stock price, savings pace. Amounts come from your settings (e.g. annual_bonus_net).</div>
     ${openCards.length ? `<div class="grid cols-2">${openCards.join("")}</div>` : '<div class="muted">No open scenarios: no loan left to overpay. The completed ones are folded at the bottom.</div>'}
 
-    ${ip ? `<div class="card mt" style="border-left:4px solid var(--accent)">
+    ${ip ? `<div id="investPlan" class="card mt" style="border-left:4px solid var(--accent)">
       <h3>📐 Investment policy: what to do with money that has no goal</h3>
       <div class="muted" style="font-size:.88em;margin-bottom:8px">For money AFTER the cushion, the tax reserve and tax-advantaged account limits. Model portfolio ${ip.rows.map((r) => `${r.target}% ${esc(r.label.replace(/^\S+\s/, "").split(":")[0].toLowerCase())}`).join(" / ")},
         expected return about ${fmt.pct(ip.blended_return_pct, 1)} a year. The "buy" column splits the next inflow so the buckets reach their weights: new money goes where the portfolio is short and nothing is sold.</div>

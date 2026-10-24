@@ -135,6 +135,8 @@ async function route() {
   try {
     await fn(el);
     if (sameView) window.scrollTo(0, keepY);
+    // jump from another view to a specific card (e.g. Ratios → investment plan in Forecasts)
+    if (window._scrollTo) { document.getElementById(window._scrollTo)?.scrollIntoView({ block: "start" }); window._scrollTo = null; }
     el.style.minHeight = "";
     window._lastView = name;
     try {  // freshness stamp under every view title

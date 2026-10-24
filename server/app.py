@@ -1060,6 +1060,11 @@ def recommendation():
     return jsonify(planner.recommendation())
 
 
+@app.get("/api/wealth-stage")
+def wealth_stage():
+    return jsonify(planner.wealth_stage_now())
+
+
 @app.get("/api/goal-scenarios")
 def goal_scenarios():
     return jsonify(planner.goal_scenarios() or {})

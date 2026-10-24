@@ -195,6 +195,87 @@ def _zl(v):
     return f"{v:,.0f}".replace(",", " ") + " " + cur
 
 
+# Marcin Iwuć's 10-stage wealth map. Stage = the first milestone the data does not confirm yet.
+# Stages 1 (arrears, debt collection: invisible in the data) and 5 (property, optional in the
+# map) only appear on the ladder in the view.
+WEALTH_STAGES = {
+    1: ("Hit and sunk", "danger",
+        "Debt falls three months in a row, or consumer bankruptcy.",
+        "Negotiate with creditors, get a lawyer's help."),
+    2: ("Debt slave", "danger",
+        "Pay off all consumer debt (cards, overdraft, installments); the mortgage does not count.",
+        "Stop taking new debt. Order it from the smallest and overpay one at a time (snowball)."),
+    3: ("Money pass-through", "danger",
+        "Cash for 1 month of essential costs.",
+        "On payday, before spending anything, a standing order to savings."),
+    4: ("Safety-fund builder", "safety",
+        "Cash and bonds for 6 months of essential costs.",
+        "Part in a savings account, the rest in inflation-linked bonds."),
+    5: ("Home buyer (optional)", "safety",
+        "Home bought and furnished, back to saving.",
+        "Focus on the down payment, tax-advantaged accounts can wait."),
+    6: ("Savings generator", "safety",
+        "First deliberate trade: even a token amount in a global equity ETF.",
+        "Brokerage account, a correct order and feeling the swings first-hand."),
+    7: ("Beginner investor", "safety",
+        "A written strategy and a portfolio built to it, topped up consistently.",
+        "No more impulse buys: every position has a role in the strategy. "
+        "Don't overdo the saving, experiences and passions are part of the plan too."),
+    8: ("Portfolio optimizer", "safety",
+        "At least one bear market (a fall of 20% or more) lived through with this strategy without dropping the plan.",
+        "This stage can be skipped: keep the strategy. Optimize taxes and fees, "
+        "not stock picking. Keep an offensive portfolio separate and small."),
+    9: ("Collector of experiences and assets", "freedom",
+        "The liquid portfolio covers the work-optional goal.",
+        "Portfolio upkeep in a few hours a quarter, more and more for dreams."),
+    10: ("Financially free", "freedom", "Goal reached.", "Work is optional: you do it because you like it."),
+}
+
+
+def wealth_stage(debts, lc, essential_m, has_model, plan_rows, liquid, target):
+    """Returns (stage, reason) per WEALTH_STAGES from the app's data."""
+    if any(x["balance"] > 0 and x.get("type") != "mortgage" for x in debts):
+        return 2, "you have consumer debt"
+    months = lc["cash"] / essential_m if essential_m else 0
+    if months < 1:
+        return 3, f"cash for {months:.1f} mo"
+    if months < 6:
+        return 4, f"cash for {months:.1f} mo"
+    if lc["brokerage"] <= 0:
+        return 6, "no brokerage portfolio"
+    off = [r for r in plan_rows if r["flag"] != "ok"]
+    if not has_model or off:
+        return 7, ("no written strategy (invest_model setting)" if not has_model else
+                   f"portfolio off strategy, {len(off)} of {len(plan_rows)} buckets off weight")
+    # "lived through a bear market" is not in the data, so 80% of the goal is the stage 9 threshold
+    if not target or liquid < 0.8 * target:
+        return 8, f"liquid portfolio {_zl(liquid)} of a {_zl(target or 0)} goal"
+    return (10, "goal reached") if liquid >= target else (9, f"liquid portfolio {_zl(liquid)} of {_zl(target)}")
+
+
+def wealth_stage_now(d=None, lc=None, essential_m=None):
+    """Stage from the current data plus the whole 1-10 ladder for the Ratios view."""
+    d = d or P.list_debts()
+    lc = lc or liquid_cushion()
+    if essential_m is None:
+        essential_m, _ = essential_monthly()
+    try:
+        plan_rows = P.invest_plan()["rows"]
+    except Exception:
+        plan_rows = []
+    g = P.fire_goal()
+    stage, why = wealth_stage(d["debts"], lc, essential_m, bool(P.get_json_setting("invest_model")),
+                              plan_rows, P._liquid_now() or 0, (g and g.get("target_amount")) or 1000000)
+    name, zone, milestone, how = WEALTH_STAGES[stage]
+    details = [{k: r.get(k) for k in ("label", "instrument", "value", "pct", "target", "buy")}
+               for r in plan_rows if r["flag"] != "ok"] if stage == 7 else []
+    ladder = [{"stage": n, "name": s[0], "zone": s[1], "milestone": s[2],
+               "status": "now" if n == stage else "done" if n < stage else "next"}
+              for n, s in sorted(WEALTH_STAGES.items())]
+    return {"stage": stage, "why": why, "details": details, "name": name, "zone": zone, "milestone": milestone, "how": how,
+            "cushion_months": round(lc["cash"] / essential_m, 1) if essential_m else None, "ladder": ladder}
+
+
 def recommendation():
     w = P.wealth_summary()
     d = P.list_debts()
@@ -254,6 +335,12 @@ def recommendation():
                      f"Target ~{_zl(target)}, i.e. 6 × ~{_zl(essential_m)}/mo.\n"
                      f"Retirement accounts ({_zl(lc['retirement'])}) are counted separately: early withdrawal costs.\n"
                      "The cushion comes before overpayments and investing.")})
+
+    # 1b. wealth stage (Iwuć): one next milestone instead of everything at once
+    ws = wealth_stage_now(d, lc, essential_m)
+    recs.append({"area": "wealth stage", "priority": 3,
+                 "title": f"Stage {ws['stage']}/10 on Iwuć's map: {ws['name']} (zone: {ws['zone']}), because {ws['why']}",
+                 "text": "".join(f"{x['label']} {x['pct']}% (target {x['target']}%)\n" for x in ws["details"]) + f"Milestone: {ws['milestone']}\nWhat to do: {ws['how']}"})
 
     # 2. debt avalanche vs investing
     for debt in sorted(d["debts"], key=lambda x: -(x["effective_rate"] or 0)):

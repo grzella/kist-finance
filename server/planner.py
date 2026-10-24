@@ -93,6 +93,9 @@ from planner_recs import (  # noqa: F401
     set_rec_outcome,
     rec_review,
     _zl,
+    WEALTH_STAGES,
+    wealth_stage,
+    wealth_stage_now,
     recommendation,
     xtb_recommendation,
 )
@@ -131,7 +134,9 @@ from planner_ops import (  # noqa: F401
     github_activity,
 )
 from planner_fire import (  # noqa: F401
+    fire_goal,
     fire_projection,
+    _liquid_now,
     record_fire_snapshot,
     invest_plan,
 )

@@ -41,7 +41,7 @@ Re-run the wizard anytime at `http://127.0.0.1:8321/#wizard`. Use a different po
 
 All captured from the fake "Alex Demo" persona (no real data).
 
-**📐 Ratios** — eleven ratios with traffic lights, a net-worth trajectory and a monthly history:
+**📐 Ratios** — the wealth stage on a 10-step ladder, eleven ratios with traffic lights, a net-worth trajectory and a monthly history:
 
 ![Ratios tab](docs/screenshots/ratios.png)
 
@@ -69,7 +69,7 @@ Core (always on):
 | 🥧 Allocation | portfolio breakdown vs. targets, 5/25 drift |
 | 🎯 Goals | savings goals with ETA as a range |
 | 🔮 Forecasts | range forecasts, FIRE crossover with an inflation-indexed target, contribution growth, an after-tax series and a **cone bootstrapped from a benchmark's real returns**, a **24-month net-worth cone with scenario toggles** (bonus, employer stock ±30%, USD ±10%, real terms), **forecast calibration per ticker × horizon** (coverage judged on non-overlapping windows, so a gap within noise reads "too few windows" instead of a false alarm; miss direction, Winkler score, VIX regime), stress test + guardrails |
-| 📐 Ratios | eleven personal-finance ratios with traffic lights vs targets (savings rate, essential share, cushion months, debt service / income, liquid / debt, investment share, employer concentration, real estate share, FX exposure, effective cost of debt, net worth m/m) — stored as a **monthly series** plus a **weekly wealth point**, so you can see each trend over time |
+| 📐 Ratios | **wealth stage** on Marcin Iwuć's 10-stage map (computed from your debts, cushion, brokerage and model portfolio, with the next milestone and what to do), eleven personal-finance ratios with traffic lights vs targets (savings rate, essential share, cushion months, debt service / income, liquid / debt, investment share, employer concentration, real estate share, FX exposure, effective cost of debt, net worth m/m) — stored as a **monthly series** plus a **weekly wealth point**, so you can see each trend over time |
 | 🛠️ Control Center | status, backups, security review, data inventory, reminders; every scheduled task's last failure is visible here, and when the server runs older code than the files on disk a banner offers a **one-click restart**. An **🎓 AI improvement** tab holds everything AI: mode, the ask box, the prompt log with 👍/👎, learned lessons, a red/amber/green checklist of the AI learning loop and a research-backed improvement roadmap |
 
 Optional — toggle in the wizard, disabled ones disappear from the UI:

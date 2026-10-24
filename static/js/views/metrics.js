@@ -1,6 +1,7 @@
 async function renderMetrics(el) {
   el.innerHTML = '<div class="empty">Computing ratios…</div>';
-  const [m, traj] = await Promise.all([api.get("/api/metrics"), api.get("/api/trajectory?months=12").catch(() => null)]);
+  const [m, traj, ws] = await Promise.all([api.get("/api/metrics"), api.get("/api/trajectory?months=12").catch(() => null),
+    api.get("/api/wealth-stage").catch(() => null)]);
   const cur = m.current, hist = m.history || [], pts = m.points || [];
   // one point per month (the last one): daily points showed mid-month states, e.g. shares
   // already sold while the loan they pay off is still open
@@ -23,6 +24,7 @@ async function renderMetrics(el) {
       <div class="muted mt" style="font-size:.85em">Estimated net income ${fmt.pln(cur.facts.net_income_est)}/mo = surplus ${fmt.pln(cur.facts.surplus)} + fixed expenses ${fmt.pln(cur.facts.expenses)} (incl. your share of installments) · debt service ${fmt.pln(cur.facts.debt_service)} (full installment)${cur.facts.savings_rate_tc_pct != null ? ` · savings rate with bonus, RSU and cash vest ${cur.facts.savings_rate_tc_pct}%` : ""} · liquid ${fmt.pln(cur.facts.liquid)} · invested ${fmt.pln(cur.facts.invested)} · debt incl. reserve ${fmt.pln(cur.facts.debt_total)}</div>
     <div class="muted mt" style="font-size:.9em">Every card has a "what & how" fold-out with the numbers used in the calculation; the full legend is at the bottom of the page.</div>
     </div>
+    ${ws ? stageCard(ws) : ""}
     <div class="grid cols-4 mt">
       ${cur.items.map((i) => `<div class="card kpi" style="margin:0;border-left:4px solid ${col(i.light)}" title="${esc(i.note)}">
         <div class="label">${icon(i.light)} ${i.label}</div>
@@ -51,6 +53,7 @@ async function renderMetrics(el) {
       <table class="mt" style="font-size:.9em"><tbody>${cur.items.map((i) => `<tr><td><b>${i.label}</b></td><td class="muted">${i.note}${i.explain ? `<div class="mt" style="font-size:.93em"><b>What it means:</b> ${i.explain.what}<br><b>How it is computed:</b> ${i.explain.how}<br><b>Why it matters:</b> ${i.explain.why}</div>` : ""}</td><td style="white-space:nowrap">target ${i.target}</td></tr>`).join("")}</tbody></table>
     </details>`;
 
+  document.getElementById("stagePlan")?.addEventListener("click", () => { window._scrollTo = "investPlan"; location.hash = "#forecasts"; });
   document.getElementById("mSnap").addEventListener("click", async () => {
     await api.post("/api/metrics/snapshot", {});
     renderMetrics(el);
@@ -84,4 +87,41 @@ async function renderMetrics(el) {
         scales: { y: { ticks: { callback: (v) => (v / 1000000).toFixed(2) + " M" } } } },
     }));
   }
+}
+
+// Iwuć's 10-stage ladder: /api/wealth-stage computes the stage from the app's data, this only draws it.
+function stageCard(ws) {
+  const zones = [["danger", "var(--neg)"], ["safety", "var(--warn)"], ["freedom", "var(--pos)"]];
+  const bg = (s) => s.status === "now" ? "var(--accent)" : s.status === "done" ? "var(--accent-soft)" : "var(--panel2)";
+  const next = ws.ladder.find((s) => s.stage > ws.stage);
+  return `<div class="card mt" style="border-left:4px solid var(--accent)">
+    <div class="row" style="justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <h3 style="margin:0">🪜 Wealth stage: ${ws.stage}/10 · ${esc(ws.name)}</h3>
+      <span class="muted" style="font-size:.85em">zone: ${esc(ws.zone)} · <a href="https://www.goodreads.com/book/show/55289532" target="_blank" rel="noopener">M. Iwuć's map</a></span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px;margin-top:12px">
+      ${ws.ladder.map((s) => `<div title="${esc(s.stage + ". " + s.name + ": " + s.milestone)}"
+        style="background:${bg(s)};color:${s.status === "now" ? "var(--accent-ink)" : "inherit"};border-radius:6px;padding:8px 2px;text-align:center;font-weight:${s.status === "now" ? 700 : 500};opacity:${s.status === "next" ? .6 : 1}">
+        ${s.status === "done" ? "✓" : s.stage}</div>`).join("")}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px;margin-top:4px;font-size:.72em" class="muted">
+      ${zones.map(([z, c]) => { const n = ws.ladder.filter((s) => s.zone === z).length;
+        return `<div style="grid-column:span ${n};border-top:2px solid ${c};padding-top:2px;text-align:center">${z}</div>`; }).join("")}
+    </div>
+    <div class="mt" style="font-size:.92em">
+      <div><b>Why this stage:</b> ${esc(ws.why)}</div>
+      ${(ws.details || []).length ? `<div style="overflow-x:auto;margin-top:6px"><table style="font-size:.9em">
+        <thead><tr><th>Bucket</th><th>What's in it</th><th style="text-align:right">You have</th><th style="text-align:right">Target</th><th style="text-align:right">Buy next inflow</th></tr></thead>
+        <tbody>${ws.details.map((x) => `<tr><td><b>${esc(x.label)}</b></td><td class="muted">${esc(String(x.instrument || ""))}</td>
+          <td style="text-align:right">${fmt.pln(x.value)} · ${x.pct}%</td><td style="text-align:right">${x.target}%</td>
+          <td style="text-align:right" class="${x.buy ? "pos" : "muted"}">${x.buy ? fmt.pln(x.buy) : "don't add"}</td></tr>`).join("")}</tbody></table></div>
+        <div class="muted" style="font-size:.85em;margin-top:4px">Buckets and weights are your model portfolio (the invest_model setting). The "buy" column splits the next inflow so the buckets reach their weights without selling.</div>
+        <button class="mt" id="stagePlan">Investment plan details →</button>` : ""}
+      <div class="mt"><b>Milestone:</b> ${esc(ws.milestone)}</div>
+      <div><b>What to do:</b> ${esc(ws.how)}</div>
+      ${next ? `<div class="muted mt">Next: ${next.stage}. ${esc(next.name)}</div>` : ""}
+    </div>
+    ${help(ws.ladder.map((s) => `${s.status === "now" ? "<b>" : ""}${s.stage}. ${esc(s.name)}: ${esc(s.milestone)}${s.status === "now" ? "</b>" : ""}`).join("<br>")
+      + "<br><br>Stages 1 and 5 (property, optional) are only on the map, the app does not compute them. Stage 8 needs a bear market lived through, which the data cannot see, so the stage 9 threshold is 80% of the work-optional goal.", "all stages")}
+  </div>`;
 }

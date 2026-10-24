@@ -18,13 +18,17 @@ def _centered(mrets, drift_m):
     return [r - mu + drift_m for r in mrets]
 
 
+def fire_goal():
+    return next((x for x in P.list_goals() if any(k in x["name"].lower()
+                for k in ("work-optional", "liquid", "independent", "portfolio"))), None)
+
+
 def fire_projection():
     """Liquid-portfolio projection toward the work-optional goal: 3 return scenarios
     plus a real (inflation-adjusted) version. Readable lines instead of a Monte-Carlo histogram."""
     from datetime import date
     goals = P.list_goals()
-    g = next((x for x in goals if any(k in x["name"].lower()
-             for k in ("work-optional", "liquid", "independent", "portfolio"))), None)
+    g = fire_goal()
     start = (g and g.get("current_amount")) or 289000
     target = (g and g.get("target_amount")) or 1000000
     base_month = P.monthly_surplus() or 10000

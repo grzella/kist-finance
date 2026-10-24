@@ -90,3 +90,24 @@ def test_wealth_tile_percent_uses_the_metrics_cushion():
     from pathlib import Path
     js = Path(__file__).resolve().parent.parent / "static" / "js" / "views" / "wealth.js"
     assert "o.cushion.total / target" in js.read_text(encoding="utf-8")
+
+
+def test_wealth_stage_milestones():
+    import planner_recs as R
+    lc = {"cash": 60000, "brokerage": 1000}
+    ok, off = [{"flag": "ok"}], [{"label": "Core", "pct": 11, "target": 50, "flag": "top up"}]
+    assert R.wealth_stage([{"balance": 1, "type": "card"}], lc, 8000, True, ok, 0, 1)[0] == 2
+    assert R.wealth_stage([], {"cash": 4000, "brokerage": 0}, 8000, True, ok, 0, 1)[0] == 3
+    assert R.wealth_stage([], {"cash": 40000, "brokerage": 0}, 8000, True, ok, 0, 1)[0] == 4
+    assert R.wealth_stage([], {"cash": 60000, "brokerage": 0}, 8000, True, ok, 0, 1)[0] == 6
+    assert R.wealth_stage([{"balance": 9, "type": "mortgage"}], lc, 8000, True, off, 0, 1)[0] == 7
+    assert R.wealth_stage([], lc, 8000, False, ok, 0, 1)[0] == 7
+    assert [R.wealth_stage([], lc, 8000, True, ok, v, 100)[0] for v in (79, 80, 100)] == [8, 9, 10]
+    assert set(R.WEALTH_STAGES) == set(range(1, 11))
+
+
+def test_wealth_stage_endpoint_ladder(client):
+    ws = client.get("/api/wealth-stage").get_json()
+    assert [s["stage"] for s in ws["ladder"]] == list(range(1, 11))
+    assert [s["status"] for s in ws["ladder"]].count("now") == 1
+    assert ws["ladder"][ws["stage"] - 1]["status"] == "now"
