@@ -10,6 +10,8 @@ Control Center.
 """
 import json
 import os
+import subprocess
+import sys
 import urllib.request
 
 API_URL = "https://api.anthropic.com/v1/messages"
@@ -17,7 +19,16 @@ MODEL = os.environ.get("CLOUD_LLM_MODEL", "claude-fable-5")
 
 
 def _key():
-    return os.environ.get("ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+    k = os.environ.get("ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+    if k or sys.platform != "darwin":
+        return k
+    # The key lives in the macOS Keychain (item anthropic-api-key), not in the shell profile: a global export
+    # also switched every `claude` run from the subscription to the paid key. `security` is on the item ACL, no prompt.
+    try:
+        return subprocess.run(["security", "find-generic-password", "-s", "anthropic-api-key", "-w"],
+                              capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
 
 
 def status():
