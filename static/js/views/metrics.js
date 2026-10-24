@@ -20,7 +20,7 @@ async function renderMetrics(el) {
       "recompute derived"; this month's ratios are overwritten by the latest recompute, so history is one row per month.</div>
     <div class="card" style="border-left:4px solid ${bad.length ? TOKENS.neg : amber.length ? TOKENS.warn : TOKENS.pos}">
       <b>${bad.length ? `🔴 ${bad.length} off target: ${bad.map((i) => i.label).join(", ")}` : amber.length ? `🟡 ${amber.length} to improve: ${amber.map((i) => i.label).join(", ")}` : "🟢 All ratios on target"}</b>
-      <div class="muted mt" style="font-size:.85em">Estimated net income ${fmt.pln(cur.facts.net_income_est)}/mo = surplus ${fmt.pln(cur.facts.surplus)} + fixed expenses ${fmt.pln(cur.facts.expenses)} + loan payments ${fmt.pln(cur.facts.debt_service)} · liquid ${fmt.pln(cur.facts.liquid)} · invested ${fmt.pln(cur.facts.invested)} · debt incl. reserve ${fmt.pln(cur.facts.debt_total)}</div>
+      <div class="muted mt" style="font-size:.85em">Estimated net income ${fmt.pln(cur.facts.net_income_est)}/mo = surplus ${fmt.pln(cur.facts.surplus)} + fixed expenses ${fmt.pln(cur.facts.expenses)} (incl. your share of installments) · debt service ${fmt.pln(cur.facts.debt_service)} (full installment)${cur.facts.savings_rate_tc_pct != null ? ` · savings rate with bonus, RSU and cash vest ${cur.facts.savings_rate_tc_pct}%` : ""} · liquid ${fmt.pln(cur.facts.liquid)} · invested ${fmt.pln(cur.facts.invested)} · debt incl. reserve ${fmt.pln(cur.facts.debt_total)}</div>
     <div class="muted mt" style="font-size:.9em">Every card has a "what & how" fold-out with the numbers used in the calculation; the full legend is at the bottom of the page.</div>
     </div>
     <div class="grid cols-4 mt">

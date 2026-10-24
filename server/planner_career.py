@@ -57,10 +57,15 @@ def list_offers():
     cfg = P.settings()
     goals = P.list_goals()
     current = _current_total_monthly()
+    try:  # the offer delta is gross while the goal pace is net: payslip net factor (RSU and B2B differ, an approximation)
+        nf = float(P._annual_extras()["payroll_net_factor"] or 0.55)
+    except Exception:
+        nf = 0.55
     cfg["current_total_monthly"] = current
     savings = cfg.get("monthly_savings")
     for o in offers:
         o["delta_monthly"] = (o["total_monthly"] - current) if current else None
+        o["delta_monthly_net"] = round((o["total_monthly"] - current) * nf) if current else None
         o["goal_impact"] = []
         if current and savings and savings > 0:
             for g in goals:
@@ -71,8 +76,8 @@ def list_offers():
                     continue
                 base_pace = g["monthly_contribution"] or savings
                 base_months = remaining / base_pace
-                # assumption: comp delta flows fully into savings for this goal
-                new_pace = base_pace + (o["total_monthly"] - current)
+                # the whole net delta goes to this goal (adding the gross delta to a net pace overstated months_saved)
+                new_pace = base_pace + (o["total_monthly"] - current) * nf
                 new_months = remaining / new_pace if new_pace > 0 else None
                 o["goal_impact"].append({
                     "goal": g["name"],

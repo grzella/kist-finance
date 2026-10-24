@@ -3,6 +3,7 @@ scenarios, calibration per ticker × horizon (Winkler/PIT, VIX regime, rolling w
 markdown notes with citations, the leader's evidence log, recommendation outcomes + review,
 the new scheduler task."""
 import json
+import pytest
 import math
 import random
 
@@ -58,6 +59,16 @@ def test_trajectory_quantiles_ordered_and_variants(client):
     assert {v["key"] for v in t["variants"]} >= {"base", "no_bonus", "team_down", "all_bad"}
     base = next(v for v in t["variants"] if v["key"] == "base")
     assert base["delta_vs_base"] == 0
+    up = next((v for v in t["variants"] if v["key"] == "team_up"), None)
+    down = next(v for v in t["variants"] if v["key"] == "team_down")
+    if up and t["assumptions"].get("rsu"):
+        assert abs(up["delta_vs_base"] + down["delta_vs_base"]) <= 1  # symmetric shock, both compounded
+    t18 = client.get("/api/trajectory?months=18").get_json()
+    from datetime import date as _d
+    bonus_at = (t18["assumptions"]["bonus_month"] - _d.today().month - 1) % 12
+    n_bonus = sum(1 for m in range(18) if m % 12 == bonus_at)
+    nb = next(v for v in t18["variants"] if v["key"] == "no_bonus")
+    assert abs(nb["delta_vs_base"] + t18["assumptions"]["bonus_net"] * n_bonus) <= n_bonus + 1
     real = client.get("/api/trajectory?months=12&real=1").get_json()
     assert real["assumptions"]["real"] is True
     assert real["p50"][-1] <= t["p50"][-1]
@@ -196,3 +207,28 @@ def test_schedule_registry_has_weekly_points(client):
 def test_refresh_derived_records_metrics(client):
     out = client.post("/api/freshness/derived").get_json()
     assert out.get("metrics") == "ok"
+
+
+def test_metrics_banner_identity_and_formula_texts(client):
+    import metrics
+    r = client.get("/api/metrics").get_json()
+    f = r["current"]["facts"]
+    if f["expenses"]:
+        assert f["net_income_est"] == f["surplus"] + f["expenses"]  # installments sit in expenses, not added twice
+    defs = {t[0]: t[6] for t in metrics.TARGETS}
+    assert "debt service)" not in defs["savings_rate_pct"] and "+ payments" not in defs["dti_pct"]
+    dti = next(i for i in r["current"]["items"] if i["key"] == "dti_pct")
+    assert "full loan installment" in dti["explain"]["what"]
+    cushion = next(i for i in r["current"]["items"] if i["key"] == "cushion_months")
+    assert "cash and bonds" in cushion["explain"]["how"]
+
+
+def test_savings_rate_total_comp_adds_extras(monkeypatch):
+    import metrics, planner, planner_goals
+    monkeypatch.setattr(planner_goals, "_annual_extras", lambda *a, **k: {
+        "bonus_net": 12000, "rsu_annual": 0, "cash_vest_annual_net": 0, "monthly_equivalent": 500, "payroll_net_factor": 0.55})
+    monkeypatch.setattr(planner, "monthly_surplus", lambda: 5000)
+    f = metrics.compute()["facts"]
+    assert f["extras_monthly"] == 1000
+    net = 5000 + (f["expenses"] or f["debt_service"])
+    assert f["savings_rate_tc_pct"] == pytest.approx((5000 + 1000) / (net + 1000) * 100, abs=0.3)

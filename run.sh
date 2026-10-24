@@ -22,6 +22,9 @@ fi
 # and the new instance died with "Address already in use"). TERM first, KILL after 8 s.
 OLD="$(lsof -ti tcp:"$PORT" -sTCP:LISTEN 2>/dev/null | tr '\n' ' ' || true)"
 if [ -n "$OLD" ]; then
+  for p in $OLD; do  # only our own instance: another app on this port (e.g. a second kist checkout) is not ours to kill
+    ps -o command= -p "$p" | grep -qF "$APP_DIR/server/app.py" || { echo "[budget-app] port $PORT is taken by another process ($p): run with PORT=<other> ./run.sh"; exit 1; }
+  done
   kill $OLD 2>/dev/null
   for _ in $(seq 1 32); do lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1 || break; sleep 0.25; done
   if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then kill -9 $OLD 2>/dev/null; sleep 0.5; fi

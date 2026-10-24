@@ -13,6 +13,7 @@ from datetime import date
 
 import engine_bridge as eb
 import planner
+import planner_goals
 from planner_core import _now
 
 
@@ -100,13 +101,13 @@ def points(limit=160):
 # green threshold, amber threshold, definition
 TARGETS = [
     ("savings_rate_pct", "Savings rate", "%", "high", 30, 15,
-     "base surplus / (surplus + fixed expenses + debt service)"),
+     "base surplus / (surplus + fixed expenses incl. your share of loan installments)"),
     ("essential_share_pct", "Essential share of expenses", "%", "low", 60, 75,
      "expenses flagged essential / all fixed expenses"),
     ("cushion_months", "Cushion", "mo", "high", 6, 3,
      "cash + 80% of brokerage / (essential costs + loan payments)"),
     ("dti_pct", "Debt service / income", "%", "low", 30, 40,
-     "loan payments and insurance / estimated net income (surplus + expenses + payments)"),
+     "full loan installment and insurance / estimated net income (surplus + fixed expenses); bank-style stress"),
     ("liquid_to_debt_pct", "Liquid assets / debt", "%", "high", 50, 25,
      "cash + ETF + employer stock + retirement / loan balances incl. tax reserve"),
     ("invest_share_pct", "Investment share", "%", "high", 25, 15,
@@ -160,6 +161,14 @@ def compute():
     # fixed expenses already carry your loan installments (your share on a joint loan); adding the
     # loan's full payment on top inflated income and shrank the cushion. No expenses: loans alone.
     net_income = surplus + (total_exp or float(debt_service or 0))
+    # Savings rate on total compensation: FIRE and Goals already count bonus, RSU and cash vest while this card looked
+    # at salary only. Components summed directly, not monthly_equivalent, which planner_goals scales by extras_to_goal_pct.
+    try:
+        ex = planner_goals._annual_extras()
+        extras_m = (float(ex.get("bonus_net") or 0) + float(ex.get("rsu_annual") or 0) + float(ex.get("cash_vest_annual_net") or 0)) / 12
+    except Exception:
+        extras_m = 0.0
+    savings_rate_tc = ((surplus + extras_m) / (net_income + extras_m) * 100) if (net_income + extras_m) > 0 else None
     assets = float(w.get("total") or 0) - float((w.get("totals") or {}).get("income", 0) or 0)
     base = float(alloc["total"]) if alloc and alloc.get("total") else assets
     invest = vals.get("etf", 0) + vals.get("rsu", 0) + vals.get("retirement", 0)
@@ -205,7 +214,8 @@ def compute():
     explain = {
         "savings_rate_pct": {
             "what": "The share of net income you actually put aside each month — the surplus after fixed expenses and loan payments.",
-            "how": f"surplus {_m(surplus)} / net income {_m(net_income)} (= surplus {_m(surplus)} + fixed expenses incl. your loan installments {_m(total_exp)}) = {_p(raw['savings_rate_pct'])}%",
+            "how": f"surplus {_m(surplus)} / net income {_m(net_income)} (= surplus {_m(surplus)} + fixed expenses incl. your loan installments {_m(total_exp)}) = {_p(raw['savings_rate_pct'])}%"
+                   + (f"; with bonus, RSU and cash vest (net, {_m(extras_m)}/mo): {_p(savings_rate_tc)}%" if extras_m > 0 else ""),
             "why": "≥ 30% makes real progress toward your goal; below 15% net worth grows mostly from the market, not from you."},
         "essential_share_pct": {
             "what": "How much of your fixed spending cannot be cut quickly (items flagged as essential).",
@@ -213,10 +223,11 @@ def compute():
             "why": "The higher it is, the less room you have when income drops; above 75% the budget is rigid."},
         "cushion_months": {
             "what": "How many months of essential costs (incl. your loan installments) the cushion would cover if income stopped.",
-            "how": f"cushion {_m(lc['total'])} (cash + 80% of the brokerage portfolio) / essential incl. loan installments {_m(essential)} = {_p(raw['cushion_months'])} months",
+            "how": f"cushion {_m(lc['total'])} (cash + 80% of the brokerage portfolio) / essential incl. loan installments {_m(essential)} = {_p(raw['cushion_months'])} months"
+                   + f"; of which cash and bonds {_m(lc.get('cash'))}: {_p((lc.get('cash') or 0) / float(essential)) if essential else '—'} months",
             "why": "Six months is the standard with a single income source; three is the minimum."},
         "dti_pct": {
-            "what": "The share of net income consumed by loan payments and loan insurance.",
+            "what": "The share of your net income the full loan installment with insurance would take (bank-style stress); your share of installments already sits in fixed expenses.",
             "how": f"loan payments and insurance {_m(debt_service)} / net income {_m(net_income)} = {_p(raw['dti_pct'])}%",
             "why": "Banks compute the same ratio; above 40% refinancing and new credit get harder."},
         "liquid_to_debt_pct": {
@@ -268,6 +279,8 @@ def compute():
             "facts": {"net_income_est": round(net_income), "surplus": round(surplus),
                       "expenses": round(total_exp), "debt_service": round(float(debt_service or 0)),
                       "liquid": round(liquid), "invested": round(invest), "debt_total": round(debt_total),
+                      "extras_monthly": round(extras_m),
+                      "savings_rate_tc_pct": round(savings_rate_tc, 1) if savings_rate_tc is not None else None,
                       "after_tax_return_pct": after_tax}}
 
 
@@ -413,7 +426,10 @@ def trajectory(months=24, bonus=True, team_shock_pct=0.0, usd_shock_pct=0.0, rea
                 ("usd_down", "USD −10%", -0.10 * fx_val, bonus_net),
                 ("all_bad", "no bonus + stock −30% + USD −10%", -0.30 * rsu_val - 0.10 * fx_val, 0.0)]
     for key, label, delta0, b in variants:
-        end = base_end + delta0 * ((1 + drift_m) ** months if delta0 < 0 else 1) + (b - bonus_net) * max(1, months // 12)
+        # a shock on the invested part compounds with the drift in both directions (as team_shock_pct does in the
+        # simulation); before, only the drop compounded and the bonus count assumed whole years (API allows 6..60 months)
+        n_bonus = sum(1 for m in range(months) if m % 12 == bonus_at)
+        end = base_end + delta0 * (1 + drift_m) ** months + (b - bonus_net) * n_bonus
         out["variants"].append({"key": key, "label": label, "p50_end": round(end),
                                 "delta_vs_base": round(end - base_end)})
     return out

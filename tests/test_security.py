@@ -526,6 +526,11 @@ def test_guard_binds_mutations_to_the_exact_origin(client):
     ok = client.put("/api/settings", headers={"Origin": "http://localhost:8321",
                                               "Sec-Fetch-Site": "same-origin"}, json={})
     assert ok.status_code != 403
+    # GET has side effects too (/api/health runs run_due, /api/git?fetch), so same-site from another local port is out
+    for sfs in ("same-site", "cross-site"):
+        assert client.get("/api/health", headers={"Sec-Fetch-Site": sfs}).status_code == 403, sfs
+    assert client.get("/api/health", headers={"Sec-Fetch-Site": "same-origin"}).status_code == 200
+    assert client.get("/api/health").status_code == 200  # no header: curl, n8n, launchd
 
 
 def test_backup_never_leaves_plaintext_in_the_synced_folder(client, tmp_path, monkeypatch):
