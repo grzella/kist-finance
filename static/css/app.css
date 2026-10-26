@@ -113,6 +113,7 @@ details > summary::before { content: "›"; display: inline-block; color: var(--
 details[open] > summary::before { transform: rotate(90deg); }
 
 /* ---------- tables: hairlines, tabular numerals, calm density */
+#wTable { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th { text-align: left; color: var(--faint); font-size: 12px; font-weight: 600; letter-spacing: .06em;
   text-transform: uppercase; padding: 6px 12px 10px; border-bottom: 1px solid var(--border); }
@@ -181,6 +182,11 @@ html.busy::before { content: ""; position: fixed; top: 0; left: 0; height: 2px; 
 @keyframes busybar { 0% { left: -30%; } 100% { left: 100%; } }
 @media (prefers-reduced-motion: reduce) { .skeleton .bar, html.busy::before { animation: none; } }
 .inline-edit { display: inline-flex; gap: 6px; align-items: center; }
+/* inside a table cell the editor floats over the row: input plus two buttons widened
+   the column and the whole table jumped on "Update" */
+td:has(> .inline-edit) { position: relative; }
+td > .inline-edit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 2;
+  padding: 4px; border-radius: 10px; background: var(--panel2); box-shadow: 0 6px 20px rgba(0,0,0,.35); }
 .inline-edit input { width: 120px; text-align: right; min-height: 32px; padding: 4px 8px; }
 .inline-edit input.invalid { border-color: var(--neg); box-shadow: 0 0 0 3px rgba(255,123,123,.18); }
 .inline-edit button { min-height: 32px; padding: 4px 10px; }
