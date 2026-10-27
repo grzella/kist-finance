@@ -96,7 +96,7 @@ def test_generic_settings_writer_still_cannot_set_commit_repos(client, clean_set
 
 def test_rubric_is_well_formed():
     import ai_learning as al
-    assert [l["lvl"] for l in al.LEVELS] == [0, 1, 2, 3, 4, 5]
+    assert [l["lvl"] for l in al.LEVELS] == list(range(11))
     ids = [s["id"] for s in al.SKILLS]
     assert len(ids) == len(set(ids)) >= 10
     for s in al.SKILLS:
@@ -247,11 +247,12 @@ def test_score_is_the_weighted_share_of_the_scale():
     assert a["counts"] == {k: sum(1 for v in st.values() if v == k) for k in ("have", "partial", "missing")}
 
 
-def test_everything_present_caps_at_five():
+def test_everything_present_caps_at_architect():
     import ai_learning as al
     a = al.assess([full_source()])
     assert {x["status"] for x in a["skills"]} == {"have"}
     assert a["score"] == 5.0 and a["level"] == 5 and a["target"] == 5
+    assert a["level_name"] == "Architect"
 
 
 def test_projects_are_graded_by_how_many_skills_they_show_and_empty_ones_dropped():

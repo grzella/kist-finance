@@ -78,12 +78,20 @@ def set_repos(body):
 
 LEVELS = [
     {"lvl": 0, "name": "Observer", "desc": "Reads about AI, has not changed how they work."},
-    {"lvl": 1, "name": "User", "desc": "Uses chat assistants for drafting and research."},
-    {"lvl": 2, "name": "Practitioner", "desc": "Calls models from code, keeps prompts and small automations, checks outputs."},
-    {"lvl": 3, "name": "Orchestrator", "desc": "Chains models, retrieval and tools into workflows with evals and logging."},
-    {"lvl": 4, "name": "Architect", "desc": "Designs AI systems end to end: data, retrieval, evals, cost, failure modes."},
-    {"lvl": 5, "name": "Authority", "desc": "Others reuse their methods; shapes the practice beyond their own team."},
+    {"lvl": 1, "name": "User", "desc": "Chat assistants and ready-made tools, one-off prompts."},
+    {"lvl": 2, "name": "Practitioner", "desc": "Prompts written as specs, reusable instructions, no-code automations; checks outputs."},
+    {"lvl": 3, "name": "Builder", "desc": "Own apps on hosted and local models: retrieval, an agent with tools, tests."},
+    {"lvl": 4, "name": "Orchestrator", "desc": "Multi-agent systems with contracts, evals, guardrails, budgets, CI, security and feedback loops."},
+    {"lvl": 5, "name": "Architect", "desc": "A platform for an organisation: standards, evals at scale, observability, governance, token economics, hundreds of users."},
+    {"lvl": 6, "name": "Model engineer", "desc": "Understands the transformer in code (wrote a GPT from scratch), fine-tuning and post-training (SFT, LoRA, DPO), quantisation and serving with metrics."},
+    {"lvl": 7, "name": "Applied researcher", "desc": "Reproduces papers, trains on many GPUs (FSDP, mixed precision), own benchmarks and ablations, interpretability, RL for LLMs."},
+    {"lvl": 8, "name": "Authority", "desc": "Publishes and co-builds the field's tools and standards; others build on their patterns."},
+    {"lvl": 9, "name": "Frontier engineer", "desc": "Pre-training and post-training at lab scale, new architectures or methods with measured state-of-the-art results."},
+    {"lvl": 10, "name": "Pioneer", "desc": "Sets the field's direction: widely cited work and paradigms other labs build on."},
 ]
+# Repository evidence covers applied skills only, so a full rubric reaches Architect. Levels above
+# need model code and research the scan cannot see; they stay on the scale as the ceiling, not a target.
+SCORED_MAX = 5
 
 # Each skill is looked for in three places: dependency manifests (`dep`), file paths (`path`)
 # and text (`text`: commit subjects, README, repo description and topics). Patterns are regexes
@@ -344,11 +352,11 @@ def assess(sources):
         skills.append({"id": sk["id"], "area": sk["area"], "name": sk["name"], "status": status,
                        "how": sk["how"], **({"link": sk["link"]} if sk.get("link") else {}),
                        "evidence": [f"{n} · {k}: {d}"[:140] for n, k, d in hits[:MAX_EVIDENCE]]})
-    score = round(5 * earned / sum(s["weight"] for s in SKILLS), 1)
+    score = round(SCORED_MAX * earned / sum(s["weight"] for s in SKILLS), 1)
     level = int(score)
     projects.sort(key=lambda p: -p["n"])
     return {
-        "score": score, "level": level, "level_name": LEVELS[level]["name"], "target": min(5, level + 1),
+        "score": score, "level": level, "level_name": LEVELS[level]["name"], "target": min(SCORED_MAX, level + 1),
         "counts": {k: sum(1 for s in skills if s["status"] == k) for k in POINTS},
         "skills": skills,
         "projects": [{"name": p["name"], "origin": p["origin"], "grade": _grade(p["n"]), "skills": p["skills"]}
@@ -374,7 +382,7 @@ MONTHS = ["Months 1 to 2", "Months 3 to 4", "Months 5 to 7", "Months 8 to 10", "
 
 def _facts(a):
     """Everything the model gets: computed levels and the short evidence lines, no file contents."""
-    lines = [f"Score {a['score']} of 5 ({a['level_name']}); skills: {a['counts']['have']} have, "
+    lines = [f"Score {a['score']} of {LEVELS[-1]['lvl']} ({a['level_name']}); skills: {a['counts']['have']} have, "
              f"{a['counts']['partial']} partial, {a['counts']['missing']} missing."]
     for s in a["skills"]:
         lines.append(f"- {s['name']}: {s['status']}" + (f" ({'; '.join(s['evidence'])})" if s["evidence"] else ""))

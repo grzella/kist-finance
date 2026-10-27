@@ -43,6 +43,7 @@ sys.path.insert(0, str(ROOT / "server"))
 import config  # noqa: E402
 config.setup()
 import engine_bridge as eb  # noqa: E402
+import ai_learning  # noqa: E402
 import planner  # noqa: E402
 import market  # noqa: E402
 
@@ -260,17 +261,11 @@ planner.set_settings({"analysis_contributions": json.dumps({
 # --- AI learning tab (Career): a sample assessment for Alex + a little progress of their own ---
 planner.set_settings({"analysis_ai_learning": json.dumps({
     "as_of": TODAY.isoformat(), "score": 2.6, "target": 4,
-    "score_label": "Practitioner, edging toward Orchestrator",
-    "scale": [
-        {"lvl": 0, "name": "Observer", "desc": "Reads about AI, has not changed how they work."},
-        {"lvl": 1, "name": "User", "desc": "Uses chat assistants daily for drafting and research."},
-        {"lvl": 2, "name": "Practitioner", "desc": "Has repeatable prompts and small automations; checks outputs against evidence."},
-        {"lvl": 3, "name": "Orchestrator", "desc": "Chains models and tools into workflows with evals, owns the quality bar."},
-        {"lvl": 4, "name": "Architect", "desc": "Designs AI systems end to end: data, retrieval, evals, cost, failure modes."},
-        {"lvl": 5, "name": "Authority", "desc": "Others cite and reuse their methods; shapes the practice beyond their team."}],
+    "score_label": "Practitioner, edging toward Builder",
+    "scale": ai_learning.LEVELS,
     "verdict": "Alex prototypes with AI every week and already treats outputs as claims to verify, which is the "
-               "hard part of level 2. The gap to level 3 is measurement: workflows exist but nobody scores them. "
-               "One small eval set per workflow, plus a written postmortem each quarter, closes most of it.",
+               "hard part of level 2. Level 3 is close: two of the projects already call models from code. "
+               "Level 4 is measurement: workflows exist but nobody scores them; one small eval set per workflow closes most of it.",
     "projects": [
         {"name": "alex/discovery-copilot", "grade": "B+",
          "what": "Interview-notes summariser with a retrieval step over past research.",
