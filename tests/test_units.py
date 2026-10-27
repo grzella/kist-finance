@@ -87,6 +87,17 @@ def test_backup_snapshot_is_consistent(client, tmp_path):
     assert r["ok"] and r["size_kb"] > 0
 
 
+def test_backup_auto_off_stays_off(client, tmp_path):
+    import data_backup as backup
+    backup.set_destination(str(tmp_path))
+    client.post("/api/backup/auto", json={"enabled": True})
+    assert backup.status()["auto"] is True
+    client.post("/api/backup/auto", json={"enabled": False})
+    assert backup.status()["auto"] is False
+    import schedules
+    assert schedules._run_backup() and not list(tmp_path.iterdir())
+
+
 def test_backup_restore_reverts_changes(client, tmp_path):
     import data_backup as backup
     backup.planner.set_settings({"backup_allow_plaintext": "true"})  # no BACKUP_KEY in test env

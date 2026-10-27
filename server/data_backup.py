@@ -259,7 +259,8 @@ def restore(filename):
 
 
 def set_auto(enabled):
-    planner.set_settings({"backup_auto": bool(enabled)})
+    # set_settings stores str(v) and "False" is truthy, so a switched-off toggle kept backing up
+    planner.set_settings({"backup_auto": "1" if enabled else ""})
     return {"ok": True, "auto": bool(enabled)}
 
 
