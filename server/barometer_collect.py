@@ -18,6 +18,23 @@ _GEO_LABEL = "global (remote proxy)"
 
 HISTORY_START = "2026-01"  # first month of barometer history
 
+# From the week of 2026-09-27 Trends cut every job-title query by 60-80% at once (weather and
+# recipes unchanged), so the raw series showed a market collapse that never happened. Dividing by
+# a basket of other tech roles keeps our roles' share of job searches, which survives such cuts.
+CONTROLS = ["software engineer", "product manager", "data scientist"]
+
+
+def _monthly_share(queries, start):
+    from pytrends.request import TrendReq
+    tr = TrendReq(hl="en-US", tz=0)
+    tr.build_payload(queries + CONTROLS, timeframe=f"{start} {date.today().isoformat()}", geo=GEO)
+    df = tr.interest_over_time()
+    if "isPartial" in df:
+        df = df.drop(columns=["isPartial"])
+    m = df.resample("MS").mean()
+    basket = m[CONTROLS].sum(axis=1)
+    return m[queries].div(basket, axis=0).mul(basket.mean()).round(1)
+
 
 def _last_full_month():
     t = date.today()
@@ -59,8 +76,8 @@ def collect(force=False):
         return {"ok": False, "error": "pytrends not installed (pip install pytrends)"}
 
     cfg = planner.barometer_config()
-    roles = cfg["roles"]
-    queries = [r["query"] for r in roles][:5]  # Trends: max 5 terms at once
+    roles = cfg["roles"][:5 - len(CONTROLS)]  # Trends: at most 5 terms per request, basket included
+    queries = [r["query"] for r in roles]
 
     # Own stream only — an 'openings' point must not block a 'trends' write.
     old_ids = {}
@@ -72,12 +89,7 @@ def collect(force=False):
         return {"ok": True, "added": [], "up_to_date": _last_full_month()}
 
     try:
-        tr = TrendReq(hl="en-US", tz=0)
-        tr.build_payload(queries, timeframe=f"{HISTORY_START}-01 {date.today().isoformat()}", geo=GEO)
-        df = tr.interest_over_time()
-        if "isPartial" in df:
-            df = df.drop(columns=["isPartial"])
-        monthly = df.resample("MS").mean().round(1)
+        monthly = _monthly_share(queries, f"{HISTORY_START}-01")
     except Exception as e:
         return {"ok": False, "error": str(e)[:140]}
 
@@ -164,15 +176,10 @@ def backfill(replace=True):
     except Exception:
         return {"ok": False, "error": "pytrends not installed"}
     cfg = planner.barometer_config()
-    roles = cfg["roles"]
-    queries = [r["query"] for r in roles][:5]
+    roles = cfg["roles"][:5 - len(CONTROLS)]  # Trends: at most 5 terms per request, basket included
+    queries = [r["query"] for r in roles]
     try:
-        tr = TrendReq(hl="en-US", tz=0)
-        tr.build_payload(queries, timeframe=f"2026-01-01 {date.today().isoformat()}", geo=GEO)
-        df = tr.interest_over_time()
-        if "isPartial" in df:
-            df = df.drop(columns=["isPartial"])
-        monthly = df.resample("MS").mean().round(1)
+        monthly = _monthly_share(queries, "2026-01-01")
     except Exception as e:
         return {"ok": False, "error": str(e)[:140]}
     if replace:

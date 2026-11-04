@@ -458,6 +458,38 @@ def test_barometer_collect_rewrites_whole_series_on_one_scale(client, monkeypatc
     assert all(v == 50.0 for p in pts for v in p["counts"].values())  # August overwritten
 
 
+def test_barometer_collect_ignores_trends_cut_on_all_job_queries(client, monkeypatch):
+    """From 2026-09-27 Trends cut every job query at once; a cut on the same scale as the
+    control basket must not look like a market drop."""
+    import sys, types
+    import pandas as pd
+    import barometer_collect as bc
+    import planner
+    from datetime import date
+
+    class _FakeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 11, 4)
+
+    class _Fake:
+        def __init__(self, *a, **k): pass
+        def build_payload(self, q, **k): self.q = q
+        def interest_over_time(self):
+            idx = pd.date_range("2026-01-01", "2026-11-04", freq="D")
+            cut = [0.25 if d >= pd.Timestamp("2026-10-01") else 1.0 for d in idx]
+            return pd.DataFrame({q: [80.0 * c for c in cut] for q in self.q}, index=idx)
+
+    monkeypatch.setitem(sys.modules, "pytrends.request", types.SimpleNamespace(TrendReq=_Fake))
+    monkeypatch.setattr(bc, "date", _FakeDate)
+    for p in planner.list_barometer()["points"]:
+        planner.delete_barometer_point(p["id"])
+
+    assert bc.collect()["ok"]
+    pts = {p["month"]: p["counts"] for p in planner.list_barometer()["points"] if p["stream"] == "trends"}
+    assert pts["2026-10"] == pts["2026-09"]
+
+
 def test_watchlist_counts_title_families_and_eu_locations(client):
     """Watchlist: Senior/Staff EM lands in 'em', Director in 'head', a role key without
     a family matches its query literally; Sales Engineering Manager and 'Remote - US'
