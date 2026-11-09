@@ -727,7 +727,7 @@ def rsu_shares_history(grant=None):
     return out
 
 
-_RSU_EXTRA_KEYS = ("legacy_shares_per_vest", "legacy_until", "extra_grants", "new_grants_vesting",
+_RSU_EXTRA_KEYS = ("earnings_dates", "legacy_shares_per_vest", "legacy_until", "extra_grants", "new_grants_vesting",
                    "equity_cash_split_pct", "cash_vest_usd_per_quarter", "first_vest",
                    "confirmed_shares_per_vest", "confirmed_until")
 
@@ -1347,6 +1347,23 @@ def vol_regime():
     return {"factor": f, "vix": round(vix, 1), "label": f"VIX {vix:.0f} → ×{f:.2f}"}
 
 
+def _earnings_ctx(ticker, closes, dates):
+    """(earnings dates, jump component) for the RSU ticker from `earnings_dates` in rsu.json;
+    other tickers get ([], None). With no future date assume a quarterly rhythm: last + 91 days."""
+    p = _rsu_path()
+    grant = dict(_RSU_DEFAULT)
+    if p.exists():
+        grant.update(json.loads(p.read_text()))
+    ann = sorted(grant.get("earnings_dates") or [])
+    if ticker != grant["ticker"] or not ann:
+        return [], None
+    if ann[-1] < dates[-1]:
+        from datetime import date, timedelta
+        ann.append((date.fromisoformat(ann[-1]) + timedelta(days=91)).isoformat())
+    import forecast_models as fm
+    return ann, fm.earnings_move_rms(closes, dates, ann)
+
+
 def record_and_score_forecasts():
     """Daily self-learning cycle: (1) settle matured forecasts against real
     prices, (2) store today's bands for the whole watchlist.
@@ -1389,6 +1406,7 @@ def record_and_score_forecasts():
         bands = fm.short_term_bands_calibrated(closes, forecast_residuals(tk), vol_regime=reg)
         if not bands:
             continue
+        bands = fm.earnings_widen(bands, today, *_earnings_ctx(tk, closes, dates))
         sig_d = bands["ewma_vol_daily_pct"] / 100.0
         for h in bands["horizons"]:
             with db.get_conn() as conn:
@@ -1457,10 +1475,12 @@ def ticker_bands(ticker):
     import forecast_models as fm
     hist = prices(ticker, days=600)
     closes = [h["close"] for h in hist]
+    dates = [h["date"] for h in hist]
     if len(closes) < 60:
         return {"error": "not enough history"}
     reg = vol_regime()
     out = fm.short_term_bands_calibrated(closes, forecast_residuals(ticker), vol_regime=reg["factor"])
+    out = fm.earnings_widen(out, dates[-1], *_earnings_ctx(ticker, closes, dates))
     out["regime"] = reg
     out["coverage"] = fm.short_term_coverage_backtest(closes, 21)
     return out

@@ -216,6 +216,46 @@ def short_term_bands_calibrated(closes, residuals_by_h=None, horizons=(5, 21, 63
     return base
 
 
+def earnings_move_rms(closes, dates, earnings_dates):
+    """Earnings-jump component: RMS of the log return on the first session after each
+    release. RMS, not median: the moves are bimodal (1-2% or 25-30%) and the quadrature
+    needs a variance, so a median would understate the band 10x. Future dates are skipped."""
+    moves = []
+    for ann in earnings_dates or ():
+        i = next((k for k, d in enumerate(dates) if d > ann), None)
+        if i:
+            moves.append(math.log(closes[i] / closes[i - 1]))
+    if len(moves) < 3:
+        return None
+    return math.sqrt(sum(m * m for m in moves) / len(moves))
+
+
+def earnings_widen(bands, today, earnings_dates, move):
+    """When a post-earnings session falls inside the horizon, add the jump to the band in
+    quadrature: d' = sign(d) * sqrt(d^2 + (z * move)^2). EWMA and conformal calibration
+    learn from daily returns, so they know nothing about the earnings day (band ±10%,
+    options implied 12%, the stock moved -16%). Works on plain and calibrated bands.
+    Horizon in sessions is approximated as calendar days ×1.4, no exchange calendar."""
+    if not bands or not move or not earnings_dates:
+        return bands
+    from datetime import date, timedelta
+    nxt = next((d for d in sorted(earnings_dates) if d >= today), None)
+    if not nxt:
+        return bands
+    t0 = date.fromisoformat(today)
+    last = bands["last_close"]
+    z = abs(_ND.inv_cdf(0.10))
+    for h in bands["horizons"]:
+        if date.fromisoformat(nxt) > t0 + timedelta(days=round(h["days"] * 1.4)):
+            continue
+        for q in ("p10", "p90"):
+            d = math.log(h[q] / last)
+            h[q] = round(last * math.exp(math.copysign(math.sqrt(d * d + (z * move) ** 2), d)), 4)
+        h["earnings"] = {"date": nxt, "move_pct": round(move * 100, 1)}
+        h["source"] += f" + earnings {nxt[8:]}.{nxt[5:7]} (±{move * 100:.0f}%)"
+    return bands
+
+
 def independent_windows(rows):
     """How many NON-overlapping forecast windows the rows contain. Daily 21-day forecasts
     share 20 of 21 days with their neighbours, so 100 of them are ~5 independent outcomes;

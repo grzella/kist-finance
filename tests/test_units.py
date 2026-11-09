@@ -60,6 +60,42 @@ def test_forecast_bands_are_ordered():
     assert out["ewma_vol_annual_pct"] >= 0
 
 
+def test_forecast_earnings_widen():
+    import math
+    from datetime import date, timedelta
+    import forecast_models as fm
+    # three releases, each followed by a ~26% jump, flat otherwise
+    closes, dates = [], []
+    d0 = date(2026, 1, 5)
+    px = 100.0
+    for i in range(130):
+        if i in (31, 61, 91):
+            px *= 1.3
+        closes.append(px)
+        dates.append((d0 + timedelta(days=i)).isoformat())
+    ann = [dates[30], dates[60], dates[90]]
+    move = fm.earnings_move_rms(closes, dates, ann)
+    assert abs(move - math.log(1.3)) < 1e-9
+    assert fm.earnings_move_rms(closes, dates, ann[:2]) is None  # <3 observations
+
+    def bands(next_in_days):
+        b = fm.short_term_bands(closes)
+        return fm.earnings_widen(b, dates[-1], ann + [(d0 + timedelta(days=129 + next_in_days)).isoformat()], move)
+
+    near = bands(3)
+    far = bands(40)
+    plain = fm.short_term_bands(closes)
+    for n, f, p in zip(near["horizons"], far["horizons"], plain["horizons"]):
+        assert n["p50"] == p["p50"]
+        assert n["p10"] < p["p10"] and n["p90"] > p["p90"] and n["earnings"]["date"]
+        if n["days"] < 40 / 1.4:
+            assert f["p10"] == p["p10"] and f["p90"] == p["p90"] and "earnings" not in f
+        else:
+            assert f["p90"] > p["p90"]
+    # no component: band untouched
+    assert fm.earnings_widen(fm.short_term_bands(closes), dates[-1], ann, None) == plain
+
+
 def test_forecast_goal_eta_band():
     import forecast_models as fm
     band = fm.goal_eta_band(remaining=120000, pace=5000)
