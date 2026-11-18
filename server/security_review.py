@@ -52,14 +52,32 @@ def _repo_root():
 def _git(repo, args, timeout=30):
     try:
         return subprocess.run(["git", "-C", repo] + args,
-                              capture_output=True, text=True, timeout=timeout)
+                              capture_output=True, text=True, errors="replace", timeout=timeout)
     except Exception:
         return None
 
 
+_BROKEN_FIX = ("The git message is in the details: fix the pattern (git grep -E is POSIX ERE, no (?:, (?i), (?! "
+               "or \\s) or the timeout in security_review.py")
+
+
+def _grep(repo, args, broken):
+    """An empty result after a git error looked like "no matches", so a pattern git could not parse silently
+    switched checks off. Errors and timeouts go to `broken`, and the check reports a fail from them."""
+    r = _git(repo, ["grep"] + args)
+    if r is None or r.returncode > 1:  # 1 = no matches
+        broken.append(r.stderr.strip()[:160] if r else "git grep: timeout")
+        return []
+    # split("\n"), not splitlines(): that one also cuts at \x0c and U+2028 inside a line, and the rest loses its path
+    return [l for l in r.stdout.split("\n") if l.strip()]
+
+
 # Secret signatures. Literals are split by concatenation so THIS file does not
 # match its own scan (the scanner would otherwise flag its own source).
-_SECRET_PATTERNS = [
+# git grep -E (POSIX ERE) and Python's re both read these patterns, so only syntax both accept: (?: and (?i)
+# make git grep exit with an error (and (?i) inside an alternation breaks Python 3.12 too), and Apple git reads
+# \s as a plain "s". -i and re.I handle case.
+_SHAPED = [
     ("JWT / Supabase key",        "eyJ" + "hbGciOiJ"),
     ("Supabase project URL",      r"https://[a-z0-9]{15,}\.supabase\.co"),
     ("n8n webhook id",            r"/webhook/[a-f0-9]{8}-[a-f0-9-]{20,}"),
@@ -69,15 +87,31 @@ _SECRET_PATTERNS = [
     ("AWS access key id",         "AKI" + r"A[0-9A-Z]{16}"),
     ("Google API key",            "AIza" + r"[0-9A-Za-z_-]{30,}"),
     ("Slack token",               "xox" + r"[baprs]-[0-9A-Za-z-]{10,}"),
+    ("Supabase secret key",       "sb_" + r"secret_[A-Za-z0-9_-]{20,}"),
     ("Private key block",         "-----" + "BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY"),
-    ("Generic password assign",   r"(?i)(password|passwd|secret|api_?key|token)\s*[=:]\s*['\"][^'\"]{8,}"),
 ]
+# A whole quoted value without whitespace that contains a digit: a name ('my-service-api-key'), a dummy
+# ('dummy-token') or an expression ("?token=" + ...) is not a secret. Two branches because ERE has no lookahead.
+# This pattern skips tests, which hold dummy passwords; key-shaped patterns are searched in tests too.
+_GENERIC = [("Generic password assign", "(password|passwd|secret|api_?key|token)[ \t]*[=:][ \t]*['\"]"
+                                        "([^'\" \t]{4,}[0-9][^'\" \t]*|[^'\" \t]*[0-9][^'\" \t]{4,})['\"]")]
+_SECRET_PATTERNS = _SHAPED + _GENERIC
 
 # Paths that must NEVER be tracked (in tree or history).
 _SENSITIVE_PATHS = re.compile(
     r"(^|/)\.env($|\.(?!example))|(^|/)\.finance/|(^|/)private/|(^|/)doc-raw/|"
     r"(^|/)backups/|\.pem$|\.key$|\.p12$|\.pfx$|id_rsa|id_ed25519|"
     r"finance\.db$|\.db\.enc$", re.I)
+
+
+def _alt(patterns, group="(%s)"):
+    # git grep -E only knows "(" groups, while Python scans the history twice as fast with "(?:" groups
+    return "|".join(group % p for _, p in patterns)
+
+
+def _kind(text):
+    """Pattern name for the report: where the secret is and what kind, never the match itself."""
+    return next((n for n, p in _SECRET_PATTERNS if re.search(p, text, re.I)), "?")
 
 # PUBLIC-REPO AUDIT: the maintainer's personal identifiers must never appear in
 # this generic OSS fork. The identifiers themselves live outside the repo (a
@@ -103,8 +137,10 @@ def _personal_markers():
     return _PERSONAL_MARKERS + private, bool(private)
 
 # Excludes for content scans (docs / vendored / sample data are not code).
-# tests hold eval()/exec()/os.system as fixtures for this very scanner; scanning them = false alarms
-_TEST_EXCLUDES = [":(exclude)tests/*", ":(exclude)*/tests/*"]
+# tests hold eval()/exec()/os.system and dummy passwords as fixtures for this very scanner; scanning them = false
+# alarms. Besides tests/ directories this covers test/ directories, test_*.py and *.test.js/mjs/cjs files.
+_TEST_EXCLUDES = [":(exclude)tests/*", ":(exclude)*/tests/*", ":(exclude)*/test/*",
+                  ":(exclude)test_*", ":(exclude)*/test_*", ":(exclude)*.test.*"]
 _SCAN_EXCLUDES = [":(exclude)*.md", ":(exclude)posts/*", ":(exclude)doc-raw/*",
                   ":(exclude)*.html", ":(exclude)static/vendor/*",
                   ":(exclude)*.min.js", ":(exclude)seed.py",
@@ -149,40 +185,68 @@ def _check_repo_leaks(repo, tracked):
         f("info", "pass", "Git history free of sensitive files",
           f"scanned {len(ever)} unique paths across all history")
 
-    # 1c. secret PATTERNS in current tree
-    pat = "|".join("(?:%s)" % p for _, p in _SECRET_PATTERNS)
-    r = _git(repo, ["grep", "-nIE", pat, "--"] + ["."] + _SCAN_EXCLUDES)
-    hits = [l for l in (r.stdout.splitlines() if r else []) if l.strip()][:12]
-    if hits:
+    # 1c. secret PATTERNS in current tree. -a (and --text in 1d) because git treats a file with a NUL byte or with
+    # -diff in .gitattributes as binary and -I would skip it: one .gitattributes line would switch the scan off
+    scans = [(_SHAPED, _SCAN_EXCLUDES), (_GENERIC, _SCAN_EXCLUDES + _TEST_EXCLUDES)]
+    hits, broken = [], []
+    for pats, spec in scans:
+        for line in _grep(repo, ["-naiE", _alt(pats), "--", "."] + spec, broken):
+            path, num, text = line.split(":", 2)
+            hits.append(f"{path}:{num} ({_kind(text)})")
+    if broken:
+        f("high", "fail", "Secret scan of the code did not run", " | ".join(broken), _BROKEN_FIX)
+    elif hits:
         f("high", "fail", "Secret patterns in tracked code",
-          " | ".join(h[:90] for h in hits[:6]),
+          f"{len(hits)} hits: " + " | ".join(hits[:6]),
           "Remove the secret from code, keep it in .env (gitignored), use .env.example with a placeholder")
     else:
         f("info", "pass", "No secret patterns in code",
           f"checked {len(_SECRET_PATTERNS)} signatures (JWT, Supabase, tokens, private keys…)")
 
-    # 1d. secret patterns in HISTORY (pickaxe over all commits)
-    rl = _git(repo, ["rev-list", "--all"], timeout=20)
-    commits = (rl.stdout.split() if rl else [])
-    if commits:
-        rh = _git(repo, ["grep", "-IE", pat] + commits[:400] + ["--"] + _SCAN_EXCLUDES,
-                  timeout=45)
-        hh = [l for l in (rh.stdout.splitlines() if rh else []) if l.strip()]
-        # drop matches that are only in the current tree (already reported in 1c)
-        hh = [l for l in hh if not l.startswith("./") and ":" in l][:12]
-        if hh:
-            f("high", "fail", "Secret patterns in git HISTORY",
-              f"{len(hh)} hits in old commits: " + " | ".join(h[:70] for h in hh[:4]),
-              "A secret in history is a burned secret. Rotate the key AND rewrite history.")
-        else:
-            f("info", "pass", "Git history free of secret patterns",
-              f"pickaxe over {min(len(commits),400)} commits, zero hits")
+    # 1d. secret patterns in HISTORY: every line ever added in any commit (git log -p), including merges, branches
+    # that `-- .` would simplify away (--full-history) and files moved out of tests (--no-renames). git grep over 400
+    # full commit trees took minutes and its timeout silently reported pass; git log -p reads a thousand commits in
+    # a few seconds.
+    hh, commits, broken = [], set(), []
+    for pats, spec in scans:
+        # --diff-filter=d: a deleted file has only "-" lines, nothing to look for
+        r = _git(repo, ["-c", "core.quotepath=off", "log", "--all", "-p", "-U0", "--no-renames", "--full-history",
+                        "--diff-merges=first-parent", "--diff-filter=d", "--no-color", "--no-textconv", "--text",
+                        "--format=commit %h", "--", "."] + spec, timeout=180)
+        if r is None or r.returncode:
+            broken.append(r.stderr.strip()[:160] if r else "git log: timeout")
+            continue
+        found = re.compile(_alt(pats, "(?:%s)"), re.I).search
+        commit = path = ""
+        hunk = False  # inside a hunk a "++ x" line is content, although it looks like a "+++ " header
+        for line in r.stdout.split("\n"):
+            if line.startswith("commit "):
+                commit, hunk = line[7:], False
+                commits.add(commit)
+            elif line.startswith("diff "):
+                hunk = False
+            elif line.startswith("+++ ") and not hunk:
+                path = line[6:] if line.startswith("+++ b/") else ""
+            elif line.startswith("@@ "):
+                hunk = True
+            elif line.startswith("+") and found(line):
+                hh.append(f"{commit} {path} ({_kind(line)})")
+        del r  # the output can run to 100 MB: the second pass must not hold the first one
+    if broken:
+        f("high", "fail", "Secret scan of the history did not run", " | ".join(broken), _BROKEN_FIX)
+    elif hh:
+        f("high", "fail", "Secret patterns in git HISTORY",
+          f"{len(hh)} hits in commits: " + " | ".join(hh[:4]),
+          "A secret in history is a burned secret. Rotate the key AND rewrite history.")
+    else:
+        f("info", "pass", "Git history free of secret patterns",
+          f"added lines in {len(commits)} commits, zero hits")
 
     # 1e. leak-check: real .env values appearing anywhere tracked
     env = Path(repo) / "apps" / "budget" / ".env"
     if not env.exists():
         env = Path(repo) / ".env"
-    checked, leaked = 0, []
+    checked, leaked, broken = 0, [], []
     if env.exists():
         for line in env.read_text(errors="ignore").splitlines():
             line = line.strip()
@@ -193,10 +257,12 @@ def _check_repo_leaks(repo, tracked):
             if len(v) < 12:
                 continue
             checked += 1
-            gr = _git(repo, ["grep", "-Fl", v, "--", "."])
-            if gr and gr.stdout.strip():
+            if _grep(repo, ["-Fl", "-e", v, "--", "."], broken):  # -e: a value starting with "-" is not an option
                 leaked.append(k.strip())
-    if leaked:
+    if broken:  # only the count: git's message could quote the value
+        f("critical", "fail", "The .env value check did not run",
+          f"git grep failed for {len(broken)} of {checked} values", _BROKEN_FIX)
+    elif leaked:
         f("critical", "fail", "A real .env value found in the repo",
           "leaked variables: " + ", ".join(leaked), "Rotate these secrets immediately and remove them from the repo")
     elif checked:
@@ -213,14 +279,17 @@ def _check_personal_data(repo, markers=None):
     # LICENSE/NOTICE legitimately carry the author's name (MIT copyright line) —
     # that is expected authorship, not a data leak; exclude them from this audit.
     pii_excludes = _SCAN_EXCLUDES + [":(exclude)LICENSE*", ":(exclude)NOTICE*"]
-    hits = []
+    hits, broken = [], []
     markers, have_private = (markers, True) if markers is not None else _personal_markers()
     for label, rx in markers:
-        r = _git(repo, ["grep", "-nIE", rx, "--"] + ["."] + pii_excludes)
-        for ln in (r.stdout.splitlines() if r else []):
-            if ln.strip():
-                hits.append((label, ln.strip()))
-    if hits:
+        for ln in _grep(repo, ["-naE", rx, "--", "."] + pii_excludes, broken):
+            hits.append((label, ln.strip()))
+    if broken:
+        # only the count: git's message quotes the pattern, and the markers are the maintainer's identifiers
+        f("high", "fail", "Personal-data audit did not run",
+          f"{len(broken)} of {len(markers)} markers could not be searched (git error or timeout)",
+          "Write the markers in POSIX ERE (git grep -E): no (?:, (?i), lookarounds or \\s; check with git grep -E")
+    elif hits:
         f("critical", "fail", "Maintainer personal data in a public repo",
           # file:line only: CI logs of a public repo are public, so never echo the match
           "; ".join(f"{lbl}: {':'.join(ln.split(':', 2)[:2])}" for lbl, ln in hits[:6]),
@@ -242,42 +311,45 @@ def _check_code(repo):
     out = []
     f = _finder(out, "code", "CODE (contributors)")
 
-    # dangerous-pattern grep across python + js (docs/vendor excluded)
+    # dangerous-pattern grep across python + js (docs/vendor excluded).
+    # [[:space:]], not \s: Apple git reads \s in ERE as a plain "s", so `eval (` passed locally but not in CI.
+    # -a for the same reason as in 1c: -diff in .gitattributes must not switch these checks off.
     checks = [
-        ("high",   r"(^|[^A-Za-z0-9_.])eval\s*\(",                       "eval() — arbitrary code execution",
+        ("high",   r"(^|[^A-Za-z0-9_.])eval[[:space:]]*\(",              "eval() — arbitrary code execution",
          "Replace with a safe parser (json.loads / ast.literal_eval)"),
-        ("high",   r"(^|[^A-Za-z0-9_.])exec\s*\(",                       "exec() — arbitrary code execution",
+        ("high",   r"(^|[^A-Za-z0-9_.])exec[[:space:]]*\(",              "exec() — arbitrary code execution",
          "Remove exec; redesign without dynamic code"),
-        ("high",   r"os\.system\s*\(",                   "os.system() — shell injection",
+        ("high",   r"os\.system[[:space:]]*\(",          "os.system() — shell injection",
          "Use subprocess with an argument list, no shell"),
-        ("high",   r"subprocess\.[a-z]+\([^)]*shell\s*=\s*True", "subprocess(shell=True) — shell injection",
-         "shell=False + argument list"),
-        ("critical", r"(pickle|cPickle)\.loads?\s*\(",   "pickle.load — deserialization = RCE",
+        ("high",   r"subprocess\.[a-z]+\([^)]*shell[[:space:]]*=[[:space:]]*True",
+         "subprocess(shell=True) — shell injection", "shell=False + argument list"),
+        ("critical", r"(pickle|cPickle)\.loads?[[:space:]]*\(", "pickle.load — deserialization = RCE",
          "Do not deserialize pickle from untrusted sources; use JSON"),
-        ("high",   r"yaml\.load\s*\((?![^)]*Loader)",    "yaml.load without SafeLoader",
+        ("high",   r"yaml\.load[[:space:]]*\(",          "yaml.load without SafeLoader",
          "yaml.safe_load(...)"),
-        ("high",   r"render_template_string\s*\(",       "render_template_string — SSTI",
+        ("high",   r"render_template_string[[:space:]]*\(", "render_template_string — SSTI",
          "Render static templates; do not build them from data"),
     ]
     # Python-only rules must not scan JS: RegExp.prototype.exec() is a safe
     # regex method that merely shares a name with Python's exec().
     py_only = ("exec(", "os.system", "pickle", "yaml", "render_template_string")
+    broken = []
     for sev, rx, title, fix in checks:
         files = (["*.py"] if any(k in title for k in py_only)
                  else ["*.py", "static/js/**"])
-        r = _git(repo, ["grep", "-nIE", rx, "--"] + files + _SCAN_EXCLUDES + _TEST_EXCLUDES)
-        hits = [l for l in (r.stdout.splitlines() if r else []) if l.strip()]
+        hits = _grep(repo, ["-naE", rx, "--"] + files + _SCAN_EXCLUDES + _TEST_EXCLUDES, broken)
+        if "yaml" in title:  # ERE has no lookahead, so calls that pass a Loader are filtered out in Python
+            hits = [h for h in hits if re.search(r"yaml\.load\s*\((?![^)]*Loader)", h)]
         if hits:
             f(sev, "warn" if sev != "critical" else "fail", title,
               f"{len(hits)}×: " + " | ".join(h[:80] for h in hits[:3]), fix)
 
     # SQL built by string interpolation inside a query call (execute/_exec/_rows)
-    r = _git(repo, ["grep", "-nIE",
-                    r"(execute|executescript|_exec|_rows)\s*\(\s*(f['\"]|['\"][^'\"]*(%s|%d|\{)|[^,)]*\.format\()",
-                    "--", "*.py"] + _SCAN_EXCLUDES + _TEST_EXCLUDES)
+    sql = _grep(repo, ["-naE", r"(execute|executescript|_exec|_rows)[[:space:]]*\([[:space:]]*"
+                               r"(f['\"]|['\"][^'\"]*(%s|%d|\{)|[^,)]*\.format\()",
+                       "--", "*.py"] + _SCAN_EXCLUDES + _TEST_EXCLUDES, broken)
     # identifiers from sqlite_master / the _ident() allow-list are not user input
-    sqlhits = [l for l in (r.stdout.splitlines() if r else []) if l.strip()
-               and "pragma table_info(" not in l and "_ident(" not in l]
+    sqlhits = [l for l in sql if "pragma table_info(" not in l and "_ident(" not in l]
     # elevate to injection if request data is on the same line
     inj = [h for h in sqlhits if re.search(r"request\.|args\[|\.json|get_json", h)]
     if inj:
@@ -294,28 +366,30 @@ def _check_code(repo):
           "no string concatenation in execute/_exec/_rows calls")
 
     # Flask misconfig: debug=True / host 0.0.0.0
-    r = _git(repo, ["grep", "-nIE", r"debug\s*=\s*True", "--", "*.py"] + _SCAN_EXCLUDES)
-    if r and r.stdout.strip():
-        f("high", "fail", "Flask debug=True", r.stdout.strip().splitlines()[0][:90],
+    debug = _grep(repo, ["-naE", r"debug[[:space:]]*=[[:space:]]*True", "--", "*.py"] + _SCAN_EXCLUDES, broken)
+    if debug:
+        f("high", "fail", "Flask debug=True", debug[0][:90],
           "debug=False in production (the Werkzeug debugger = RCE)")
     else:
         f("info", "pass", "No debug=True", "the app does not start with the Werkzeug debugger")
 
-    r = _git(repo, ["grep", "-nIE", r"host\s*=\s*['\"]0\.0\.0\.0['\"]", "--", "*.py"] + _SCAN_EXCLUDES)
-    if r and r.stdout.strip():
-        f("medium", "warn", "Bind on 0.0.0.0 (network-reachable)",
-          r.stdout.strip().splitlines()[0][:90],
+    host = _grep(repo, ["-naE", r"host[[:space:]]*=[[:space:]]*['\"]0\.0\.0\.0['\"]", "--", "*.py"]
+                 + _SCAN_EXCLUDES, broken)
+    if host:
+        f("medium", "warn", "Bind on 0.0.0.0 (network-reachable)", host[0][:90],
           "Bind on 127.0.0.1 — a local app should not listen on all interfaces")
     else:
         f("info", "pass", "Bind only on 127.0.0.1", "the server is not exposed to the network")
 
     # CORS wildcard
-    r = _git(repo, ["grep", "-nIE", r"Access-Control-Allow-Origin['\"]?\s*[,:]\s*['\"]\*|CORS\([^)]*\*",
-                    "--", "*.py"] + _SCAN_EXCLUDES)
-    if r and r.stdout.strip():
-        f("medium", "warn", "CORS wildcard (*)", r.stdout.strip().splitlines()[0][:90],
+    cors = _grep(repo, ["-naE", r"Access-Control-Allow-Origin['\"]?[[:space:]]*[,:][[:space:]]*['\"]\*|CORS\([^)]*\*",
+                        "--", "*.py"] + _SCAN_EXCLUDES, broken)
+    if cors:
+        f("medium", "warn", "CORS wildcard (*)", cors[0][:90],
           "Restrict CORS to known origins, or remove it for a local app")
 
+    if broken:
+        f("high", "fail", "Code checks did not run", " | ".join(broken), _BROKEN_FIX)
     return out
 
 
@@ -348,8 +422,7 @@ def _check_config(repo, tracked):
             break
     if exa:
         txt = exa.read_text(errors="ignore")
-        pat = "|".join("(?:%s)" % p for _, p in _SECRET_PATTERNS[:6])
-        if re.search(pat, txt):
+        if re.search(_alt(_SECRET_PATTERNS[:6]), txt):
             f("high", "fail", ".env.example contains a real secret",
               "placeholders should be empty / obviously fake", "Replace with <your-key-here>")
         else:
@@ -360,11 +433,14 @@ def _check_config(repo, tracked):
           "contributors don't know which variables to set", "Add .env.example with placeholders")
 
     # secrets must come from env, not tracked settings
-    r = _git(repo, ["grep", "-nIE", r"(SUPABASE|ANON_KEY|SERVICE_ROLE|SECRET)\s*=\s*['\"][^'\"]{12,}",
-                    "--", "*.py"] + _SCAN_EXCLUDES)
-    if r and r.stdout.strip():
-        f("critical", "fail", "Connection key hard-coded in the source",
-          r.stdout.strip().splitlines()[0][:90], "Read from os.environ; keep it in .env")
+    broken = []
+    hits = _grep(repo, ["-naE", r"(SUPABASE|ANON_KEY|SERVICE_ROLE|SECRET)[[:space:]]*=[[:space:]]*['\"][^'\"]{12,}",
+                        "--", "*.py"] + _SCAN_EXCLUDES, broken)
+    if broken:
+        f("high", "fail", "Connection-key check did not run", broken[0], _BROKEN_FIX)
+    elif hits:
+        f("critical", "fail", "Connection key hard-coded in the source", hits[0][:90],
+          "Read from os.environ; keep it in .env")
     else:
         f("info", "pass", "Connection keys come only from the environment",
           "Supabase/n8n read from .env, not from code")

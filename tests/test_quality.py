@@ -102,9 +102,15 @@ def _make_bad_repo(tmp):
     run("config", "user.email", "t@t.t")
     run("config", "user.name", "T")
     (repo / "leak.py").write_text(
-        'aws = "AKIA' + "A" * 16 + '"\npw = "password: supersecret123"\n')
+        'aws = "AKIA' + "A" * 16 + '"\npw = "password: supersecret123"\n'
+        'sb = "sb_' + "secret_" + "A" * 31 + '"\ndb_pass' + 'word = "hunter2hunter2"\n'
+        'x = 1\x0cslack = "xox' + 'b-1234567890-abcdef"\n')
+    # attempts to dodge the scan: -diff makes .py files "binary" to git grep -I and git log -p, \x0c cuts splitlines()
+    (repo / ".gitattributes").write_text("*.py -diff\n")
     (repo / ".env").write_text("SECRET_TOKEN=verylongsecretvalue123456\n")
-    (repo / "danger.py").write_text("import os\nos.system('ls')\neval('1+1')\n")
+    # the string is split because the Flask debug check also covers tests, and the whole-repo review scans this file
+    (repo / "danger.py").write_text("import os\nos.system('ls')\neval('1+1')\napp.run(debug = " + "True)\n"
+                                    "yaml.load(f)\nyaml.load(g, Loader=yaml.SafeLoader)\n")
     (repo / "pii.py").write_text('author = "Zqplanted"\n')
     run("add", "-A")
     run("commit", "-qm", "bad")
@@ -119,17 +125,29 @@ def test_security_review_catches_planted_leaks(tmp_path):
     leaks = sr._check_repo_leaks(repo, tracked)
     fails = [x for x in leaks if x["status"] == "fail"]
     assert any(".env" in (x["detail"] or "") for x in fails), "tracked .env not caught"
-    assert any("AKIA" in (x["detail"] or "") or "secret" in (x["detail"] or "").lower()
-               for x in fails), "secret patterns not caught"
+    # 1c and 1d by title, because the .env value check (1e) also fails with "secret" in it, even with the content scan broken
+    found = {x["title"]: x["detail"] for x in fails}
+    for title in ("Secret patterns in tracked code", "Secret patterns in git HISTORY"):
+        for kind in ("AWS access key id", "Supabase secret key", "Generic password assign", "Slack token"):
+            assert kind in found.get(title, ""), f"{title}: {kind} not caught"
 
     code = sr._check_code(repo)
     titles = " | ".join(x["title"] for x in code)
+    # the debug flag is written with spaces because Apple git read \s in ERE as "s"; yaml.load with a Loader is fine
+    assert "Flask debug" in titles, "spaced Flask debug flag not caught"
+    assert [x["detail"][:2] for x in code if x["title"].startswith("yaml.load")] == ["1×"], "yaml.load check broken"
     assert "eval" in titles.lower(), "eval() not caught"
     assert "os.system" in titles, "os.system not caught"
 
     pii = sr._check_personal_data(repo, markers=[("planted", r"Zqplanted")])
     assert any(x["status"] == "fail" for x in pii), "personal marker not caught"
     assert "Zqplanted" not in pii[0]["detail"], "the match itself must not be echoed"
+
+
+def test_security_review_knows_supabase_secret_key():
+    import security_review as sr
+    assert sr._kind('const K = "sb_' + "secret_" + "A" * 31 + '";') == "Supabase secret key"
+    assert sr._kind("the secret key (sb_secret_...) lives only in the keychain") == "?"
 
 
 def test_security_review_clean_repo_stays_clean(tmp_path):
@@ -148,9 +166,27 @@ def test_security_review_clean_repo_stays_clean(tmp_path):
     run("commit", "-qm", "clean")
     tracked = subprocess.run(["git", "-C", str(repo), "ls-files"], capture_output=True,
                              text=True).stdout.splitlines()
-    assert not [x for x in sr._check_repo_leaks(str(repo), tracked) if x["status"] == "fail"]
+    # code and config checks too: a pattern outside POSIX ERE turns into a "did not run" fail here
+    found = (sr._check_repo_leaks(str(repo), tracked) + sr._check_code(str(repo))
+             + sr._check_config(str(repo), tracked))
+    assert not [x for x in found if x["status"] == "fail"]
     assert not [x for x in sr._check_personal_data(str(repo), markers=[("planted", r"Zqplanted")])
                 if x["status"] == "fail"]
+
+
+def test_security_review_broken_scan_is_not_pass(tmp_path, monkeypatch):
+    """A git grep error (a pattern git cannot parse, a timeout) looked like "no matches" and the checks passed."""
+    import security_review as sr
+    repo = _make_bad_repo(tmp_path)
+    # git quotes the pattern in its error, and the markers are personal identifiers: only a count may come out
+    pii = sr._check_personal_data(repo, markers=[("planted", r"Zq(?:planted)")])
+    assert pii[0]["title"] == "Personal-data audit did not run" and "Zq" not in pii[0]["detail"]
+    monkeypatch.setattr(sr, "_git", lambda *a, **k: None)
+    fails = [x["title"] for x in sr._check_repo_leaks(repo, []) + sr._check_code(repo) + sr._check_config(repo, [])
+             if x["status"] == "fail"]
+    for title in ("Secret scan of the code did not run", "Secret scan of the history did not run",
+                  "Code checks did not run", "Connection-key check did not run"):
+        assert title in fails, title
 
 
 # ---------- 4. AI SQL tool guard: fuzz + pentest-check efficacy ----------
