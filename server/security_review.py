@@ -49,9 +49,9 @@ def _repo_root():
         return start
 
 
-def _git(repo, args, timeout=30):
+def _git(repo, args, timeout=30, input=None):
     try:
-        return subprocess.run(["git", "-C", repo] + args,
+        return subprocess.run(["git", "-C", repo] + args, input=input,
                               capture_output=True, text=True, errors="replace", timeout=timeout)
     except Exception:
         return None
@@ -61,10 +61,10 @@ _BROKEN_FIX = ("The git message is in the details: fix the pattern (git grep -E 
                "or \\s) or the timeout in security_review.py")
 
 
-def _grep(repo, args, broken):
+def _grep(repo, args, broken, input=None):
     """An empty result after a git error looked like "no matches", so a pattern git could not parse silently
     switched checks off. Errors and timeouts go to `broken`, and the check reports a fail from them."""
-    r = _git(repo, ["grep"] + args)
+    r = _git(repo, ["-c", "core.quotepath=off", "grep"] + args, input=input)
     if r is None or r.returncode > 1:  # 1 = no matches
         broken.append(r.stderr.strip()[:160] if r else "git grep: timeout")
         return []
@@ -156,14 +156,20 @@ def _finder(out, id_, area):
 
 # ---------------------------------------------------------------- 1. REPO LEAKS
 
-def _check_repo_leaks(repo, tracked):
+def _check_repo_leaks(repo, tracked=None):
     out = []
     f = _finder(out, "leak", "REPO LEAKS")
 
-    # 1a. sensitive files tracked right now
-    tracked_bad = [t for t in tracked
+    # 1a. sensitive files tracked right now. core.quotepath=off in 1a and 1b: by default git quotes a path with
+    # non-ASCII characters ("backups/\305...") and (^|/)backups/ missed it. An empty list after a git error is no pass.
+    if tracked is None:
+        r = _git(repo, ["-c", "core.quotepath=off", "ls-files"])
+        tracked = [t for t in r.stdout.split("\n") if t] if r is not None and r.returncode == 0 else None
+    tracked_bad = [t for t in tracked or []
                    if _SENSITIVE_PATHS.search(t) and not t.endswith(".env.example")]
-    if tracked_bad:
+    if tracked is None:
+        f("high", "fail", "Tracked file list unavailable", "git ls-files did not answer", _BROKEN_FIX)
+    elif tracked_bad:
         f("critical", "fail", "Sensitive files tracked in the repo",
           ", ".join(tracked_bad[:8]),
           "git rm --cached <file>, add to .gitignore, consider rewriting history")
@@ -172,11 +178,15 @@ def _check_repo_leaks(repo, tracked):
           f"{len(tracked)} tracked files, none match sensitive patterns")
 
     # 1b. sensitive paths EVER in history (critical before going public)
-    hist = _git(repo, ["log", "--all", "--pretty=format:", "--name-only"], timeout=40)
-    ever = set(l.strip() for l in (hist.stdout.splitlines() if hist else []) if l.strip())
+    hist = _git(repo, ["-c", "core.quotepath=off", "log", "--all", "--diff-merges=first-parent", "--pretty=format:",
+                       "--name-only"], timeout=120)
+    ever = set(l.strip() for l in (hist.stdout.split("\n") if hist else []) if l.strip())
     hist_bad = sorted(p for p in ever
                       if _SENSITIVE_PATHS.search(p) and not p.endswith(".env.example"))
-    if hist_bad:
+    if hist is None or hist.returncode:
+        f("high", "fail", "History path list unavailable",
+          (hist.stderr.strip()[:160] if hist else "git log: timeout"), _BROKEN_FIX)
+    elif hist_bad:
         f("critical", "fail", "Sensitive files present in git HISTORY",
           f"{len(hist_bad)} files committed at some point: " + ", ".join(hist_bad[:8]),
           "A public repo exposes the whole history. Rewrite history "
@@ -242,12 +252,11 @@ def _check_repo_leaks(repo, tracked):
         f("info", "pass", "Git history free of secret patterns",
           f"added lines in {len(commits)} commits, zero hits")
 
-    # 1e. leak-check: real .env values appearing anywhere tracked
-    env = Path(repo) / "apps" / "budget" / ".env"
-    if not env.exists():
-        env = Path(repo) / ".env"
+    # 1e. leak-check: real .env values appearing anywhere tracked. The app's file (the one config.load_env reads)
+    # and .env at the root of the scanned repo; each value reaches git on stdin (-f -), not in arguments ps can show.
+    envs = {p.resolve() for p in (Path(__file__).resolve().parent.parent / ".env", Path(repo) / ".env") if p.exists()}
     checked, leaked, broken = 0, [], []
-    if env.exists():
+    for env in sorted(envs):
         for line in env.read_text(errors="ignore").splitlines():
             line = line.strip()
             if "=" not in line or line.startswith("#"):
@@ -257,8 +266,9 @@ def _check_repo_leaks(repo, tracked):
             if len(v) < 12:
                 continue
             checked += 1
-            if _grep(repo, ["-Fl", "-e", v, "--", "."], broken):  # -e: a value starting with "-" is not an option
-                leaked.append(k.strip())
+            files = _grep(repo, ["-Fl", "-f", "-", "--", "."], broken, input=v)
+            if files:
+                leaked.append(f"{k.strip()} ({', '.join(files[:3])})")
     if broken:  # only the count: git's message could quote the value
         f("critical", "fail", "The .env value check did not run",
           f"git grep failed for {len(broken)} of {checked} values", _BROKEN_FIX)
@@ -268,6 +278,9 @@ def _check_repo_leaks(repo, tracked):
     elif checked:
         f("info", "pass", "No .env values leak into the repo",
           f"{checked} .env secrets verified — none appear in tracked files")
+    else:
+        f("info", "pass", "No .env values to check",
+          "no .env in the app or at the repo root, or no value of 12+ characters in it")
 
     return out
 
@@ -395,7 +408,7 @@ def _check_code(repo):
 
 # ---------------------------------------------------------------- 3. CONFIG
 
-def _check_config(repo, tracked):
+def _check_config(repo, tracked=None):
     out = []
     f = _finder(out, "config", "CONFIGURATION / CONNECTIONS")
 
@@ -1129,14 +1142,12 @@ def run(full=True):
     except Exception:
         pass
     repo = _repo_root()
-    ls = _git(repo, ["ls-files"])
-    tracked = ls.stdout.splitlines() if ls else []
 
     findings = []
-    findings += _check_repo_leaks(repo, tracked)
+    findings += _check_repo_leaks(repo)
     findings += _check_personal_data(repo)
     findings += _check_code(repo)
-    findings += _check_config(repo, tracked)
+    findings += _check_config(repo)
     if full:
         findings += _check_functional()
         findings += _check_local_services()

@@ -187,10 +187,8 @@ def health():
         if rep:
             task("Repo security review", "on demand", rep["generated_at"], rep["verdict"], rep["summary"])
         else:
-            repo_root = security_review._repo_root()
-            ls = security_review._git(repo_root, ["ls-files"])
-            fails = [x["title"] for x in security_review._check_repo_leaks(
-                repo_root, ls.stdout.splitlines() if ls else []) if x["status"] == "fail"]
+            fails = [x["title"] for x in security_review._check_repo_leaks(security_review._repo_root())
+                     if x["status"] == "fail"]
             task("Repo security scan (secrets)", "weekly", now, "error" if fails else "ok",
                  ("🚨 " + "; ".join(fails)) if fails else "clean — no secrets in the tree or history")
     except Exception as e:

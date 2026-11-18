@@ -107,6 +107,8 @@ def _make_bad_repo(tmp):
         'x = 1\x0cslack = "xox' + 'b-1234567890-abcdef"\n')
     # attempts to dodge the scan: -diff makes .py files "binary" to git grep -I and git log -p, \x0c cuts splitlines()
     (repo / ".gitattributes").write_text("*.py -diff\n")
+    (repo / "backups").mkdir()
+    (repo / "backups" / "café.txt").write_text("x\n")  # git quotes paths outside ASCII: "backups/caf\303\251.txt"
     (repo / ".env").write_text("SECRET_TOKEN=verylongsecretvalue123456\n")
     # the string is split because the Flask debug check also covers tests, and the whole-repo review scans this file
     (repo / "danger.py").write_text("import os\nos.system('ls')\neval('1+1')\napp.run(debug = " + "True)\n"
@@ -120,9 +122,7 @@ def _make_bad_repo(tmp):
 def test_security_review_catches_planted_leaks(tmp_path):
     import security_review as sr
     repo = _make_bad_repo(tmp_path)
-    tracked = subprocess.run(["git", "-C", repo, "ls-files"], capture_output=True,
-                             text=True).stdout.splitlines()
-    leaks = sr._check_repo_leaks(repo, tracked)
+    leaks = sr._check_repo_leaks(repo)
     fails = [x for x in leaks if x["status"] == "fail"]
     assert any(".env" in (x["detail"] or "") for x in fails), "tracked .env not caught"
     # 1c and 1d by title, because the .env value check (1e) also fails with "secret" in it, even with the content scan broken
@@ -130,6 +130,10 @@ def test_security_review_catches_planted_leaks(tmp_path):
     for title in ("Secret patterns in tracked code", "Secret patterns in git HISTORY"):
         for kind in ("AWS access key id", "Supabase secret key", "Generic password assign", "Slack token"):
             assert kind in found.get(title, ""), f"{title}: {kind} not caught"
+    for title in ("Sensitive files tracked in the repo", "Sensitive files present in git HISTORY"):
+        assert "backups/café.txt" in found.get(title, ""), f"{title}: path outside ASCII not caught"
+    # with the file: without the value on stdin, git grep -f - returns arbitrary files, so "SECRET_TOKEN" alone proves nothing
+    assert "SECRET_TOKEN (.env)" in found.get("A real .env value found in the repo", ""), ".env value not caught"
 
     code = sr._check_code(repo)
     titles = " | ".join(x["title"] for x in code)
@@ -164,11 +168,8 @@ def test_security_review_clean_repo_stays_clean(tmp_path):
     (repo / ".gitignore").write_text(".env\n.finance/\nbackups/\nvault/\n")
     run("add", "-A")
     run("commit", "-qm", "clean")
-    tracked = subprocess.run(["git", "-C", str(repo), "ls-files"], capture_output=True,
-                             text=True).stdout.splitlines()
     # code and config checks too: a pattern outside POSIX ERE turns into a "did not run" fail here
-    found = (sr._check_repo_leaks(str(repo), tracked) + sr._check_code(str(repo))
-             + sr._check_config(str(repo), tracked))
+    found = sr._check_repo_leaks(str(repo)) + sr._check_code(str(repo)) + sr._check_config(str(repo))
     assert not [x for x in found if x["status"] == "fail"]
     assert not [x for x in sr._check_personal_data(str(repo), markers=[("planted", r"Zqplanted")])
                 if x["status"] == "fail"]
@@ -182,10 +183,11 @@ def test_security_review_broken_scan_is_not_pass(tmp_path, monkeypatch):
     pii = sr._check_personal_data(repo, markers=[("planted", r"Zq(?:planted)")])
     assert pii[0]["title"] == "Personal-data audit did not run" and "Zq" not in pii[0]["detail"]
     monkeypatch.setattr(sr, "_git", lambda *a, **k: None)
-    fails = [x["title"] for x in sr._check_repo_leaks(repo, []) + sr._check_code(repo) + sr._check_config(repo, [])
+    fails = [x["title"] for x in sr._check_repo_leaks(repo) + sr._check_code(repo) + sr._check_config(repo)
              if x["status"] == "fail"]
-    for title in ("Secret scan of the code did not run", "Secret scan of the history did not run",
-                  "Code checks did not run", "Connection-key check did not run"):
+    for title in ("Tracked file list unavailable", "History path list unavailable",
+                  "Secret scan of the code did not run", "Secret scan of the history did not run",
+                  "The .env value check did not run", "Code checks did not run", "Connection-key check did not run"):
         assert title in fails, title
 
 
