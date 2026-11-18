@@ -109,7 +109,7 @@ def _make_bad_repo(tmp):
     (repo / ".gitattributes").write_text("*.py -diff\n")
     (repo / "backups").mkdir()
     (repo / "backups" / "café.txt").write_text("x\n")  # git quotes paths outside ASCII: "backups/caf\303\251.txt"
-    (repo / ".env").write_text("SECRET_TOKEN=verylongsecretvalue123456\n")
+    (repo / ".env").write_text("SECRET_TOKEN=verylongsecretvalue123456\nLOCAL_EMBED_URL=http://127.0.0.1:8081/v1\n")
     # the string is split because the Flask debug check also covers tests, and the whole-repo review scans this file
     (repo / "danger.py").write_text("import os\nos.system('ls')\neval('1+1')\napp.run(debug = " + "True)\n"
                                     "yaml.load(f)\nyaml.load(g, Loader=yaml.SafeLoader)\n")
@@ -134,6 +134,7 @@ def test_security_review_catches_planted_leaks(tmp_path):
         assert "backups/café.txt" in found.get(title, ""), f"{title}: path outside ASCII not caught"
     # with the file: without the value on stdin, git grep -f - returns arbitrary files, so "SECRET_TOKEN" alone proves nothing
     assert "SECRET_TOKEN (.env)" in found.get("A real .env value found in the repo", ""), ".env value not caught"
+    assert "LOCAL_EMBED_URL" not in found["A real .env value found in the repo"], "config value taken for a secret"
 
     code = sr._check_code(repo)
     titles = " | ".join(x["title"] for x in code)

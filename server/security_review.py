@@ -96,6 +96,7 @@ _SHAPED = [
 _GENERIC = [("Generic password assign", "(password|passwd|secret|api_?key|token)[ \t]*[=:][ \t]*['\"]"
                                         "([^'\" \t]{4,}[0-9][^'\" \t]*|[^'\" \t]*[0-9][^'\" \t]{4,})['\"]")]
 _SECRET_PATTERNS = _SHAPED + _GENERIC
+_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASS|PWD|AUTH|CRED|PRIVATE|SALT|COOKIE|SESSION|DSN|HOOK", re.I)
 
 # Paths that must NEVER be tracked (in tree or history).
 _SENSITIVE_PATHS = re.compile(
@@ -263,7 +264,9 @@ def _check_repo_leaks(repo, tracked=None):
                 continue
             k, _, v = line.partition("=")
             v = v.strip().strip('"').strip("'")
-            if len(v) < 12:
+            # only variables named like secrets: a server address or a model name in .env also stands in code and
+            # docs, and a leaked key-shaped value (JWT, Supabase, webhook) is caught by 1c
+            if len(v) < 12 or not _SECRET_NAME.search(k):
                 continue
             checked += 1
             files = _grep(repo, ["-Fl", "-f", "-", "--", "."], broken, input=v)
