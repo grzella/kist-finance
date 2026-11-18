@@ -56,13 +56,15 @@ def test_trajectory_quantiles_ordered_and_variants(client):
     assert len(t["labels"]) == 12 == len(t["p50"])
     for lo, mid, hi in zip(t["p10"], t["p50"], t["p90"]):
         assert lo <= mid <= hi
-    assert {v["key"] for v in t["variants"]} >= {"base", "no_bonus", "team_down", "all_bad"}
+    assert {v["key"] for v in t["variants"]} >= {"base", "no_bonus", "rsu_down", "all_bad"}
     base = next(v for v in t["variants"] if v["key"] == "base")
     assert base["delta_vs_base"] == 0
-    up = next((v for v in t["variants"] if v["key"] == "team_up"), None)
-    down = next(v for v in t["variants"] if v["key"] == "team_down")
+    up = next((v for v in t["variants"] if v["key"] == "rsu_up"), None)
+    down = next(v for v in t["variants"] if v["key"] == "rsu_down")
     if up and t["assumptions"].get("rsu"):
         assert abs(up["delta_vs_base"] + down["delta_vs_base"]) <= 1  # symmetric shock, both compounded
+        shocked = client.get("/api/trajectory?months=12&rsu=-30").get_json()
+        assert shocked["p50"][-1] < t["p50"][-1]  # the UI's rsu= param reaches the shock
     t18 = client.get("/api/trajectory?months=18").get_json()
     from datetime import date as _d
     bonus_at = (t18["assumptions"]["bonus_month"] - _d.today().month - 1) % 12

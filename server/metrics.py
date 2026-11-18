@@ -369,7 +369,7 @@ def _simulate(start_other, start_inv, months, flow, bonus, bonus_at, drift_m, re
     return out
 
 
-def trajectory(months=24, bonus=True, team_shock_pct=0.0, usd_shock_pct=0.0, real=False,
+def trajectory(months=24, bonus=True, rsu_shock_pct=0.0, usd_shock_pct=0.0, real=False,
                sims=300, today=None):
     """Net-worth cone: the invested part grows with drift + block bootstrap of the benchmark's
     monthly returns and takes the surplus, net vest cash and the bonus (in its month); the rest
@@ -388,8 +388,8 @@ def trajectory(months=24, bonus=True, team_shock_pct=0.0, usd_shock_pct=0.0, rea
     for it in w.get("items", []):
         if it.get("kind") != "income" and (it.get("currency") or "PLN") == "USD":
             fx_val += float(it.get("latest_value") or 0)
-    shock = rsu_val * team_shock_pct / 100.0 + fx_val * usd_shock_pct / 100.0
-    inv0 = max(0.0, invested + rsu_val * team_shock_pct / 100.0)
+    shock = rsu_val * rsu_shock_pct / 100.0 + fx_val * usd_shock_pct / 100.0
+    inv0 = max(0.0, invested + rsu_val * rsu_shock_pct / 100.0)
     other0 = net0 + shock - inv0
     surplus = float(planner.monthly_surplus() or 0)
     extras = planner._annual_extras(today=today)
@@ -430,12 +430,12 @@ def trajectory(months=24, bonus=True, team_shock_pct=0.0, usd_shock_pct=0.0, rea
            "variants": []}
     base_end = sim["p50"][-1]
     variants = [("base", "base", 0.0, bonus_net), ("no_bonus", "no bonus", 0.0, 0.0),
-                ("team_down", "employer stock −30%", -0.30 * rsu_val, bonus_net),
-                ("team_up", "employer stock +30%", 0.30 * rsu_val, bonus_net),
+                ("rsu_down", "employer stock −30%", -0.30 * rsu_val, bonus_net),
+                ("rsu_up", "employer stock +30%", 0.30 * rsu_val, bonus_net),
                 ("usd_down", "USD −10%", -0.10 * fx_val, bonus_net),
                 ("all_bad", "no bonus + stock −30% + USD −10%", -0.30 * rsu_val - 0.10 * fx_val, 0.0)]
     for key, label, delta0, b in variants:
-        # a shock on the invested part compounds with the drift in both directions (as team_shock_pct does in the
+        # a shock on the invested part compounds with the drift in both directions (as rsu_shock_pct does in the
         # simulation); before, only the drop compounded and the bonus count assumed whole years (API allows 6..60 months)
         n_bonus = sum(1 for m in range(months) if m % 12 == bonus_at)
         end = base_end + delta0 * (1 + drift_m) ** months + (b - bonus_net) * n_bonus

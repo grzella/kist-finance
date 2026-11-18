@@ -613,9 +613,9 @@ paths += ["/api/analysis/career", "/api/analysis/contributions", "/api/analysis/
 # trajectory scenario controls (Forecasts tab): the default combination plus every single
 # control moved off its default, in the exact query order the UI sends. Any other combination
 # falls back to the base snapshot in api.get() with a toast.
-_TJ_DEFAULT = {"months": "24", "bonus": "1", "team": "0", "usd": "0", "real": "0"}
-_TJ_ALT = {"months": ["12", "36"], "bonus": ["0"], "team": ["-30", "30"], "usd": ["-10", "10"], "real": ["1"]}
-def _tj(q): return "/api/trajectory?" + "&".join(f"{k}={q[k]}" for k in ("months", "bonus", "team", "usd", "real"))
+_TJ_DEFAULT = {"months": "24", "bonus": "1", "rsu": "0", "usd": "0", "real": "0"}
+_TJ_ALT = {"months": ["12", "36"], "bonus": ["0"], "rsu": ["-30", "30"], "usd": ["-10", "10"], "real": ["1"]}
+def _tj(q): return "/api/trajectory?" + "&".join(f"{k}={q[k]}" for k in ("months", "bonus", "rsu", "usd", "real"))
 paths.append(_tj(_TJ_DEFAULT))
 for k, alts in _TJ_ALT.items():
     for a in alts:

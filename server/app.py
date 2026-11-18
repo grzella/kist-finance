@@ -1013,7 +1013,7 @@ def trajectory():
             return d
     return jsonify(metrics.trajectory(
         months=int(_f("months", 24)), bonus=a.get("bonus", "1") not in ("0", "false"),
-        team_shock_pct=_f("team"), usd_shock_pct=_f("usd"),
+        rsu_shock_pct=_f("rsu"), usd_shock_pct=_f("usd"),
         real=a.get("real", "0") in ("1", "true")))
 
 

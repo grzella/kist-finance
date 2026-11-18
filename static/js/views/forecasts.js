@@ -279,7 +279,7 @@ async function renderForecasts(el) {
     paintTraj(traj0);
     const refetch = async () => {
       const q = `months=${document.getElementById("tjM").value}&bonus=${document.getElementById("tjB").checked ? 1 : 0}`
-        + `&team=${document.getElementById("tjT").value}&usd=${document.getElementById("tjU").value}&real=${document.getElementById("tjR").checked ? 1 : 0}`;
+        + `&rsu=${document.getElementById("tjT").value}&usd=${document.getElementById("tjU").value}&real=${document.getElementById("tjR").checked ? 1 : 0}`;
       paintTraj(await api.get("/api/trajectory?" + q).catch(() => null));
     };
     ["tjM", "tjB", "tjT", "tjU", "tjR"].forEach((id) => document.getElementById(id).addEventListener("change", refetch));

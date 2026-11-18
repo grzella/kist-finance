@@ -18,7 +18,7 @@ ALLOC_LABELS = {
     "car": "🚗 Car (consumable)",
 }
 # saved alloc_targets may predate the key rename — accept old keys on read
-_ALLOC_LEGACY = {"nieruchomosci": "real_estate", "team": "rsu", "gotowka": "cash",
+_ALLOC_LEGACY = {"nieruchomosci": "real_estate", "gotowka": "cash",
                  "emerytalne": "retirement", "auto": "car"}
 
 
